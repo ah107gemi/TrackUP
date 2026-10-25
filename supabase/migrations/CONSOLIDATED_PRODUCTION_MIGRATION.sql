@@ -932,11 +932,13 @@ CREATE TABLE IF NOT EXISTS public.catalog_release_schedules (
 -- Enable 100% RLS
 ALTER TABLE public.catalog_release_schedules ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow public read access to catalog_release_schedules" ON public.catalog_release_schedules;
 CREATE POLICY "Allow public read access to catalog_release_schedules"
     ON public.catalog_release_schedules
     FOR SELECT
     USING (true);
 
+DROP POLICY IF EXISTS "Allow service_role full management of catalog_release_schedules" ON public.catalog_release_schedules;
 CREATE POLICY "Allow service_role full management of catalog_release_schedules"
     ON public.catalog_release_schedules
     FOR ALL
