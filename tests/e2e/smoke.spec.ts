@@ -19,7 +19,7 @@ test.describe('TrackUp Smoke & Brand Tests', () => {
     await expect(logo).toBeVisible();
 
     // Verify status badge
-    const badge = page.locator('text=Phase 4 Reviews, Ratings & Stats Active');
+    const badge = page.locator('text=Phase 7 Smart Recommendations & Airing Calendar Active');
     await expect(badge).toBeVisible();
   });
 });

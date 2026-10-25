@@ -4,6 +4,8 @@ import {
   Compass,
   Film,
   BookOpen,
+  CalendarDays,
+  Sparkles,
   Layers,
   User as UserIcon,
 } from 'lucide-react';
@@ -27,13 +29,15 @@ export const MobileBottomNav: React.FC = () => {
     { id: 'discover', label: 'Discover', icon: Compass },
     { id: 'watch', label: 'Watch', icon: Film },
     { id: 'read', label: 'Read', icon: BookOpen },
+    { id: 'calendar', label: 'Calendar', icon: CalendarDays },
+    { id: 'recommendations', label: 'For You', icon: Sparkles },
     { id: 'import', label: 'Import', icon: Layers },
   ];
 
   return (
     <nav
       data-testid="mobile-bottom-nav"
-      className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-surface/90 backdrop-blur-md border-t border-surface-elevated flex items-center justify-around px-2 z-30 pb-[env(safe-area-inset-bottom)]"
+      className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-surface/95 backdrop-blur-md border-t border-surface-elevated flex items-center justify-around px-1 z-30 pb-[env(safe-area-inset-bottom)]"
     >
       {navItems.map((item) => {
         const Icon = item.icon;
@@ -43,12 +47,12 @@ export const MobileBottomNav: React.FC = () => {
             key={item.id}
             onClick={() => setActiveTab(item.id)}
             data-testid={`mobile-nav-${item.id}`}
-            className={`flex flex-col items-center justify-center py-1 px-3 rounded-lg transition-colors ${
-              isActive ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
+            className={`flex flex-col items-center justify-center py-1 px-1.5 rounded-lg transition-colors ${
+              isActive ? 'text-accent font-bold' : 'text-text-muted hover:text-text-secondary'
             }`}
           >
-            <Icon className="w-5 h-5" />
-            <span className="text-[10px] font-medium mt-1">{item.label}</span>
+            <Icon className="w-4 h-4" />
+            <span className="text-[9px] mt-1 leading-none truncate max-w-[46px]">{item.label}</span>
           </button>
         );
       })}
@@ -57,10 +61,10 @@ export const MobileBottomNav: React.FC = () => {
       <button
         onClick={handleProfileClick}
         data-testid="mobile-nav-profile"
-        className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-text-muted hover:text-text-secondary transition-colors"
+        className="flex flex-col items-center justify-center py-1 px-1.5 rounded-lg text-text-muted hover:text-text-secondary transition-colors"
       >
-        <UserIcon className="w-5 h-5" />
-        <span className="text-[10px] font-medium mt-1">{user ? 'Profile' : 'Sign In'}</span>
+        <UserIcon className="w-4 h-4" />
+        <span className="text-[9px] mt-1 leading-none">{user ? 'Profile' : 'Sign In'}</span>
       </button>
     </nav>
   );

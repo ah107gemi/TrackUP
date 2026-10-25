@@ -13,6 +13,8 @@ import { DashboardStats } from '../../features/dashboard/DashboardStats';
 import { HistoryTimeline } from '../../features/history/HistoryTimeline';
 import { ImportExportView } from '../../features/import-export/ImportExportView';
 import { SocialFeedView } from '../../features/social/SocialFeedView';
+import { RecommendationsView } from '../../features/catalog/RecommendationsView';
+import { ReleaseCalendarView } from '../../features/calendar/ReleaseCalendarView';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../features/auth/AuthContext';
 import {
@@ -75,7 +77,7 @@ export const AppShell: React.FC = () => {
                     <div className="max-w-xl relative z-10">
                       <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/15 border border-accent/30 text-accent text-xs font-semibold mb-4">
                         <Sparkles className="w-3.5 h-3.5" />
-                        <span>Phase 4 Reviews, Ratings & Stats Active</span>
+                        <span>Phase 7 Smart Recommendations & Airing Calendar Active</span>
                       </div>
                       <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-text-primary mb-3">
                         Track what you <span className="text-accent">love.</span>
@@ -83,14 +85,31 @@ export const AppShell: React.FC = () => {
                       <p className="text-text-secondary text-sm md:text-base leading-relaxed mb-6">
                         Hosted entertainment and reading tracker for Movies, TV Shows, Anime Series, Anime Films, Manga, and Manhwa.
                       </p>
-                      <button
-                        onClick={() => setActiveTab('discover')}
-                        data-testid="hero-explore-button"
-                        className="px-5 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs transition-all shadow-md inline-flex items-center gap-2"
-                      >
-                        <span>Explore Catalog</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </button>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          onClick={() => setActiveTab('discover')}
+                          data-testid="hero-explore-button"
+                          className="px-5 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs transition-all shadow-md inline-flex items-center gap-2"
+                        >
+                          <span>Explore Catalog</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setActiveTab('recommendations')}
+                          data-testid="hero-recommendations-button"
+                          className="px-4 py-2.5 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-text-primary font-semibold text-xs transition-all inline-flex items-center gap-2"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-accent" />
+                          <span>For You</span>
+                        </button>
+                        <button
+                          onClick={() => setActiveTab('calendar')}
+                          data-testid="hero-calendar-button"
+                          className="px-4 py-2.5 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-text-primary font-semibold text-xs transition-all inline-flex items-center gap-2"
+                        >
+                          <span>Airing Calendar</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -209,6 +228,14 @@ export const AppShell: React.FC = () => {
                 <AuthGuard fallbackTitle="Sign In to Access Your Reading Library" fallbackDescription="Track your Manga and South Korean Manhwa with chapter and volume steppers.">
                   <LibraryView domain="read" onSelectTitle={handleSelectTitle} />
                 </AuthGuard>
+              )}
+
+              {activeTab === 'calendar' && (
+                <ReleaseCalendarView onSelectTitle={handleSelectTitle} />
+              )}
+
+              {activeTab === 'recommendations' && (
+                <RecommendationsView onSelectTitle={handleSelectTitle} />
               )}
 
               {activeTab === 'history' && (

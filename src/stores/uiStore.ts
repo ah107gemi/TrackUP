@@ -5,6 +5,8 @@ export type NavigationTab =
   | 'discover'
   | 'watch'
   | 'read'
+  | 'calendar'
+  | 'recommendations'
   | 'history'
   | 'import'
   | 'social';

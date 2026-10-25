@@ -1,0 +1,19 @@
+{
+  "name": "TrackUp - Entertainment & Reading Tracker",
+  "short_name": "TrackUp",
+  "description": "Track what you love. Hosted multi-user entertainment and reading tracker for Movies, TV Shows, Anime Series, Anime Films, Manga, and Manhwa.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#101014",
+  "theme_color": "#FFC400",
+  "categories": ["entertainment", "books", "utilities"],
+  "icons": [
+    {
+      "src": "/assets/trackup-logo.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}
