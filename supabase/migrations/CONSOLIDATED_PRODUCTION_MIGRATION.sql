@@ -919,7 +919,7 @@ $$;
 -- 1. Catalog Release Schedules table (Airing Calendar for TV, Anime, Manga, Manhwa)
 CREATE TABLE IF NOT EXISTS public.catalog_release_schedules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title_id TEXT NOT NULL REFERENCES public.catalog_titles(id) ON DELETE CASCADE,
+    title_id UUID NOT NULL REFERENCES public.catalog_titles(id) ON DELETE CASCADE,
     release_type TEXT NOT NULL CHECK (release_type IN ('episode', 'chapter', 'season', 'volume')),
     item_number NUMERIC(6, 1) NOT NULL,
     item_title TEXT,
@@ -970,7 +970,7 @@ CREATE OR REPLACE FUNCTION public.get_user_recommendations(
     p_limit INT DEFAULT 10
 )
 RETURNS TABLE (
-    id TEXT,
+    id UUID,
     title TEXT,
     media_type public.media_type,
     poster_url TEXT,
@@ -1050,7 +1050,7 @@ CREATE OR REPLACE FUNCTION public.get_upcoming_releases(
 )
 RETURNS TABLE (
     id UUID,
-    title_id TEXT,
+    title_id UUID,
     title_name TEXT,
     media_type public.media_type,
     poster_url TEXT,
