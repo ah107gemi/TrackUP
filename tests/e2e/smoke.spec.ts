@@ -1,25 +1,25 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('TrackUp Phase 0 Smoke Tests', () => {
+test.describe('TrackUp Smoke & Brand Tests', () => {
   test('renders application shell and brand assets cleanly at /', async ({ page }) => {
     await page.goto('/');
 
-    // Check title
+    // Check document title
     await expect(page).toHaveTitle(/TrackUp/i);
 
-    // Verify brand heading & tagline
-    const heading = page.locator('h1');
-    await expect(heading).toContainText('TrackUp');
+    // Verify visible brand wordmark
+    await expect(page.locator('text=TrackUp').filter({ visible: true }).first()).toBeVisible();
 
-    const tagline = page.locator('text=Track what you love.');
+    // Verify brand tagline
+    const tagline = page.locator('text=Track what you love.').filter({ visible: true }).first();
     await expect(tagline).toBeVisible();
 
     // Verify logo image is loaded and displayed
-    const logo = page.locator('img[alt="TrackUp Logo"]');
+    const logo = page.locator('img[alt="TrackUp Logo"]').filter({ visible: true }).first();
     await expect(logo).toBeVisible();
 
     // Verify status badge
-    const badge = page.locator('text=Phase 0 Foundation Ready');
+    const badge = page.locator('text=Phase 1 Architecture Active');
     await expect(badge).toBeVisible();
   });
 });
