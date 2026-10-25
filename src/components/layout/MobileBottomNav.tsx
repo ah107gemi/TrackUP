@@ -4,6 +4,7 @@ import {
   Compass,
   Film,
   BookOpen,
+  Layers,
   User as UserIcon,
 } from 'lucide-react';
 import { useUIStore, NavigationTab } from '../../stores/uiStore';
@@ -26,6 +27,7 @@ export const MobileBottomNav: React.FC = () => {
     { id: 'discover', label: 'Discover', icon: Compass },
     { id: 'watch', label: 'Watch', icon: Film },
     { id: 'read', label: 'Read', icon: BookOpen },
+    { id: 'import', label: 'Import', icon: Layers },
   ];
 
   return (

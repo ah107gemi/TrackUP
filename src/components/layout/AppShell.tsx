@@ -11,6 +11,7 @@ import { TitleDetailPage } from '../../features/catalog/TitleDetailPage';
 import { LibraryView } from '../../features/library/LibraryView';
 import { DashboardStats } from '../../features/dashboard/DashboardStats';
 import { HistoryTimeline } from '../../features/history/HistoryTimeline';
+import { ImportExportView } from '../../features/import-export/ImportExportView';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../features/auth/AuthContext';
 import {
@@ -219,11 +220,8 @@ export const AppShell: React.FC = () => {
 
               {activeTab === 'import' && (
                 <div data-testid="import-view" className="max-w-6xl mx-auto space-y-4">
-                  <h2 className="text-2xl font-bold">CSV Import & Export Engine</h2>
                   <AuthGuard fallbackTitle="Sign In to Import or Export Libraries" fallbackDescription="Letterboxd, IMDb, Trakt, and MAL import pipeline.">
-                    <div className="p-8 rounded-2xl bg-surface border border-surface-elevated text-center">
-                      <p className="text-sm text-text-secondary">Import & Export migration pipeline activates in Phase 5.</p>
-                    </div>
+                    <ImportExportView />
                   </AuthGuard>
                 </div>
               )}
