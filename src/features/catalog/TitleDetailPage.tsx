@@ -1,0 +1,508 @@
+import React, { useEffect, useState } from 'react';
+import {
+  ArrowLeft,
+  Heart,
+  Star,
+  Film,
+  Tv,
+  BookOpen,
+  Calendar,
+  Layers,
+  CheckCircle2,
+  Plus,
+  Minus,
+} from 'lucide-react';
+import {
+  getCatalogTitleById,
+  getRelatedWorks,
+  type CatalogSeasonDetail,
+  type RelatedWorkItem,
+  type CastMember,
+} from './catalogService';
+import type { NormalizedCatalogItem } from '../../lib/validators';
+import { MediaPosterCard } from '../../components/shared/MediaPosterCard';
+import { TmdbAttribution } from '../../components/shared/TmdbAttribution';
+
+interface TitleDetailPageProps {
+  titleId: string;
+  onBack: () => void;
+  onSelectTitle: (id: string) => void;
+}
+
+export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
+  titleId,
+  onBack,
+  onSelectTitle,
+}) => {
+  const [title, setTitle] = useState<
+    (NormalizedCatalogItem & { cast?: CastMember[]; seasons?: CatalogSeasonDetail[] }) | null
+  >(null);
+  const [related, setRelated] = useState<RelatedWorkItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // User interactive state for detail view
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [selectedRating, setSelectedRating] = useState<number | null>(null);
+  const [trackingStatus, setTrackingStatus] = useState<string>('planned');
+  const [currentChapter, setCurrentChapter] = useState(0);
+  const [currentVolume, setCurrentVolume] = useState(0);
+  const [activeSeasonIndex, setActiveSeasonIndex] = useState(0);
+  const [watchedEpisodes, setWatchedEpisodes] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+
+    async function loadData() {
+      const data = await getCatalogTitleById(titleId);
+      const rels = await getRelatedWorks(titleId);
+      if (mounted) {
+        setTitle(data);
+        setRelated(rels);
+        setLoading(false);
+      }
+    }
+
+    loadData();
+    return () => {
+      mounted = false;
+    };
+  }, [titleId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-20">
+        <div className="w-10 h-10 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (!title) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-text-muted">Title not found.</p>
+        <button
+          onClick={onBack}
+          className="mt-4 px-4 py-2 bg-surface-elevated text-accent rounded-xl text-sm"
+        >
+          Back to Catalog
+        </button>
+      </div>
+    );
+  }
+
+  const isReading = title.media_type === 'manga' || title.media_type === 'manhwa';
+  const isEpisodic = title.media_type === 'tv' || title.media_type === 'anime_series';
+  const isSingleWatch = title.media_type === 'movie' || title.media_type === 'anime_film';
+
+  const toggleEpisode = (epId: string) => {
+    setWatchedEpisodes((prev) => ({
+      ...prev,
+      [epId]: !prev[epId],
+    }));
+  };
+
+  return (
+    <div data-testid="title-detail-page" className="space-y-8 animate-in fade-in duration-200">
+      {/* Back Button */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={onBack}
+          data-testid="detail-back-button"
+          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-surface hover:bg-surface-elevated border border-surface-elevated text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back</span>
+        </button>
+      </div>
+
+      {/* Cinematic Backdrop Hero */}
+      <div className="relative rounded-3xl overflow-hidden bg-surface border border-surface-elevated shadow-2xl">
+        <div className="relative w-full h-[260px] md:h-[420px] bg-surface-elevated">
+          {title.backdrop_url ? (
+            <img
+              src={title.backdrop_url}
+              alt={title.title}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-r from-surface to-surface-elevated" />
+          )}
+          {/* Gradient Overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-transparent" />
+        </div>
+
+        {/* Content Floating over Backdrop */}
+        <div className="relative -mt-36 md:-mt-48 px-6 md:px-10 pb-8 flex flex-col md:flex-row gap-6 md:gap-8 items-start">
+          {/* Poster Card */}
+          <div className="w-36 md:w-56 shrink-0 rounded-2xl overflow-hidden border-2 border-surface-elevated shadow-2xl bg-surface">
+            <img
+              src={title.poster_url || '/assets/trackup-logo.jpg'}
+              alt={title.title}
+              className="w-full aspect-[2/3] object-cover"
+            />
+          </div>
+
+          {/* Details & Actions Header */}
+          <div className="flex-1 min-w-0">
+            {/* Category Pill & Year */}
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="px-2.5 py-0.5 rounded-md text-xs font-bold tracking-wider uppercase bg-accent text-background">
+                {title.media_type.replace('_', ' ')}
+              </span>
+              {title.release_year && (
+                <span className="text-xs font-mono text-text-muted flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5" />
+                  {title.release_year}
+                </span>
+              )}
+              {title.origin_country && (
+                <span className="text-xs font-medium text-text-muted">
+                  • {title.origin_country}
+                </span>
+              )}
+            </div>
+
+            <h1 className="text-2xl md:text-4xl font-extrabold text-text-primary tracking-tight">
+              {title.title}
+            </h1>
+            {title.original_title && title.original_title !== title.title && (
+              <p className="text-sm text-text-muted mt-1">{title.original_title}</p>
+            )}
+
+            {/* Genres */}
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {title.genres.map((g, i) => (
+                <span
+                  key={i}
+                  className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-surface-elevated text-text-secondary border border-surface-elevated"
+                >
+                  {g}
+                </span>
+              ))}
+            </div>
+
+            {/* Quick Action Bar */}
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              {/* Tracking Status Selector */}
+              <select
+                value={trackingStatus}
+                onChange={(e) => setTrackingStatus(e.target.value)}
+                data-testid="status-selector"
+                className="px-3.5 py-2 rounded-xl bg-surface-elevated border border-surface-elevated text-text-primary text-xs font-semibold focus:border-accent focus:outline-none"
+              >
+                <option value="planned">Planned (Watchlist / Reading List)</option>
+                <option value="active">
+                  {isReading ? 'Currently Reading' : 'Currently Watching'}
+                </option>
+                <option value="completed">Completed</option>
+                <option value="paused">On Hold / Paused</option>
+                <option value="dropped">Dropped</option>
+              </select>
+
+              {/* Favorite Button */}
+              <button
+                onClick={() => setIsFavorited(!isFavorited)}
+                data-testid="favorite-button"
+                className={`p-2 rounded-xl border transition-colors ${
+                  isFavorited
+                    ? 'bg-rose-500/15 border-rose-500 text-rose-500'
+                    : 'bg-surface-elevated border-surface-elevated text-text-muted hover:text-text-primary'
+                }`}
+              >
+                <Heart className={`w-4 h-4 ${isFavorited ? 'fill-rose-500' : ''}`} />
+              </button>
+
+              {/* Rating Control (1-10 scale shown as 5 stars) */}
+              <div className="flex items-center gap-1 bg-surface-elevated px-3 py-1.5 rounded-xl border border-surface-elevated">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setSelectedRating(star * 2)}
+                    data-testid={`rating-star-${star}`}
+                    className="p-0.5 text-text-muted hover:text-accent transition-colors"
+                  >
+                    <Star
+                      className={`w-4 h-4 ${
+                        selectedRating && selectedRating >= star * 2
+                          ? 'text-accent fill-accent'
+                          : ''
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Synopsis Section */}
+      <section className="bg-surface rounded-2xl p-6 border border-surface-elevated">
+        <h2 className="text-base font-bold text-text-primary mb-2">Synopsis</h2>
+        <p className="text-sm text-text-secondary leading-relaxed">
+          {title.synopsis || 'No synopsis provided for this title.'}
+        </p>
+      </section>
+
+      {/* ADAPTIVE TRACKING MODULE */}
+      {/* 1. Episodic Tracking: TV & Anime Series */}
+      {isEpisodic && (
+        <section
+          data-testid="episodic-tracking-section"
+          className="bg-surface rounded-2xl p-6 border border-surface-elevated space-y-4"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Tv className="w-5 h-5 text-accent" />
+              <h2 className="text-base font-bold text-text-primary">
+                Episodes & Season Tracker
+              </h2>
+            </div>
+            {title.total_episodes && (
+              <span className="text-xs font-mono text-text-muted">
+                {title.total_episodes} Total Episodes
+              </span>
+            )}
+          </div>
+
+          {title.seasons && title.seasons.length > 0 ? (
+            <div className="space-y-4">
+              {/* Season Tabs */}
+              <div className="flex gap-2 border-b border-surface-elevated pb-2 overflow-x-auto">
+                {title.seasons.map((s, idx) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setActiveSeasonIndex(idx)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium shrink-0 transition-colors ${
+                      activeSeasonIndex === idx
+                        ? 'bg-accent text-background font-semibold'
+                        : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+
+              {/* Episodes List */}
+              <div className="space-y-2">
+                {title.seasons[activeSeasonIndex]?.episodes.map((ep) => {
+                  const isWatched = !!watchedEpisodes[ep.id];
+                  return (
+                    <div
+                      key={ep.id}
+                      onClick={() => toggleEpisode(ep.id)}
+                      data-testid={`episode-row-${ep.episode_number}`}
+                      className="flex items-center justify-between p-3 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 transition-colors cursor-pointer border border-transparent hover:border-surface-elevated"
+                    >
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          className={`w-6 h-6 rounded-md border flex items-center justify-center transition-colors ${
+                            isWatched
+                              ? 'bg-accent border-accent text-background'
+                              : 'border-text-muted/40 hover:border-accent'
+                          }`}
+                        >
+                          {isWatched && <CheckCircle2 className="w-4 h-4 fill-background text-accent" />}
+                        </button>
+                        <div>
+                          <p className="text-sm font-medium text-text-primary">
+                            <span className="font-mono text-accent mr-2">
+                              E{ep.episode_number}
+                            </span>
+                            {ep.name}
+                          </p>
+                          {ep.overview && (
+                            <p className="text-xs text-text-muted line-clamp-1">{ep.overview}</p>
+                          )}
+                        </div>
+                      </div>
+                      {ep.runtime_minutes && (
+                        <span className="text-xs font-mono text-text-muted">
+                          {ep.runtime_minutes}m
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-text-muted py-4">
+              Season and episode metadata will hydrate automatically via TMDB.
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* 2. Chapter / Volume Reading Module: Manga & Manhwa */}
+      {isReading && (
+        <section
+          data-testid="reading-tracking-section"
+          className="bg-surface rounded-2xl p-6 border border-surface-elevated space-y-4"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-accent" />
+              <h2 className="text-base font-bold text-text-primary">
+                Reading Progress (Chapters & Volumes)
+              </h2>
+            </div>
+            {title.total_chapters && (
+              <span className="text-xs font-mono text-text-muted">
+                {title.total_chapters} Total Chapters
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Chapter Stepper */}
+            <div className="p-4 rounded-xl bg-surface-elevated border border-surface-elevated flex items-center justify-between">
+              <div>
+                <p className="text-xs text-text-secondary font-medium">Chapter Progress</p>
+                <p className="text-2xl font-bold font-mono text-accent mt-1">
+                  Ch. {currentChapter}{' '}
+                  {title.total_chapters && (
+                    <span className="text-sm font-normal text-text-muted">
+                      / {title.total_chapters}
+                    </span>
+                  )}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentChapter(Math.max(0, currentChapter - 1))}
+                  data-testid="chapter-decrement"
+                  className="p-2 rounded-lg bg-surface hover:bg-surface-elevated border border-surface text-text-primary"
+                >
+                  <Minus className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setCurrentChapter(currentChapter + 1)}
+                  data-testid="chapter-increment"
+                  className="px-3 py-2 rounded-lg bg-accent hover:bg-accent-hover text-background font-bold text-sm flex items-center gap-1 shadow"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+1 Ch</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Volume Stepper */}
+            <div className="p-4 rounded-xl bg-surface-elevated border border-surface-elevated flex items-center justify-between">
+              <div>
+                <p className="text-xs text-text-secondary font-medium">Volume Progress</p>
+                <p className="text-2xl font-bold font-mono text-text-primary mt-1">
+                  Vol. {currentVolume}{' '}
+                  {title.total_volumes && (
+                    <span className="text-sm font-normal text-text-muted">
+                      / {title.total_volumes}
+                    </span>
+                  )}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentVolume(Math.max(0, currentVolume - 1))}
+                  className="p-2 rounded-lg bg-surface hover:bg-surface-elevated border border-surface text-text-primary"
+                >
+                  <Minus className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setCurrentVolume(currentVolume + 1)}
+                  className="px-3 py-2 rounded-lg bg-surface hover:bg-surface-elevated border border-surface text-text-primary font-bold text-sm flex items-center gap-1"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+1 Vol</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* 3. Movie / Anime Film Module */}
+      {isSingleWatch && (
+        <section
+          data-testid="movie-tracking-section"
+          className="bg-surface rounded-2xl p-6 border border-surface-elevated flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <Film className="w-6 h-6 text-accent" />
+            <div>
+              <h2 className="text-base font-bold text-text-primary">
+                Film Completion & Runtime
+              </h2>
+              <p className="text-xs text-text-muted mt-0.5">
+                Runtime: {title.runtime_minutes ? `${title.runtime_minutes} minutes` : 'Feature Length'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setTrackingStatus(trackingStatus === 'completed' ? 'planned' : 'completed')}
+            data-testid="movie-complete-toggle"
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow ${
+              trackingStatus === 'completed'
+                ? 'bg-status-completed text-background'
+                : 'bg-accent text-background hover:bg-accent-hover'
+            }`}
+          >
+            {trackingStatus === 'completed' ? 'Watched ✓' : 'Mark Watched'}
+          </button>
+        </section>
+      )}
+
+      {/* Linked Adaptations & Related Works */}
+      {related.length > 0 && (
+        <section data-testid="related-adaptations-section" className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Layers className="w-5 h-5 text-accent" />
+            <h2 className="text-lg font-bold text-text-primary">
+              Linked Adaptations & Related Works
+            </h2>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {related.map((rel) => (
+              <div key={rel.id} className="relative">
+                <MediaPosterCard
+                  item={rel.target_title}
+                  onClick={() => onSelectTitle(rel.target_title.id)}
+                />
+                <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-accent text-background uppercase shadow">
+                  {rel.relationship_type}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Cast & Crew Scroller */}
+      {title.cast && title.cast.length > 0 && (
+        <section className="space-y-4">
+          <h2 className="text-lg font-bold text-text-primary">Cast & Key People</h2>
+          <div className="flex gap-4 overflow-x-auto pb-2">
+            {title.cast.map((c) => (
+              <div
+                key={c.id}
+                className="w-28 shrink-0 p-3 rounded-xl bg-surface border border-surface-elevated text-center"
+              >
+                <div className="w-12 h-12 rounded-full bg-surface-elevated mx-auto mb-2 flex items-center justify-center text-accent text-xs font-bold">
+                  {c.name.charAt(0)}
+                </div>
+                <p className="text-xs font-bold text-text-primary truncate">{c.name}</p>
+                <p className="text-[10px] text-text-muted truncate">{c.character}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* TMDB Mandatory Attribution Footer */}
+      <TmdbAttribution className="mt-12" />
+    </div>
+  );
+};

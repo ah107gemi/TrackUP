@@ -19,7 +19,7 @@ test.describe('TrackUp Smoke & Brand Tests', () => {
     await expect(logo).toBeVisible();
 
     // Verify status badge
-    const badge = page.locator('text=Phase 1 Architecture Active');
+    const badge = page.locator('text=Phase 2 Catalog & Detail Pages Active');
     await expect(badge).toBeVisible();
   });
 });

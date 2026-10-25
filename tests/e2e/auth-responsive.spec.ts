@@ -33,7 +33,7 @@ test.describe('TrackUp Phase 1: Responsive Layout & App Shell', () => {
 
     // Type query
     await input.fill('Attack on Titan');
-    await expect(page.locator('text=Unified Search (Phase 2 Preview)')).toBeVisible();
+    await expect(page.locator('[data-testid^="omnisearch-result-"]').first()).toBeVisible();
 
     // Press Escape to dismiss
     await page.keyboard.press('Escape');

@@ -1,12 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Search, X, Film, Tv, BookOpen } from 'lucide-react';
+import { Search, X, Film, BookOpen, Tv } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
+import { searchCatalog } from '../../features/catalog/catalogService';
+import type { NormalizedCatalogItem } from '../../lib/validators';
 import type { MediaType } from '../../types/database.types';
 
-export const OmnisearchModal: React.FC = () => {
-  const { omnisearchOpen, setOmnisearchOpen } = useUIStore();
+interface OmnisearchModalProps {
+  onSelectTitle?: (id: string) => void;
+}
+
+export const OmnisearchModal: React.FC<OmnisearchModalProps> = ({ onSelectTitle }) => {
+  const { omnisearchOpen, setOmnisearchOpen, setActiveTab } = useUIStore();
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<MediaType | 'all'>('all');
+  const [results, setResults] = useState<NormalizedCatalogItem[]>([]);
 
   // Keyboard shortcut listener (Cmd+K / Ctrl+K / /)
   useEffect(() => {
@@ -23,6 +30,17 @@ export const OmnisearchModal: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [omnisearchOpen, setOmnisearchOpen]);
 
+  // Live search query execution
+  useEffect(() => {
+    let mounted = true;
+    searchCatalog(query, activeCategory).then((items) => {
+      if (mounted) setResults(items);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [query, activeCategory]);
+
   if (!omnisearchOpen) return null;
 
   const categories: { id: MediaType | 'all'; label: string }[] = [
@@ -34,6 +52,15 @@ export const OmnisearchModal: React.FC = () => {
     { id: 'manga', label: 'Manga' },
     { id: 'manhwa', label: 'Manhwa' },
   ];
+
+  const handleItemClick = (id: string) => {
+    setOmnisearchOpen(false);
+    if (onSelectTitle) {
+      onSelectTitle(id);
+    } else {
+      setActiveTab('discover');
+    }
+  };
 
   return (
     <div
@@ -91,37 +118,63 @@ export const OmnisearchModal: React.FC = () => {
           ))}
         </div>
 
-        {/* Results / Empty View */}
-        <div className="p-6 text-center text-text-muted max-h-[60vh] overflow-y-auto">
-          {query ? (
-            <div className="space-y-2 text-left">
-              <p className="text-xs text-text-secondary uppercase tracking-wider font-semibold px-2 mb-2">
-                Unified Search (Phase 2 Preview)
+        {/* Results / List */}
+        <div className="p-4 max-h-[60vh] overflow-y-auto space-y-2">
+          {results.length > 0 ? (
+            <div className="space-y-1.5">
+              <p className="text-[11px] font-bold text-text-muted uppercase tracking-wider px-2">
+                Matching Titles ({results.length})
               </p>
-              <div className="p-3 rounded-xl bg-surface-elevated/50 flex items-center gap-3">
-                <Film className="w-5 h-5 text-accent" />
-                <div>
-                  <p className="text-sm font-medium text-text-primary">
-                    Search result matching: &quot;{query}&quot;
-                  </p>
-                  <p className="text-xs text-text-secondary">
-                    TMDB & AniList normalization layer connects in Phase 2
-                  </p>
+              {results.map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => handleItemClick(item.id)}
+                  data-testid={`omnisearch-result-${item.id}`}
+                  className="flex items-center justify-between p-3 rounded-xl bg-surface-elevated/40 hover:bg-surface-elevated border border-transparent hover:border-surface-elevated transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-14 rounded-lg overflow-hidden bg-surface shrink-0 border border-surface-elevated">
+                      {item.poster_url ? (
+                        <img
+                          src={item.poster_url}
+                          alt={item.title}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-accent text-xs">
+                          {item.title.charAt(0)}
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-text-primary group-hover:text-accent transition-colors truncate">
+                        {item.title}
+                      </p>
+                      <p className="text-xs text-text-muted truncate">
+                        {item.release_year ? `${item.release_year} • ` : ''}
+                        {item.genres.slice(0, 2).join(', ')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="shrink-0 ml-3 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-surface-elevated text-accent border border-accent/20">
+                    {item.media_type.replace('_', ' ')}
+                  </span>
                 </div>
-              </div>
+              ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-8">
+            <div className="flex flex-col items-center justify-center py-8 text-center text-text-muted">
               <div className="flex gap-4 text-text-muted/40 mb-3">
                 <Film className="w-8 h-8" />
                 <Tv className="w-8 h-8" />
                 <BookOpen className="w-8 h-8" />
               </div>
               <p className="text-sm font-medium text-text-secondary">
-                Type to search across all 6 entertainment & reading categories
+                No matching titles found for &quot;{query}&quot;
               </p>
               <p className="text-xs text-text-muted mt-1">
-                Movies • TV Shows • Anime Series • Anime Films • Manga • Manhwa
+                Try searching by title or changing category filter
               </p>
             </div>
           )}
