@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing and Coverage
+coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Production Build Output
+dist/
+build/
+
+# Supabase Local
+supabase/.temp/
+.branches/
+
+# Environment Variables & Secrets (STRICT GUARDRAIL: Never commit secrets)
+.env
+.env.local
+.env.*.local
+*.pem
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.idea/
+.vscode/*
+!.vscode/extensions.json
