@@ -49,7 +49,6 @@ enable_confirmations = false
 
 [edge_runtime]
 enabled = true
-port = 54328
 inspector_port = 8083
 
 [analytics]
