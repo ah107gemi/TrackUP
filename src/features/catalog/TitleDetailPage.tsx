@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   Heart,
-  Star,
   Film,
   Tv,
   BookOpen,
@@ -12,6 +11,7 @@ import {
   Plus,
   Minus,
   CheckCheck,
+  MessageSquare,
 } from 'lucide-react';
 import {
   getCatalogTitleById,
@@ -30,7 +30,20 @@ import {
   useIncrementEpisode,
   useIncrementChapter,
 } from '../library/useLibrary';
-import type { TrackingStatus } from '../../types/database.types';
+import type { TrackingStatus, PrivacyLevel } from '../../types/database.types';
+import { StarRating } from '../../components/ui/StarRating';
+import { ReviewModal } from '../reviews/ReviewModal';
+import { ReviewCard } from '../reviews/ReviewCard';
+import {
+  fetchReviewsForTitle,
+  createOrUpdateReview,
+  deleteReview,
+} from '../reviews/reviewService';
+import type { Review } from '../reviews/reviewTypes';
+import {
+  isTitleFavorite,
+  toggleFavorite,
+} from '../favorites/favoritesService';
 
 interface TitleDetailPageProps {
   titleId: string;
@@ -67,6 +80,11 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   const [activeSeasonIndex, setActiveSeasonIndex] = useState(0);
   const [fractionalInput, setFractionalInput] = useState<string>('');
 
+  // Reviews state
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [editingReview, setEditingReview] = useState<Review | null>(null);
+
   // Find user's existing tracked record for this title
   const existingEntry = userLibrary.find((item) => item.title_id === titleId);
 
@@ -77,9 +95,14 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     async function loadData() {
       const data = await getCatalogTitleById(titleId);
       const rels = await getRelatedWorks(titleId);
+      const revs = await fetchReviewsForTitle(titleId);
+      const fav = isTitleFavorite(activeUserId, titleId);
+
       if (mounted) {
         setTitle(data);
         setRelated(rels);
+        setReviews(revs);
+        setIsFavorited(fav);
         setLoading(false);
       }
     }
@@ -88,7 +111,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     return () => {
       mounted = false;
     };
-  }, [titleId]);
+  }, [titleId, activeUserId]);
 
   if (loading) {
     return (
@@ -132,12 +155,54 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   };
 
   const handleRatingChange = (newRating: number) => {
-    setLocalRating(newRating);
+    setLocalRating(newRating || null);
     upsertMutation.mutate({
       userId: activeUserId,
       titleId: title.id,
-      rating: newRating,
+      rating: newRating || null,
     });
+  };
+
+  const handleToggleFavorite = async () => {
+    const next = await toggleFavorite(activeUserId, title.id);
+    setIsFavorited(next);
+  };
+
+  const userReview = reviews.find((r) => r.user_id === activeUserId);
+
+  const handleSaveReview = async (data: {
+    rating: number;
+    reviewText: string;
+    containsSpoilers: boolean;
+    visibility: PrivacyLevel;
+  }) => {
+    const updated = await createOrUpdateReview({
+      userId: activeUserId,
+      titleId: title.id,
+      rating: data.rating,
+      reviewText: data.reviewText,
+      containsSpoilers: data.containsSpoilers,
+      visibility: data.visibility,
+      authorName: user?.username || 'User',
+      authorUsername: user?.username || 'user',
+    });
+
+    setReviews((prev) => {
+      const idx = prev.findIndex((r) => r.id === updated.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = updated;
+        return copy;
+      }
+      return [updated, ...prev];
+    });
+
+    handleRatingChange(data.rating);
+  };
+
+  const handleDeleteReview = async (reviewId: string) => {
+    await deleteReview(reviewId, activeUserId);
+    setReviews((prev) => prev.filter((r) => r.id !== reviewId));
   };
 
   const handleToggleEpisode = async (epId: string) => {
@@ -338,37 +403,39 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
               {/* Favorite Button */}
               <button
-                onClick={() => setIsFavorited(!isFavorited)}
+                onClick={handleToggleFavorite}
                 data-testid="favorite-button"
+                title={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
                 className={`p-2 rounded-xl border transition-colors ${
                   isFavorited
                     ? 'bg-rose-500/15 border-rose-500 text-rose-500'
                     : 'bg-surface-elevated border-surface-elevated text-text-muted hover:text-text-primary'
                 }`}
               >
-                <Heart className={`w-4 h-4 ${isFavorited ? 'fill-rose-500' : ''}`} />
+                <Heart className={`w-4 h-4 ${isFavorited ? 'fill-rose-500 text-rose-500' : ''}`} />
               </button>
 
-              {/* Rating Control (1-10 scale shown as 5 stars) */}
-              <div className="flex items-center gap-1 bg-surface-elevated px-3 py-1.5 rounded-xl border border-surface-elevated">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    type="button"
-                    onClick={() => handleRatingChange(star * 2)}
-                    data-testid={`rating-star-${star}`}
-                    className="p-0.5 text-text-muted hover:text-accent transition-colors"
-                  >
-                    <Star
-                      className={`w-4 h-4 ${
-                        currentRating && currentRating >= star * 2
-                          ? 'text-accent fill-accent'
-                          : ''
-                      }`}
-                    />
-                  </button>
-                ))}
+              {/* Rating Control (5-Star Scale with Half Stars) */}
+              <div className="bg-surface-elevated px-3 py-1.5 rounded-xl border border-surface-elevated flex items-center">
+                <StarRating
+                  value={currentRating}
+                  onChange={handleRatingChange}
+                  size="sm"
+                />
               </div>
+
+              {/* Write Review Button */}
+              <button
+                onClick={() => {
+                  setEditingReview(userReview || null);
+                  setReviewModalOpen(true);
+                }}
+                data-testid="open-review-modal-button"
+                className="px-3 py-1.5 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-xs font-semibold text-text-primary flex items-center gap-1.5 transition-colors"
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-accent" />
+                <span>{userReview ? 'Edit Review' : 'Write Review'}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -688,6 +755,69 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
           </div>
         </section>
       )}
+
+      {/* Community Reviews & Personal Critique */}
+      <section data-testid="title-reviews-section" className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-accent" />
+            <h2 className="text-lg font-bold text-text-primary">
+              Reviews & Critique ({reviews.length})
+            </h2>
+          </div>
+          <button
+            onClick={() => {
+              setEditingReview(userReview || null);
+              setReviewModalOpen(true);
+            }}
+            data-testid="write-review-section-button"
+            className="px-3.5 py-1.5 rounded-xl bg-accent text-background text-xs font-bold hover:bg-accent-hover transition-colors flex items-center gap-1.5 shadow"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>{userReview ? 'Edit Your Review' : 'Write a Review'}</span>
+          </button>
+        </div>
+
+        {reviews.length === 0 ? (
+          <div
+            data-testid="reviews-empty-state"
+            className="p-8 rounded-2xl bg-surface border border-surface-elevated text-center space-y-2"
+          >
+            <p className="text-sm font-semibold text-text-secondary">No reviews published yet.</p>
+            <p className="text-xs text-text-muted">
+              Be the first to share your thoughts, analysis, or critique!
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {reviews.map((r) => (
+              <ReviewCard
+                key={r.id}
+                review={r}
+                currentUserId={activeUserId}
+                onEdit={(rev) => {
+                  setEditingReview(rev);
+                  setReviewModalOpen(true);
+                }}
+                onDelete={handleDeleteReview}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Review Modal */}
+      <ReviewModal
+        isOpen={reviewModalOpen}
+        onClose={() => {
+          setReviewModalOpen(false);
+          setEditingReview(null);
+        }}
+        titleName={title.title}
+        initialReview={editingReview}
+        initialRating={currentRating || 8}
+        onSubmit={handleSaveReview}
+      />
 
       {/* TMDB Mandatory Attribution Footer */}
       <TmdbAttribution className="mt-12" />

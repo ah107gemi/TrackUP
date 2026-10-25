@@ -23,6 +23,8 @@ interface UIState {
   setProfileModalOpen: (open: boolean) => void;
   activeTab: NavigationTab;
   setActiveTab: (tab: NavigationTab) => void;
+  selectedTitleId: string | null;
+  setSelectedTitleId: (id: string | null) => void;
   libraryViewMode: LibraryViewMode;
   setLibraryViewMode: (mode: LibraryViewMode) => void;
 }
@@ -39,7 +41,9 @@ export const useUIStore = create<UIState>((set) => ({
   profileModalOpen: false,
   setProfileModalOpen: (open) => set({ profileModalOpen: open }),
   activeTab: 'dashboard',
-  setActiveTab: (tab) => set({ activeTab: tab }),
+  setActiveTab: (tab) => set({ activeTab: tab, selectedTitleId: null }),
+  selectedTitleId: null,
+  setSelectedTitleId: (id) => set({ selectedTitleId: id }),
   libraryViewMode: 'grid',
   setLibraryViewMode: (mode) => set({ libraryViewMode: mode }),
 }));

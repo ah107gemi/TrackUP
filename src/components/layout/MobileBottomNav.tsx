@@ -40,6 +40,7 @@ export const MobileBottomNav: React.FC = () => {
           <button
             key={item.id}
             onClick={() => setActiveTab(item.id)}
+            data-testid={`mobile-nav-${item.id}`}
             className={`flex flex-col items-center justify-center py-1 px-3 rounded-lg transition-colors ${
               isActive ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
             }`}
@@ -53,6 +54,7 @@ export const MobileBottomNav: React.FC = () => {
       {/* Profile / Sign In */}
       <button
         onClick={handleProfileClick}
+        data-testid="mobile-nav-profile"
         className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-text-muted hover:text-text-secondary transition-colors"
       >
         <UserIcon className="w-5 h-5" />

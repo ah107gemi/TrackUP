@@ -1,13 +1,19 @@
 import React, { useState } from 'react';
-import { X, User, Shield, Star, LogOut, Check } from 'lucide-react';
+import { X, User, Shield, Star, LogOut, Check, Heart, Settings } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from './AuthContext';
 import type { PrivacyLevel } from '../../types/database.types';
+import { FavoritesShowcase } from '../favorites/FavoritesShowcase';
 
-export const ProfileModal: React.FC = () => {
+interface ProfileModalProps {
+  onSelectTitle?: (titleId: string) => void;
+}
+
+export const ProfileModal: React.FC<ProfileModalProps> = ({ onSelectTitle }) => {
   const { profileModalOpen, setProfileModalOpen } = useUIStore();
   const { user, profile, updateProfile, signOut } = useAuth();
 
+  const [activeTab, setActiveTab] = useState<'settings' | 'favorites'>('settings');
   const [displayName, setDisplayName] = useState(profile?.display_name || '');
   const [bio, setBio] = useState(profile?.bio || '');
   const [libraryVisibility, setLibraryVisibility] = useState<PrivacyLevel>(
@@ -65,130 +71,173 @@ export const ProfileModal: React.FC = () => {
           </button>
         </div>
 
-        {/* Edit Form */}
-        <form onSubmit={handleSave} className="mt-6 space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">
-              Display Name
-            </label>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Your full name"
-              data-testid="profile-displayname-input"
-              className="w-full px-3 py-2 bg-surface-elevated border border-surface-elevated rounded-xl text-text-primary text-sm focus:border-accent focus:outline-none"
-            />
-          </div>
+        {/* Modal Navigation Tabs */}
+        <div className="flex items-center gap-2 mt-4 p-1 bg-surface-elevated/60 rounded-xl border border-surface-elevated">
+          <button
+            type="button"
+            onClick={() => setActiveTab('settings')}
+            data-testid="profile-tab-settings"
+            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+              activeTab === 'settings'
+                ? 'bg-accent text-background shadow'
+                : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <Settings className="w-3.5 h-3.5" />
+            <span>Settings</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('favorites')}
+            data-testid="profile-tab-favorites"
+            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+              activeTab === 'favorites'
+                ? 'bg-accent text-background shadow'
+                : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <Heart className="w-3.5 h-3.5" />
+            <span>Favorites Showcase</span>
+          </button>
+        </div>
 
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">
-              Bio / About Me
-            </label>
-            <textarea
-              rows={3}
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              placeholder="Tell others what you love to watch and read..."
-              data-testid="profile-bio-input"
-              className="w-full px-3 py-2 bg-surface-elevated border border-surface-elevated rounded-xl text-text-primary text-sm focus:border-accent focus:outline-none resize-none"
-            />
-          </div>
+        {/* Tab 1: Settings Form */}
+        {activeTab === 'settings' ? (
+          <form onSubmit={handleSave} className="mt-5 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">
+                Display Name
+              </label>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Your full name"
+                data-testid="profile-displayname-input"
+                className="w-full px-3 py-2 bg-surface-elevated border border-surface-elevated rounded-xl text-text-primary text-sm focus:border-accent focus:outline-none"
+              />
+            </div>
 
-          {/* Privacy Level */}
-          <div>
-            <label className="flex items-center gap-1.5 text-xs font-medium text-text-secondary mb-2">
-              <Shield className="w-3.5 h-3.5 text-accent" />
-              <span>Library Visibility (Row-Level Security)</span>
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['public', 'followers_only', 'private'] as const).map((lvl) => (
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">
+                Bio / About Me
+              </label>
+              <textarea
+                rows={3}
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                placeholder="Tell others what you love to watch and read..."
+                data-testid="profile-bio-input"
+                className="w-full px-3 py-2 bg-surface-elevated border border-surface-elevated rounded-xl text-text-primary text-sm focus:border-accent focus:outline-none resize-none"
+              />
+            </div>
+
+            {/* Privacy Level */}
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-medium text-text-secondary mb-2">
+                <Shield className="w-3.5 h-3.5 text-accent" />
+                <span>Library Visibility (Row-Level Security)</span>
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['public', 'followers_only', 'private'] as const).map((lvl) => (
+                  <button
+                    key={lvl}
+                    type="button"
+                    onClick={() => setLibraryVisibility(lvl)}
+                    data-testid={`visibility-option-${lvl}`}
+                    className={`py-2 px-3 rounded-xl text-xs font-medium border text-center transition-all ${
+                      libraryVisibility === lvl
+                        ? 'bg-accent/15 border-accent text-accent font-semibold'
+                        : 'bg-surface-elevated border-surface-elevated text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    {lvl === 'public' && 'Public'}
+                    {lvl === 'followers_only' && 'Followers Only'}
+                    {lvl === 'private' && 'Private'}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-text-muted mt-1.5">
+                Controls who can query your tracked titles via PostgreSQL RLS policies.
+              </p>
+            </div>
+
+            {/* Rating Display */}
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-medium text-text-secondary mb-2">
+                <Star className="w-3.5 h-3.5 text-accent" />
+                <span>Rating Scale Preference</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
                 <button
-                  key={lvl}
                   type="button"
-                  onClick={() => setLibraryVisibility(lvl)}
-                  data-testid={`visibility-option-${lvl}`}
+                  onClick={() => setRatingPref('stars_5')}
                   className={`py-2 px-3 rounded-xl text-xs font-medium border text-center transition-all ${
-                    libraryVisibility === lvl
+                    ratingPref === 'stars_5'
                       ? 'bg-accent/15 border-accent text-accent font-semibold'
                       : 'bg-surface-elevated border-surface-elevated text-text-secondary hover:text-text-primary'
                   }`}
                 >
-                  {lvl === 'public' && 'Public'}
-                  {lvl === 'followers_only' && 'Followers Only'}
-                  {lvl === 'private' && 'Private'}
+                  5-Star (with half-stars)
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setRatingPref('points_10')}
+                  className={`py-2 px-3 rounded-xl text-xs font-medium border text-center transition-all ${
+                    ratingPref === 'points_10'
+                      ? 'bg-accent/15 border-accent text-accent font-semibold'
+                      : 'bg-surface-elevated border-surface-elevated text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  10-Point Score (1–10)
+                </button>
+              </div>
             </div>
-            <p className="text-[11px] text-text-muted mt-1.5">
-              Controls who can query your tracked titles via PostgreSQL RLS policies.
-            </p>
-          </div>
 
-          {/* Rating Display */}
-          <div>
-            <label className="flex items-center gap-1.5 text-xs font-medium text-text-secondary mb-2">
-              <Star className="w-3.5 h-3.5 text-accent" />
-              <span>Rating Scale Preference</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
+            {/* Actions */}
+            <div className="pt-4 border-t border-surface-elevated flex items-center justify-between gap-3">
               <button
                 type="button"
-                onClick={() => setRatingPref('stars_5')}
-                className={`py-2 px-3 rounded-xl text-xs font-medium border text-center transition-all ${
-                  ratingPref === 'stars_5'
-                    ? 'bg-accent/15 border-accent text-accent font-semibold'
-                    : 'bg-surface-elevated border-surface-elevated text-text-secondary hover:text-text-primary'
-                }`}
+                onClick={() => {
+                  signOut();
+                  setProfileModalOpen(false);
+                }}
+                data-testid="profile-signout-button"
+                className="px-4 py-2 rounded-xl text-xs font-medium text-status-dropped hover:bg-status-dropped/10 transition-colors flex items-center gap-1.5"
               >
-                5-Star (with half-stars)
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign Out</span>
               </button>
+
               <button
-                type="button"
-                onClick={() => setRatingPref('points_10')}
-                className={`py-2 px-3 rounded-xl text-xs font-medium border text-center transition-all ${
-                  ratingPref === 'points_10'
-                    ? 'bg-accent/15 border-accent text-accent font-semibold'
-                    : 'bg-surface-elevated border-surface-elevated text-text-secondary hover:text-text-primary'
-                }`}
+                type="submit"
+                disabled={loading}
+                data-testid="profile-save-button"
+                className="px-5 py-2 rounded-xl bg-accent hover:bg-accent-hover text-background font-semibold text-xs transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
               >
-                10-Point Score (1–10)
+                {saved ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-background" />
+                    <span>Saved!</span>
+                  </>
+                ) : (
+                  <span>Save Changes</span>
+                )}
               </button>
             </div>
-          </div>
-
-          {/* Actions */}
-          <div className="pt-4 border-t border-surface-elevated flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                signOut();
+          </form>
+        ) : (
+          /* Tab 2: Favorites Showcase */
+          <div className="mt-5 space-y-4">
+            <FavoritesShowcase
+              userId={user.id}
+              onSelectTitle={(id) => {
                 setProfileModalOpen(false);
+                if (onSelectTitle) onSelectTitle(id);
               }}
-              data-testid="profile-signout-button"
-              className="px-4 py-2 rounded-xl text-xs font-medium text-status-dropped hover:bg-status-dropped/10 transition-colors flex items-center gap-1.5"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Sign Out</span>
-            </button>
-
-            <button
-              type="submit"
-              disabled={loading}
-              data-testid="profile-save-button"
-              className="px-5 py-2 rounded-xl bg-accent hover:bg-accent-hover text-background font-semibold text-xs transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
-            >
-              {saved ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-background" />
-                  <span>Saved!</span>
-                </>
-              ) : (
-                <span>Save Changes</span>
-              )}
-            </button>
+            />
           </div>
-        </form>
+        )}
       </div>
     </div>
   );

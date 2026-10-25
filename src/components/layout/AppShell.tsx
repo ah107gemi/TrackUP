@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { DesktopSidebar } from './DesktopSidebar';
 import { TopUtilityBar } from './TopUtilityBar';
 import { MobileBottomNav } from './MobileBottomNav';
@@ -9,6 +9,8 @@ import { AuthGuard } from '../../features/auth/AuthGuard';
 import { SearchPage } from '../../features/catalog/SearchPage';
 import { TitleDetailPage } from '../../features/catalog/TitleDetailPage';
 import { LibraryView } from '../../features/library/LibraryView';
+import { DashboardStats } from '../../features/dashboard/DashboardStats';
+import { HistoryTimeline } from '../../features/history/HistoryTimeline';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../features/auth/AuthContext';
 import {
@@ -17,10 +19,6 @@ import {
   useIncrementChapter,
 } from '../../features/library/useLibrary';
 import {
-  Film,
-  BookOpen,
-  Clock,
-  Compass,
   Sparkles,
   ArrowRight,
   Plus,
@@ -28,19 +26,12 @@ import {
 } from 'lucide-react';
 
 export const AppShell: React.FC = () => {
-  const { activeTab, setActiveTab } = useUIStore();
+  const { activeTab, setActiveTab, selectedTitleId, setSelectedTitleId } = useUIStore();
   const { user } = useAuth();
   const { data: userLibrary = [] } = useUserLibrary(user?.id);
 
   const incrementEpisode = useIncrementEpisode();
   const incrementChapter = useIncrementChapter();
-
-  const [selectedTitleId, setSelectedTitleId] = useState<string | null>(null);
-
-  // Reset detail view when navigation tab changes
-  React.useEffect(() => {
-    setSelectedTitleId(null);
-  }, [activeTab]);
 
   const handleSelectTitle = (id: string) => {
     setSelectedTitleId(id);
@@ -82,7 +73,7 @@ export const AppShell: React.FC = () => {
                     <div className="max-w-xl relative z-10">
                       <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/15 border border-accent/30 text-accent text-xs font-semibold mb-4">
                         <Sparkles className="w-3.5 h-3.5" />
-                        <span>Phase 3 Granular Tracking Active</span>
+                        <span>Phase 4 Reviews, Ratings & Stats Active</span>
                       </div>
                       <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-text-primary mb-3">
                         Track what you <span className="text-accent">love.</span>
@@ -197,39 +188,8 @@ export const AppShell: React.FC = () => {
                     </section>
                   )}
 
-                  {/* Stats Strip */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {[
-                      {
-                        label: 'Watch Library',
-                        val: `${userLibrary.filter((i) => ['movie', 'tv', 'anime_series', 'anime_film'].includes(i.title.media_type)).length} Titles`,
-                        icon: Film,
-                      },
-                      {
-                        label: 'Reading Library',
-                        val: `${userLibrary.filter((i) => ['manga', 'manhwa'].includes(i.title.media_type)).length} Titles`,
-                        icon: BookOpen,
-                      },
-                      { label: 'Completed', val: `${userLibrary.filter((i) => i.status === 'completed').length} Titles`, icon: Clock },
-                      { label: 'Catalog Engine', val: '6 Formats', icon: Compass },
-                    ].map((stat, i) => {
-                      const Icon = stat.icon;
-                      return (
-                        <div
-                          key={i}
-                          className="p-5 rounded-2xl bg-surface border border-surface-elevated flex items-center gap-4"
-                        >
-                          <div className="w-10 h-10 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
-                            <Icon className="w-5 h-5 text-accent" />
-                          </div>
-                          <div>
-                            <p className="text-xs text-text-muted font-medium">{stat.label}</p>
-                            <p className="text-lg font-bold text-text-primary mt-0.5">{stat.val}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  {/* Dashboard Statistics & Analytics Overview */}
+                  <DashboardStats userLibrary={userLibrary} />
                 </div>
               )}
 
@@ -251,11 +211,8 @@ export const AppShell: React.FC = () => {
 
               {activeTab === 'history' && (
                 <div data-testid="history-view" className="max-w-6xl mx-auto space-y-4">
-                  <h2 className="text-2xl font-bold">History & Analytics</h2>
                   <AuthGuard fallbackTitle="Sign In to View Tracking History" fallbackDescription="Chronological log of watched episodes and read chapters.">
-                    <div className="p-8 rounded-2xl bg-surface border border-surface-elevated text-center">
-                      <p className="text-sm text-text-secondary">Watch and reading history timelines activate in Phase 4.</p>
-                    </div>
+                    <HistoryTimeline userId={user?.id} onSelectTitle={handleSelectTitle} />
                   </AuthGuard>
                 </div>
               )}
@@ -281,7 +238,7 @@ export const AppShell: React.FC = () => {
       {/* 4. Global Modals */}
       <OmnisearchModal onSelectTitle={handleSelectTitle} />
       <AuthModal />
-      <ProfileModal />
+      <ProfileModal onSelectTitle={handleSelectTitle} />
     </div>
   );
 };
