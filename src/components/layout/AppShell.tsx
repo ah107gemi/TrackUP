@@ -8,12 +8,39 @@ import { ProfileModal } from '../../features/auth/ProfileModal';
 import { AuthGuard } from '../../features/auth/AuthGuard';
 import { SearchPage } from '../../features/catalog/SearchPage';
 import { TitleDetailPage } from '../../features/catalog/TitleDetailPage';
+import { LibraryView } from '../../features/library/LibraryView';
 import { useUIStore } from '../../stores/uiStore';
-import { Film, BookOpen, Clock, Compass, Sparkles, ArrowRight } from 'lucide-react';
+import { useAuth } from '../../features/auth/AuthContext';
+import {
+  useUserLibrary,
+  useIncrementEpisode,
+  useIncrementChapter,
+} from '../../features/library/useLibrary';
+import {
+  Film,
+  BookOpen,
+  Clock,
+  Compass,
+  Sparkles,
+  ArrowRight,
+  Plus,
+  PlayCircle,
+} from 'lucide-react';
 
 export const AppShell: React.FC = () => {
   const { activeTab, setActiveTab } = useUIStore();
+  const { user } = useAuth();
+  const { data: userLibrary = [] } = useUserLibrary(user?.id);
+
+  const incrementEpisode = useIncrementEpisode();
+  const incrementChapter = useIncrementChapter();
+
   const [selectedTitleId, setSelectedTitleId] = useState<string | null>(null);
+
+  // Reset detail view when navigation tab changes
+  React.useEffect(() => {
+    setSelectedTitleId(null);
+  }, [activeTab]);
 
   const handleSelectTitle = (id: string) => {
     setSelectedTitleId(id);
@@ -22,6 +49,11 @@ export const AppShell: React.FC = () => {
   const handleBackFromDetail = () => {
     setSelectedTitleId(null);
   };
+
+  // Up Next: Active titles in library
+  const upNextItems = userLibrary.filter(
+    (item) => item.status === 'active' || item.status === 'planned'
+  );
 
   return (
     <div className="flex h-screen w-full bg-background text-text-primary overflow-hidden font-sans">
@@ -44,13 +76,13 @@ export const AppShell: React.FC = () => {
           ) : (
             <>
               {activeTab === 'dashboard' && (
-                <div data-testid="dashboard-view" className="max-w-6xl mx-auto space-y-6">
+                <div data-testid="dashboard-view" className="max-w-6xl mx-auto space-y-8">
                   {/* Hero Banner */}
                   <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-surface to-surface-elevated border border-surface-elevated p-6 md:p-10 shadow-2xl">
                     <div className="max-w-xl relative z-10">
                       <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/15 border border-accent/30 text-accent text-xs font-semibold mb-4">
                         <Sparkles className="w-3.5 h-3.5" />
-                        <span>Phase 2 Catalog & Detail Pages Active</span>
+                        <span>Phase 3 Granular Tracking Active</span>
                       </div>
                       <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-text-primary mb-3">
                         Track what you <span className="text-accent">love.</span>
@@ -69,12 +101,116 @@ export const AppShell: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Up Next & Continue Tracking Strip */}
+                  {user && upNextItems.length > 0 && (
+                    <section data-testid="dashboard-up-next-section" className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <PlayCircle className="w-5 h-5 text-accent" />
+                          <h2 className="text-lg font-bold text-text-primary">
+                            Continue Tracking (&quot;Up Next&quot;)
+                          </h2>
+                        </div>
+                        <span className="text-xs text-text-muted">
+                          {upNextItems.length} In Progress
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                        {upNextItems.map((item) => {
+                          const isEpisodic =
+                            item.title.media_type === 'tv' ||
+                            item.title.media_type === 'anime_series';
+                          const isReading =
+                            item.title.media_type === 'manga' ||
+                            item.title.media_type === 'manhwa';
+
+                          return (
+                            <div
+                              key={item.id}
+                              onClick={() => handleSelectTitle(item.title_id)}
+                              data-testid={`up-next-card-${item.id}`}
+                              className="p-3.5 rounded-2xl bg-surface border border-surface-elevated hover:border-accent/40 transition-all flex items-center gap-3.5 cursor-pointer group shadow"
+                            >
+                              <img
+                                src={item.title.poster_url || '/assets/trackup-logo.jpg'}
+                                alt={item.title.title}
+                                className="w-14 h-20 rounded-xl object-cover shrink-0"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <span className="text-[10px] font-bold uppercase text-accent tracking-wider">
+                                  {item.title.media_type.replace('_', ' ')}
+                                </span>
+                                <h3 className="text-sm font-bold text-text-primary truncate group-hover:text-accent transition-colors">
+                                  {item.title.title}
+                                </h3>
+
+                                <div className="mt-2 flex items-center justify-between">
+                                  <span className="font-mono text-xs font-semibold text-text-secondary">
+                                    {isEpisodic && `${item.episodes_watched.length} eps watched`}
+                                    {isReading && `Ch. ${item.last_chapter_read}`}
+                                    {!isEpisodic && !isReading && item.status}
+                                  </span>
+
+                                  {/* Quick +1 Action */}
+                                  {isEpisodic && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        incrementEpisode.mutate({
+                                          libraryId: item.id,
+                                          userId: user.id,
+                                          episodeId: `ep_${item.episodes_watched.length + 1}`,
+                                          watched: true,
+                                        });
+                                      }}
+                                      data-testid={`up-next-plus-episode-${item.id}`}
+                                      className="px-2.5 py-1 rounded-lg bg-accent text-background font-bold text-xs flex items-center gap-1 hover:bg-accent-hover transition-colors shadow"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                      <span>+1 Ep</span>
+                                    </button>
+                                  )}
+                                  {isReading && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        incrementChapter.mutate({
+                                          libraryId: item.id,
+                                          userId: user.id,
+                                          chapter: item.last_chapter_read + 1,
+                                        });
+                                      }}
+                                      data-testid={`up-next-plus-chapter-${item.id}`}
+                                      className="px-2.5 py-1 rounded-lg bg-accent text-background font-bold text-xs flex items-center gap-1 hover:bg-accent-hover transition-colors shadow"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                      <span>+1 Ch</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
+
                   {/* Stats Strip */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {[
-                      { label: 'Watch Library', val: '0 Titles', icon: Film },
-                      { label: 'Reading Library', val: '0 Titles', icon: BookOpen },
-                      { label: 'Total Hours', val: '0.0 hrs', icon: Clock },
+                      {
+                        label: 'Watch Library',
+                        val: `${userLibrary.filter((i) => ['movie', 'tv', 'anime_series', 'anime_film'].includes(i.title.media_type)).length} Titles`,
+                        icon: Film,
+                      },
+                      {
+                        label: 'Reading Library',
+                        val: `${userLibrary.filter((i) => ['manga', 'manhwa'].includes(i.title.media_type)).length} Titles`,
+                        icon: BookOpen,
+                      },
+                      { label: 'Completed', val: `${userLibrary.filter((i) => i.status === 'completed').length} Titles`, icon: Clock },
                       { label: 'Catalog Engine', val: '6 Formats', icon: Compass },
                     ].map((stat, i) => {
                       const Icon = stat.icon;
@@ -102,25 +238,15 @@ export const AppShell: React.FC = () => {
               )}
 
               {activeTab === 'watch' && (
-                <div data-testid="watch-view" className="max-w-6xl mx-auto space-y-4">
-                  <h2 className="text-2xl font-bold">Watch Library</h2>
-                  <AuthGuard fallbackTitle="Sign In to Access Your Watch Library" fallbackDescription="Track your movies, TV shows, and anime series with granular season and episode progress.">
-                    <div className="p-8 rounded-2xl bg-surface border border-surface-elevated text-center">
-                      <p className="text-sm text-text-secondary">Your watch library is ready for titles (Phase 3 tracking engine).</p>
-                    </div>
-                  </AuthGuard>
-                </div>
+                <AuthGuard fallbackTitle="Sign In to Access Your Watch Library" fallbackDescription="Track your movies, TV shows, and anime series with granular season and episode progress.">
+                  <LibraryView domain="watch" onSelectTitle={handleSelectTitle} />
+                </AuthGuard>
               )}
 
               {activeTab === 'read' && (
-                <div data-testid="read-view" className="max-w-6xl mx-auto space-y-4">
-                  <h2 className="text-2xl font-bold">Reading Library</h2>
-                  <AuthGuard fallbackTitle="Sign In to Access Your Reading Library" fallbackDescription="Track your Manga and Manhwa with chapter and volume steppers.">
-                    <div className="p-8 rounded-2xl bg-surface border border-surface-elevated text-center">
-                      <p className="text-sm text-text-secondary">Your reading library is ready for titles (Phase 3 tracking engine).</p>
-                    </div>
-                  </AuthGuard>
-                </div>
+                <AuthGuard fallbackTitle="Sign In to Access Your Reading Library" fallbackDescription="Track your Manga and South Korean Manhwa with chapter and volume steppers.">
+                  <LibraryView domain="read" onSelectTitle={handleSelectTitle} />
+                </AuthGuard>
               )}
 
               {activeTab === 'history' && (

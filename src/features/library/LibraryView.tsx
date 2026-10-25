@@ -1,0 +1,420 @@
+import React, { useState } from 'react';
+import {
+  Grid,
+  LayoutGrid,
+  List,
+  Plus,
+  Compass,
+  Star,
+  Film,
+  BookOpen,
+} from 'lucide-react';
+import { useUIStore } from '../../stores/uiStore';
+import { useAuth } from '../auth/AuthContext';
+import { useUserLibrary, useIncrementEpisode, useIncrementChapter } from './useLibrary';
+import type { TrackingStatus, MediaType } from '../../types/database.types';
+
+interface LibraryViewProps {
+  domain: 'watch' | 'read';
+  onSelectTitle: (id: string) => void;
+}
+
+export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle }) => {
+  const { libraryViewMode, setLibraryViewMode, setActiveTab } = useUIStore();
+  const { user } = useAuth();
+  const { data: library = [], isLoading } = useUserLibrary(user?.id);
+
+  const incrementEpisode = useIncrementEpisode();
+  const incrementChapter = useIncrementChapter();
+
+  const [activeStatus, setActiveStatus] = useState<TrackingStatus | 'all'>('all');
+  const [selectedFormat, setSelectedFormat] = useState<MediaType | 'all'>('all');
+
+  const domainMediaTypes: MediaType[] =
+    domain === 'watch'
+      ? ['movie', 'tv', 'anime_series', 'anime_film']
+      : ['manga', 'manhwa'];
+
+  // Filter items by domain, status, and sub-format
+  const filtered = library.filter((item) => {
+    if (!domainMediaTypes.includes(item.title.media_type)) return false;
+    if (activeStatus !== 'all' && item.status !== activeStatus) return false;
+    if (selectedFormat !== 'all' && item.title.media_type !== selectedFormat) return false;
+    return true;
+  });
+
+  const statuses: { id: TrackingStatus | 'all'; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'active', label: domain === 'watch' ? 'Watching' : 'Reading' },
+    { id: 'planned', label: 'Planned' },
+    { id: 'completed', label: 'Completed' },
+    { id: 'paused', label: 'On Hold' },
+    { id: 'dropped', label: 'Dropped' },
+  ];
+
+  const handleQuickProgress = (e: React.MouseEvent, item: (typeof library)[0]) => {
+    e.stopPropagation();
+    if (!user) return;
+
+    if (item.title.media_type === 'tv' || item.title.media_type === 'anime_series') {
+      const nextEpNum = item.episodes_watched.length + 1;
+      incrementEpisode.mutate({
+        libraryId: item.id,
+        userId: user.id,
+        episodeId: `ep_${nextEpNum}`,
+        watched: true,
+      });
+    } else if (item.title.media_type === 'manga' || item.title.media_type === 'manhwa') {
+      incrementChapter.mutate({
+        libraryId: item.id,
+        userId: user.id,
+        chapter: item.last_chapter_read + 1,
+      });
+    }
+  };
+
+  const handleFractionalProgress = (e: React.MouseEvent, item: (typeof library)[0]) => {
+    e.stopPropagation();
+    if (!user) return;
+    incrementChapter.mutate({
+      libraryId: item.id,
+      userId: user.id,
+      chapter: item.last_chapter_read + 0.5,
+    });
+  };
+
+  return (
+    <div data-testid={`${domain}-library-view`} className="max-w-6xl mx-auto space-y-6">
+      {/* Top Header & View Mode Selector */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-extrabold text-text-primary tracking-tight">
+            {domain === 'watch' ? 'Watch Library' : 'Reading Library'}
+          </h1>
+          <p className="text-xs md:text-sm text-text-secondary mt-1">
+            {domain === 'watch'
+              ? 'Movies, TV Shows, Anime Series & Anime Films'
+              : 'Manga & South Korean Manhwa'}
+          </p>
+        </div>
+
+        {/* 3 View Modes Toolbar (Persisted in Zustand) */}
+        <div
+          data-testid="view-mode-selector"
+          className="flex items-center gap-1 bg-surface p-1 rounded-xl border border-surface-elevated self-start md:self-auto"
+        >
+          <button
+            onClick={() => setLibraryViewMode('grid')}
+            title="Poster Grid"
+            data-testid="view-mode-grid"
+            className={`p-1.5 rounded-lg transition-colors ${
+              libraryViewMode === 'grid'
+                ? 'bg-accent text-background shadow'
+                : 'text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <Grid className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setLibraryViewMode('compact')}
+            title="Compact Grid"
+            data-testid="view-mode-compact"
+            className={`p-1.5 rounded-lg transition-colors ${
+              libraryViewMode === 'compact'
+                ? 'bg-accent text-background shadow'
+                : 'text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <LayoutGrid className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setLibraryViewMode('list')}
+            title="Detailed List / Table"
+            data-testid="view-mode-list"
+            className={`p-1.5 rounded-lg transition-colors ${
+              libraryViewMode === 'list'
+                ? 'bg-accent text-background shadow'
+                : 'text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <List className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Filter Row: Status Segment Controller + Sub-format filter */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-surface-elevated pb-3">
+        {/* Status segment controller */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto">
+          {statuses.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setActiveStatus(s.id)}
+              data-testid={`status-tab-${s.id}`}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all ${
+                activeStatus === s.id
+                  ? 'bg-accent text-background shadow-md'
+                  : 'bg-surface border border-surface-elevated text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Sub-format filter */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setSelectedFormat('all')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium ${
+              selectedFormat === 'all' ? 'text-accent font-bold' : 'text-text-muted hover:text-text-secondary'
+            }`}
+          >
+            All
+          </button>
+          {domainMediaTypes.map((t) => (
+            <button
+              key={t}
+              onClick={() => setSelectedFormat(t)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium capitalize ${
+                selectedFormat === t ? 'text-accent font-bold' : 'text-text-muted hover:text-text-secondary'
+              }`}
+            >
+              {t.replace('_', ' ')}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Library Content */}
+      {isLoading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          {[...Array(6)].map((_, i) => (
+            <div
+              key={i}
+              className="aspect-[2/3] rounded-2xl bg-surface animate-pulse border border-surface-elevated"
+            />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div
+          data-testid="empty-library-callout"
+          className="text-center py-16 px-4 bg-surface rounded-2xl border border-surface-elevated max-w-lg mx-auto"
+        >
+          {domain === 'watch' ? (
+            <Film className="w-12 h-12 text-text-muted/30 mx-auto mb-3" />
+          ) : (
+            <BookOpen className="w-12 h-12 text-text-muted/30 mx-auto mb-3" />
+          )}
+          <h3 className="text-base font-bold text-text-primary">
+            Your {domain === 'watch' ? 'Watch' : 'Reading'} List is Empty
+          </h3>
+          <p className="text-xs text-text-secondary mt-1 max-w-sm mx-auto">
+            Search titles in the catalog or open Omnisearch to add titles to your personal library.
+          </p>
+          <button
+            onClick={() => setActiveTab('discover')}
+            data-testid="explore-catalog-btn"
+            className="mt-5 px-5 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs transition-all shadow-md inline-flex items-center gap-2"
+          >
+            <Compass className="w-4 h-4" />
+            <span>Discover Titles</span>
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* 1. POSTER GRID MODE */}
+          {libraryViewMode === 'grid' && (
+            <div
+              data-testid="library-poster-grid"
+              className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4"
+            >
+              {filtered.map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => onSelectTitle(item.title_id)}
+                  data-testid={`library-item-${item.id}`}
+                  className="group relative flex flex-col bg-surface rounded-2xl overflow-hidden border border-surface-elevated hover:border-accent/40 transition-all duration-200 cursor-pointer shadow-lg hover:-translate-y-1 select-none"
+                >
+                  <div className="relative aspect-[2/3] w-full bg-surface-elevated overflow-hidden">
+                    <img
+                      src={item.title.poster_url || '/assets/trackup-logo.jpg'}
+                      alt={item.title.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute top-2 left-2">
+                      <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-background/80 text-accent border border-accent/20 backdrop-blur-md">
+                        {item.status}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="p-3">
+                    <h3 className="font-semibold text-xs text-text-primary truncate group-hover:text-accent transition-colors">
+                      {item.title.title}
+                    </h3>
+                    <div className="flex items-center justify-between mt-2 text-[11px] text-text-muted">
+                      {item.title.media_type === 'tv' || item.title.media_type === 'anime_series' ? (
+                        <span className="font-mono text-accent">
+                          {item.episodes_watched.length}
+                          {item.title.total_episodes ? ` / ${item.title.total_episodes}` : ''} eps
+                        </span>
+                      ) : (
+                        <span className="font-mono text-accent">
+                          Ch. {item.last_chapter_read}
+                          {item.title.total_chapters ? ` / ${item.title.total_chapters}` : ''}
+                        </span>
+                      )}
+                      {item.rating && (
+                        <span className="flex items-center gap-0.5 text-accent font-bold">
+                          <Star className="w-3 h-3 fill-accent" />
+                          {(item.rating / 2).toFixed(1)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 2. COMPACT GRID MODE */}
+          {libraryViewMode === 'compact' && (
+            <div
+              data-testid="library-compact-grid"
+              className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3"
+            >
+              {filtered.map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => onSelectTitle(item.title_id)}
+                  data-testid={`library-compact-item-${item.id}`}
+                  className="flex items-center gap-3 p-2.5 bg-surface rounded-xl border border-surface-elevated hover:border-accent/40 transition-all cursor-pointer group"
+                >
+                  <img
+                    src={item.title.poster_url || '/assets/trackup-logo.jpg'}
+                    alt={item.title.title}
+                    className="w-12 h-16 rounded-lg object-cover shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-xs font-bold text-text-primary truncate group-hover:text-accent">
+                      {item.title.title}
+                    </h4>
+                    <p className="text-[10px] text-text-muted capitalize mt-0.5">{item.status}</p>
+                    <div className="mt-1 flex items-center justify-between">
+                      <span className="font-mono text-[11px] text-accent">
+                        {item.title.media_type === 'tv' || item.title.media_type === 'anime_series'
+                          ? `${item.episodes_watched.length} eps`
+                          : `Ch. ${item.last_chapter_read}`}
+                      </span>
+                      <button
+                        onClick={(e) => handleQuickProgress(e, item)}
+                        data-testid={`quick-increment-${item.id}`}
+                        className="px-2 py-0.5 rounded bg-accent text-background font-bold text-[10px] flex items-center gap-0.5 hover:bg-accent-hover transition-colors shadow"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>1</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 3. DETAILED LIST / TABLE MODE */}
+          {libraryViewMode === 'list' && (
+            <div
+              data-testid="library-detailed-list"
+              className="bg-surface rounded-2xl border border-surface-elevated overflow-hidden shadow-xl"
+            >
+              <table className="w-full text-left text-xs">
+                <thead className="bg-surface-elevated/70 text-text-muted border-b border-surface-elevated uppercase text-[10px] font-bold tracking-wider">
+                  <tr>
+                    <th className="py-3 px-4">Title</th>
+                    <th className="py-3 px-3">Category</th>
+                    <th className="py-3 px-3">Status</th>
+                    <th className="py-3 px-3">Progress</th>
+                    <th className="py-3 px-3 text-right">Quick Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-elevated">
+                  {filtered.map((item) => (
+                    <tr
+                      key={item.id}
+                      onClick={() => onSelectTitle(item.title_id)}
+                      data-testid={`library-list-row-${item.id}`}
+                      className="hover:bg-surface-elevated/40 transition-colors cursor-pointer group"
+                    >
+                      <td className="py-3 px-4 flex items-center gap-3">
+                        <img
+                          src={item.title.poster_url || '/assets/trackup-logo.jpg'}
+                          alt={item.title.title}
+                          className="w-8 h-12 rounded object-cover shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <p className="font-bold text-text-primary group-hover:text-accent truncate">
+                            {item.title.title}
+                          </p>
+                          <p className="text-[10px] text-text-muted">
+                            {item.title.release_year || ''}
+                          </p>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-surface-elevated text-accent border border-accent/20">
+                          {item.title.media_type.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="capitalize font-medium text-text-secondary">
+                          {item.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 font-mono font-semibold text-text-primary">
+                        {item.title.media_type === 'tv' || item.title.media_type === 'anime_series' ? (
+                          <span className="text-accent">
+                            {item.episodes_watched.length}
+                            {item.title.total_episodes ? ` / ${item.title.total_episodes}` : ''} eps
+                          </span>
+                        ) : item.title.media_type === 'movie' || item.title.media_type === 'anime_film' ? (
+                          <span>{item.title.runtime_minutes ? `${item.title.runtime_minutes}m` : 'Feature'}</span>
+                        ) : (
+                          <span className="text-accent">
+                            Ch. {item.last_chapter_read}
+                            {item.title.total_chapters ? ` / ${item.title.total_chapters}` : ''}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-right">
+                        <div className="inline-flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={(e) => handleQuickProgress(e, item)}
+                            data-testid={`list-increment-${item.id}`}
+                            className="px-2.5 py-1 rounded-lg bg-accent hover:bg-accent-hover text-background font-bold text-xs flex items-center gap-1 shadow transition-colors"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>+1</span>
+                          </button>
+                          {(item.title.media_type === 'manga' || item.title.media_type === 'manhwa') && (
+                            <button
+                              onClick={(e) => handleFractionalProgress(e, item)}
+                              data-testid={`fractional-increment-${item.id}`}
+                              title="Add half chapter (+0.5)"
+                              className="px-2 py-1 rounded-lg bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-text-secondary hover:text-text-primary font-mono text-xs transition-colors"
+                            >
+                              +0.5
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};

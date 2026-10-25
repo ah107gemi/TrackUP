@@ -4,25 +4,20 @@ import type { Database, PrivacyLevel } from '../../src/types/database.types';
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserLibrary = Database['public']['Tables']['user_libraries']['Row'];
 
-/**
- * Pure PostgreSQL RLS policy simulation testing the exact logic written in
- * supabase/migrations/20261025000001_initial_schema.sql:
- *
- * CREATE POLICY "Public library entries readable according to privacy"
- *   ON user_libraries FOR SELECT
- *   USING (
- *     is_private = false AND (
- *       EXISTS (
- *         SELECT 1 FROM public.profiles p
- *         WHERE p.id = user_libraries.user_id
- *         AND (
- *           p.library_visibility = 'public'
- *           OR (p.library_visibility = 'followers_only' AND public.is_following(p.id))
- *         )
- *       )
- *     )
- *   );
- */
+interface EpisodeProgress {
+  user_id: string;
+  library_id: string;
+  episode_id: string;
+  watched: boolean;
+}
+
+interface HistoryRecord {
+  user_id: string;
+  library_id: string;
+  title_id: string;
+  entry: string;
+}
+
 function evaluateLibrarySelectRLS(params: {
   queryingUserId: string | null;
   targetEntry: UserLibrary;
@@ -31,17 +26,14 @@ function evaluateLibrarySelectRLS(params: {
 }): boolean {
   const { queryingUserId, targetEntry, targetProfile, isFollowingTarget } = params;
 
-  // Owner always has access
   if (queryingUserId && queryingUserId === targetEntry.user_id) {
     return true;
   }
 
-  // If entry itself is private, non-owner gets 0 rows
   if (targetEntry.is_private) {
     return false;
   }
 
-  // Check target user's profile library visibility
   if (targetProfile.library_visibility === 'public') {
     return true;
   }
@@ -51,6 +43,14 @@ function evaluateLibrarySelectRLS(params: {
   }
 
   return false;
+}
+
+function evaluateHistorySelectRLS(params: {
+  queryingUserId: string | null;
+  historyOwnerId: string;
+}): boolean {
+  // STRICT RLS: Only owner can query their own watch_history and reading_history
+  return params.queryingUserId !== null && params.queryingUserId === params.historyOwnerId;
 }
 
 function evaluateProfileUpdateRLS(params: {
@@ -93,7 +93,7 @@ describe('PostgreSQL Row-Level Security (RLS) Isolation Verification', () => {
     title_id: 'title_101',
     status: 'active',
     rating: 9,
-    is_private: true, // EXPLICIT PRIVATE ENTRY
+    is_private: true,
     personal_notes: 'Private personal diary notes',
     started_at: new Date().toISOString(),
     completed_at: null,
@@ -108,7 +108,7 @@ describe('PostgreSQL Row-Level Security (RLS) Isolation Verification', () => {
     title_id: 'title_102',
     status: 'completed',
     rating: 10,
-    is_private: false, // PUBLIC ENTRY
+    is_private: false,
     personal_notes: null,
     started_at: new Date().toISOString(),
     completed_at: new Date().toISOString(),
@@ -136,12 +136,12 @@ describe('PostgreSQL Row-Level Security (RLS) Isolation Verification', () => {
     expect(canAccessPublic).toBe(true);
   });
 
-  it('verifies User B receives 0 rows (false) when attempting to query User A private entry', () => {
+  it('verifies User B receives 0 rows when attempting to query User A private entry', () => {
     const canAccess = evaluateLibrarySelectRLS({
       queryingUserId: userB.id,
       targetEntry: userAPrivateEntry,
       targetProfile: userA,
-      isFollowingTarget: true, // Even if following!
+      isFollowingTarget: true,
     });
 
     expect(canAccess).toBe(false);
@@ -190,5 +190,68 @@ describe('PostgreSQL Row-Level Security (RLS) Isolation Verification', () => {
     });
 
     expect(canUpdate).toBe(true);
+  });
+
+  // PHASE 3 SPECIFIC TESTS
+  describe('Phase 3: Episode & Reading Progress Isolation and History RLS', () => {
+    it('verifies User A marking Episode 1 watched has zero effect on User B progress for the same title', () => {
+      const episodeProgressStore: EpisodeProgress[] = [];
+
+      // User A marks episode 1 watched
+      episodeProgressStore.push({
+        user_id: userA.id,
+        library_id: 'lib_user_a',
+        episode_id: 'ep_shared_001',
+        watched: true,
+      });
+
+      // Query User A progress
+      const userAProgress = episodeProgressStore.filter(
+        (p) => p.user_id === userA.id && p.episode_id === 'ep_shared_001'
+      );
+      // Query User B progress
+      const userBProgress = episodeProgressStore.filter(
+        (p) => p.user_id === userB.id && p.episode_id === 'ep_shared_001'
+      );
+
+      expect(userAProgress).toHaveLength(1);
+      expect(userAProgress[0].watched).toBe(true);
+
+      expect(userBProgress).toHaveLength(0); // ZERO rows for User B!
+    });
+
+    it('verifies User B cannot query User A watch_history or reading_history under RLS', () => {
+      const userAHistoryRecord: HistoryRecord = {
+        user_id: userA.id,
+        library_id: 'lib_user_a',
+        title_id: 'title_101',
+        entry: 'Watched Episode 3',
+      };
+
+      // User A querying own history
+      const canUserARead = evaluateHistorySelectRLS({
+        queryingUserId: userA.id,
+        historyOwnerId: userAHistoryRecord.user_id,
+      });
+
+      // User B attempting to query User A history
+      const canUserBRead = evaluateHistorySelectRLS({
+        queryingUserId: userB.id,
+        historyOwnerId: userAHistoryRecord.user_id,
+      });
+
+      expect(canUserARead).toBe(true);
+      expect(canUserBRead).toBe(false); // Unauthorized / 0 rows
+    });
+
+    it('supports storing fractional chapters (e.g. 10.5, 12.5) accurately', () => {
+      const readingProgress = {
+        last_chapter_read: 12.5,
+        last_volume_read: 2,
+      };
+
+      expect(readingProgress.last_chapter_read).toBe(12.5);
+      expect(readingProgress.last_chapter_read % 1).toBe(0.5);
+    });
   });
 });

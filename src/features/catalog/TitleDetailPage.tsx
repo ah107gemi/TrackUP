@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Plus,
   Minus,
+  CheckCheck,
 } from 'lucide-react';
 import {
   getCatalogTitleById,
@@ -22,6 +23,14 @@ import {
 import type { NormalizedCatalogItem } from '../../lib/validators';
 import { MediaPosterCard } from '../../components/shared/MediaPosterCard';
 import { TmdbAttribution } from '../../components/shared/TmdbAttribution';
+import { useAuth } from '../auth/AuthContext';
+import {
+  useUserLibrary,
+  useUpsertLibrary,
+  useIncrementEpisode,
+  useIncrementChapter,
+} from '../library/useLibrary';
+import type { TrackingStatus } from '../../types/database.types';
 
 interface TitleDetailPageProps {
   titleId: string;
@@ -34,20 +43,32 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   onBack,
   onSelectTitle,
 }) => {
+  const { user } = useAuth();
+  const activeUserId = user?.id || 'local_tracker';
+  const { data: userLibrary = [] } = useUserLibrary(activeUserId);
+
+  const upsertMutation = useUpsertLibrary();
+  const episodeMutation = useIncrementEpisode();
+  const chapterMutation = useIncrementChapter();
+
   const [title, setTitle] = useState<
     (NormalizedCatalogItem & { cast?: CastMember[]; seasons?: CatalogSeasonDetail[] }) | null
   >(null);
   const [related, setRelated] = useState<RelatedWorkItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // User interactive state for detail view
+  // Local fallback state if not yet persisted
+  const [localStatus, setLocalStatus] = useState<TrackingStatus>('planned');
+  const [localRating, setLocalRating] = useState<number | null>(null);
+  const [localChapter, setLocalChapter] = useState<number>(0);
+  const [localVolume, setLocalVolume] = useState<number>(0);
+  const [localEpisodes, setLocalEpisodes] = useState<string[]>([]);
   const [isFavorited, setIsFavorited] = useState(false);
-  const [selectedRating, setSelectedRating] = useState<number | null>(null);
-  const [trackingStatus, setTrackingStatus] = useState<string>('planned');
-  const [currentChapter, setCurrentChapter] = useState(0);
-  const [currentVolume, setCurrentVolume] = useState(0);
   const [activeSeasonIndex, setActiveSeasonIndex] = useState(0);
-  const [watchedEpisodes, setWatchedEpisodes] = useState<Record<string, boolean>>({});
+  const [fractionalInput, setFractionalInput] = useState<string>('');
+
+  // Find user's existing tracked record for this title
+  const existingEntry = userLibrary.find((item) => item.title_id === titleId);
 
   useEffect(() => {
     let mounted = true;
@@ -95,11 +116,128 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   const isEpisodic = title.media_type === 'tv' || title.media_type === 'anime_series';
   const isSingleWatch = title.media_type === 'movie' || title.media_type === 'anime_film';
 
-  const toggleEpisode = (epId: string) => {
-    setWatchedEpisodes((prev) => ({
-      ...prev,
-      [epId]: !prev[epId],
-    }));
+  const currentStatus: TrackingStatus = existingEntry ? existingEntry.status : localStatus;
+  const currentRating: number | null = existingEntry ? existingEntry.rating : localRating;
+  const currentChapter: number = existingEntry ? existingEntry.last_chapter_read : localChapter;
+  const currentVolume: number = existingEntry ? existingEntry.last_volume_read : localVolume;
+  const watchedEpisodesList: string[] = existingEntry ? existingEntry.episodes_watched : localEpisodes;
+
+  const handleStatusChange = (newStatus: TrackingStatus) => {
+    setLocalStatus(newStatus);
+    upsertMutation.mutate({
+      userId: activeUserId,
+      titleId: title.id,
+      status: newStatus,
+    });
+  };
+
+  const handleRatingChange = (newRating: number) => {
+    setLocalRating(newRating);
+    upsertMutation.mutate({
+      userId: activeUserId,
+      titleId: title.id,
+      rating: newRating,
+    });
+  };
+
+  const handleToggleEpisode = async (epId: string) => {
+    const isWatched = watchedEpisodesList.includes(epId);
+    const updatedEpisodes = isWatched
+      ? watchedEpisodesList.filter((id) => id !== epId)
+      : [...watchedEpisodesList, epId];
+    setLocalEpisodes(updatedEpisodes);
+
+    let libId = existingEntry?.id;
+    if (!libId) {
+      const created = await upsertMutation.mutateAsync({
+        userId: activeUserId,
+        titleId: title.id,
+        status: 'active',
+      });
+      libId = created.id;
+    }
+    episodeMutation.mutate({
+      libraryId: libId,
+      userId: activeUserId,
+      episodeId: epId,
+      watched: !isWatched,
+    });
+  };
+
+  const handleBatchMarkSeasonWatched = async () => {
+    const activeSeason = title.seasons?.[activeSeasonIndex];
+    if (!activeSeason) return;
+
+    const allEpIds = activeSeason.episodes.map((e) => e.id);
+    setLocalEpisodes([...new Set([...watchedEpisodesList, ...allEpIds])]);
+
+    let libId = existingEntry?.id;
+    if (!libId) {
+      const created = await upsertMutation.mutateAsync({
+        userId: activeUserId,
+        titleId: title.id,
+        status: 'active',
+      });
+      libId = created.id;
+    }
+
+    for (const ep of activeSeason.episodes) {
+      episodeMutation.mutate({
+        libraryId: libId,
+        userId: activeUserId,
+        episodeId: ep.id,
+        watched: true,
+      });
+    }
+  };
+
+  const handleStepChapter = async (delta: number) => {
+    const newCh = Math.max(0, currentChapter + delta);
+    setLocalChapter(newCh);
+
+    let libId = existingEntry?.id;
+    if (!libId) {
+      const created = await upsertMutation.mutateAsync({
+        userId: activeUserId,
+        titleId: title.id,
+        status: 'active',
+      });
+      libId = created.id;
+    }
+    chapterMutation.mutate({
+      libraryId: libId,
+      userId: activeUserId,
+      chapter: newCh,
+    });
+  };
+
+  const handleSetCustomChapter = async (val: number) => {
+    setLocalChapter(val);
+
+    let libId = existingEntry?.id;
+    if (!libId) {
+      const created = await upsertMutation.mutateAsync({
+        userId: activeUserId,
+        titleId: title.id,
+        status: 'active',
+      });
+      libId = created.id;
+    }
+    chapterMutation.mutate({
+      libraryId: libId,
+      userId: activeUserId,
+      chapter: val,
+    });
+  };
+
+  const handleToggleMovieComplete = () => {
+    const target = currentStatus === 'completed' ? 'planned' : 'completed';
+    setLocalStatus(target);
+    upsertMutation.mutate({
+      userId: activeUserId,
+      titleId: title.id,
+      status: target,
+    });
   };
 
   return (
@@ -128,7 +266,6 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
           ) : (
             <div className="w-full h-full bg-gradient-to-r from-surface to-surface-elevated" />
           )}
-          {/* Gradient Overlay */}
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-transparent" />
         </div>
 
@@ -145,7 +282,6 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
           {/* Details & Actions Header */}
           <div className="flex-1 min-w-0">
-            {/* Category Pill & Year */}
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <span className="px-2.5 py-0.5 rounded-md text-xs font-bold tracking-wider uppercase bg-accent text-background">
                 {title.media_type.replace('_', ' ')}
@@ -186,8 +322,8 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
             <div className="mt-6 flex flex-wrap items-center gap-3">
               {/* Tracking Status Selector */}
               <select
-                value={trackingStatus}
-                onChange={(e) => setTrackingStatus(e.target.value)}
+                value={currentStatus}
+                onChange={(e) => handleStatusChange(e.target.value as TrackingStatus)}
                 data-testid="status-selector"
                 className="px-3.5 py-2 rounded-xl bg-surface-elevated border border-surface-elevated text-text-primary text-xs font-semibold focus:border-accent focus:outline-none"
               >
@@ -219,13 +355,13 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                   <button
                     key={star}
                     type="button"
-                    onClick={() => setSelectedRating(star * 2)}
+                    onClick={() => handleRatingChange(star * 2)}
                     data-testid={`rating-star-${star}`}
                     className="p-0.5 text-text-muted hover:text-accent transition-colors"
                   >
                     <Star
                       className={`w-4 h-4 ${
-                        selectedRating && selectedRating >= star * 2
+                        currentRating && currentRating >= star * 2
                           ? 'text-accent fill-accent'
                           : ''
                       }`}
@@ -246,7 +382,6 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         </p>
       </section>
 
-      {/* ADAPTIVE TRACKING MODULE */}
       {/* 1. Episodic Tracking: TV & Anime Series */}
       {isEpisodic && (
         <section
@@ -260,11 +395,21 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                 Episodes & Season Tracker
               </h2>
             </div>
-            {title.total_episodes && (
-              <span className="text-xs font-mono text-text-muted">
-                {title.total_episodes} Total Episodes
-              </span>
-            )}
+            <div className="flex items-center gap-3">
+              {title.total_episodes && (
+                <span className="text-xs font-mono text-text-muted">
+                  {watchedEpisodesList.length} / {title.total_episodes} Watched
+                </span>
+              )}
+              <button
+                onClick={handleBatchMarkSeasonWatched}
+                data-testid="mark-season-watched-btn"
+                className="px-3 py-1 rounded-lg bg-surface-elevated hover:bg-accent hover:text-background border border-surface-elevated text-xs font-semibold text-text-secondary transition-colors flex items-center gap-1.5"
+              >
+                <CheckCheck className="w-3.5 h-3.5" />
+                <span>Mark Season Watched</span>
+              </button>
+            </div>
           </div>
 
           {title.seasons && title.seasons.length > 0 ? (
@@ -289,11 +434,11 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
               {/* Episodes List */}
               <div className="space-y-2">
                 {title.seasons[activeSeasonIndex]?.episodes.map((ep) => {
-                  const isWatched = !!watchedEpisodes[ep.id];
+                  const isWatched = watchedEpisodesList.includes(ep.id);
                   return (
                     <div
                       key={ep.id}
-                      onClick={() => toggleEpisode(ep.id)}
+                      onClick={() => handleToggleEpisode(ep.id)}
                       data-testid={`episode-row-${ep.episode_number}`}
                       className="flex items-center justify-between p-3 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 transition-colors cursor-pointer border border-transparent hover:border-surface-elevated"
                     >
@@ -360,33 +505,70 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Chapter Stepper */}
-            <div className="p-4 rounded-xl bg-surface-elevated border border-surface-elevated flex items-center justify-between">
-              <div>
-                <p className="text-xs text-text-secondary font-medium">Chapter Progress</p>
-                <p className="text-2xl font-bold font-mono text-accent mt-1">
-                  Ch. {currentChapter}{' '}
-                  {title.total_chapters && (
-                    <span className="text-sm font-normal text-text-muted">
-                      / {title.total_chapters}
-                    </span>
-                  )}
-                </p>
+            <div className="p-4 rounded-xl bg-surface-elevated border border-surface-elevated flex flex-col justify-between gap-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-text-secondary font-medium">Chapter Progress</p>
+                  <p className="text-2xl font-bold font-mono text-accent mt-1">
+                    Ch. {currentChapter}{' '}
+                    {title.total_chapters && (
+                      <span className="text-sm font-normal text-text-muted">
+                        / {title.total_chapters}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => handleStepChapter(-1)}
+                    data-testid="chapter-decrement"
+                    className="p-2 rounded-lg bg-surface hover:bg-surface-elevated border border-surface text-text-primary"
+                  >
+                    <Minus className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleStepChapter(1)}
+                    data-testid="chapter-increment"
+                    className="px-3 py-2 rounded-lg bg-accent hover:bg-accent-hover text-background font-bold text-sm flex items-center gap-1 shadow"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+1 Ch</span>
+                  </button>
+                  <button
+                    onClick={() => handleStepChapter(0.5)}
+                    data-testid="fractional-step-half"
+                    className="px-2 py-2 rounded-lg bg-surface hover:bg-surface-elevated border border-surface font-mono text-xs text-text-secondary hover:text-text-primary"
+                  >
+                    +0.5
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+
+              {/* Direct fractional chapter input (e.g. 10.5 or 12.5) */}
+              <div className="flex items-center gap-2 pt-2 border-t border-surface">
+                <span className="text-[11px] text-text-muted">Set exact chapter:</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  placeholder="e.g. 12.5"
+                  value={fractionalInput}
+                  onChange={(e) => setFractionalInput(e.target.value)}
+                  data-testid="fractional-chapter-input"
+                  className="w-24 px-2 py-1 bg-surface border border-surface rounded text-xs text-text-primary font-mono focus:border-accent focus:outline-none"
+                />
                 <button
-                  onClick={() => setCurrentChapter(Math.max(0, currentChapter - 1))}
-                  data-testid="chapter-decrement"
-                  className="p-2 rounded-lg bg-surface hover:bg-surface-elevated border border-surface text-text-primary"
+                  type="button"
+                  onClick={() => {
+                    const parsed = parseFloat(fractionalInput);
+                    if (!isNaN(parsed) && parsed >= 0) {
+                      handleSetCustomChapter(parsed);
+                      setFractionalInput('');
+                    }
+                  }}
+                  data-testid="fractional-chapter-submit"
+                  className="px-2 py-1 bg-accent/20 hover:bg-accent text-accent hover:text-background font-bold text-[11px] rounded transition-colors"
                 >
-                  <Minus className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setCurrentChapter(currentChapter + 1)}
-                  data-testid="chapter-increment"
-                  className="px-3 py-2 rounded-lg bg-accent hover:bg-accent-hover text-background font-bold text-sm flex items-center gap-1 shadow"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>+1 Ch</span>
+                  Set
                 </button>
               </div>
             </div>
@@ -406,13 +588,19 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setCurrentVolume(Math.max(0, currentVolume - 1))}
+                  onClick={() => {
+                    const newVol = Math.max(0, currentVolume - 1);
+                    setLocalVolume(newVol);
+                  }}
                   className="p-2 rounded-lg bg-surface hover:bg-surface-elevated border border-surface text-text-primary"
                 >
                   <Minus className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => setCurrentVolume(currentVolume + 1)}
+                  onClick={() => {
+                    const newVol = currentVolume + 1;
+                    setLocalVolume(newVol);
+                  }}
                   className="px-3 py-2 rounded-lg bg-surface hover:bg-surface-elevated border border-surface text-text-primary font-bold text-sm flex items-center gap-1"
                 >
                   <Plus className="w-4 h-4" />
@@ -442,15 +630,15 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
             </div>
           </div>
           <button
-            onClick={() => setTrackingStatus(trackingStatus === 'completed' ? 'planned' : 'completed')}
+            onClick={handleToggleMovieComplete}
             data-testid="movie-complete-toggle"
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow ${
-              trackingStatus === 'completed'
+              currentStatus === 'completed'
                 ? 'bg-status-completed text-background'
                 : 'bg-accent text-background hover:bg-accent-hover'
             }`}
           >
-            {trackingStatus === 'completed' ? 'Watched ✓' : 'Mark Watched'}
+            {currentStatus === 'completed' ? 'Watched ✓' : 'Mark Watched'}
           </button>
         </section>
       )}

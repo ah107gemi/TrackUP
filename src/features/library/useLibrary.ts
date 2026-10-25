@@ -1,0 +1,140 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  fetchUserLibrary,
+  upsertLibraryItem,
+  logEpisodeProgress,
+  logReadingProgress,
+  type UserLibraryItem,
+} from './libraryService';
+import type { TrackingStatus } from '../../types/database.types';
+
+export function useUserLibrary(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['library', userId],
+    queryFn: () => (userId ? fetchUserLibrary(userId) : Promise.resolve([])),
+    enabled: !!userId,
+  });
+}
+
+export function useUpsertLibrary() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: {
+      userId: string;
+      titleId: string;
+      status?: TrackingStatus;
+      rating?: number | null;
+      isPrivate?: boolean;
+      notes?: string | null;
+    }) => upsertLibraryItem(params),
+    onMutate: async (newEntry) => {
+      await queryClient.cancelQueries({ queryKey: ['library', newEntry.userId] });
+      const previous = queryClient.getQueryData<UserLibraryItem[]>(['library', newEntry.userId]);
+
+      if (previous) {
+        const optimistic = previous.map((item) =>
+          item.title_id === newEntry.titleId
+            ? { ...item, status: newEntry.status || item.status, rating: newEntry.rating !== undefined ? newEntry.rating : item.rating }
+            : item
+        );
+        queryClient.setQueryData(['library', newEntry.userId], optimistic);
+      }
+
+      return { previous };
+    },
+    onError: (_err, newEntry, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['library', newEntry.userId], context.previous);
+      }
+    },
+    onSettled: (_data, _error, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library', variables.userId] });
+    },
+  });
+}
+
+export function useIncrementEpisode() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: {
+      libraryId: string;
+      userId: string;
+      episodeId: string;
+      watched: boolean;
+    }) => logEpisodeProgress(params),
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: ['library', variables.userId] });
+      const previous = queryClient.getQueryData<UserLibraryItem[]>(['library', variables.userId]);
+
+      if (previous) {
+        const optimistic = previous.map((item) => {
+          if (item.id === variables.libraryId) {
+            const watched = variables.watched
+              ? [...new Set([...item.episodes_watched, variables.episodeId])]
+              : item.episodes_watched.filter((id) => id !== variables.episodeId);
+            return {
+              ...item,
+              episodes_watched: watched,
+              status: item.status === 'planned' ? ('active' as TrackingStatus) : item.status,
+            };
+          }
+          return item;
+        });
+        queryClient.setQueryData(['library', variables.userId], optimistic);
+      }
+
+      return { previous };
+    },
+    onError: (_err, variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['library', variables.userId], context.previous);
+      }
+    },
+    onSettled: (_data, _error, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library', variables.userId] });
+    },
+  });
+}
+
+export function useIncrementChapter() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: {
+      libraryId: string;
+      userId: string;
+      chapter: number;
+      volume?: number;
+    }) => logReadingProgress(params),
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: ['library', variables.userId] });
+      const previous = queryClient.getQueryData<UserLibraryItem[]>(['library', variables.userId]);
+
+      if (previous) {
+        const optimistic = previous.map((item) =>
+          item.id === variables.libraryId
+            ? {
+                ...item,
+                last_chapter_read: variables.chapter,
+                last_volume_read: variables.volume ?? item.last_volume_read,
+                status: item.status === 'planned' ? ('active' as TrackingStatus) : item.status,
+              }
+            : item
+        );
+        queryClient.setQueryData(['library', variables.userId], optimistic);
+      }
+
+      return { previous };
+    },
+    onError: (_err, variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['library', variables.userId], context.previous);
+      }
+    },
+    onSettled: (_data, _error, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library', variables.userId] });
+    },
+  });
+}
