@@ -12,6 +12,7 @@ import { LibraryView } from '../../features/library/LibraryView';
 import { DashboardStats } from '../../features/dashboard/DashboardStats';
 import { HistoryTimeline } from '../../features/history/HistoryTimeline';
 import { ImportExportView } from '../../features/import-export/ImportExportView';
+import { SocialFeedView } from '../../features/social/SocialFeedView';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../features/auth/AuthContext';
 import {
@@ -222,6 +223,14 @@ export const AppShell: React.FC = () => {
                 <div data-testid="import-view" className="max-w-6xl mx-auto space-y-4">
                   <AuthGuard fallbackTitle="Sign In to Import or Export Libraries" fallbackDescription="Letterboxd, IMDb, Trakt, and MAL import pipeline.">
                     <ImportExportView />
+                  </AuthGuard>
+                </div>
+              )}
+
+              {activeTab === 'social' && (
+                <div data-testid="social-view" className="max-w-6xl mx-auto space-y-4">
+                  <AuthGuard fallbackTitle="Sign In to Join the Community" fallbackDescription="Follow friends, share tracking activity, and compare ratings.">
+                    <SocialFeedView onSelectTitle={handleSelectTitle} />
                   </AuthGuard>
                 </div>
               )}

@@ -44,6 +44,7 @@ import {
   isTitleFavorite,
   toggleFavorite,
 } from '../favorites/favoritesService';
+import { RatingComparisonWidget } from '../social/RatingComparisonWidget';
 
 interface TitleDetailPageProps {
   titleId: string;
@@ -440,6 +441,13 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Friend Rating Comparison Widget */}
+      <RatingComparisonWidget
+        currentUserId={activeUserId}
+        titleId={title.id}
+        currentRating={currentRating}
+      />
 
       {/* Synopsis Section */}
       <section className="bg-surface rounded-2xl p-6 border border-surface-elevated">

@@ -6,7 +6,8 @@ export type NavigationTab =
   | 'watch'
   | 'read'
   | 'history'
-  | 'import';
+  | 'import'
+  | 'social';
 
 export type LibraryViewMode = 'grid' | 'compact' | 'list';
 

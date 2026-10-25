@@ -6,6 +6,7 @@ import {
   BookOpen,
   BarChart3,
   UploadCloud,
+  Users,
   ChevronLeft,
   ChevronRight,
   User as UserIcon,
@@ -28,6 +29,7 @@ const navItems: NavItem[] = [
   { id: 'read', label: 'Reading Library', icon: BookOpen },
   { id: 'history', label: 'History & Stats', icon: BarChart3 },
   { id: 'import', label: 'Import / Export', icon: UploadCloud },
+  { id: 'social', label: 'Community Feed', icon: Users },
 ];
 
 export const DesktopSidebar: React.FC = () => {
