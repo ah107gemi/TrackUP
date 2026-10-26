@@ -45,6 +45,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     title: 'Inception',
     original_title: 'Inception',
     release_year: 2010,
+    release_date: '2010-07-16',
     synopsis:
       'Cobb, a skilled thief who commits corporate espionage by infiltrating the subconscious of his targets, is offered a chance to regain his old life as payment for a task considered to be impossible: "inception", the implantation of another person\'s idea into a target\'s subconscious.',
     poster_url: 'https://image.tmdb.org/t/p/w342/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg',
@@ -69,6 +70,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     title: 'Breaking Bad',
     original_title: 'Breaking Bad',
     release_year: 2008,
+    release_date: '2008-01-20',
     synopsis:
       'Walter White, a New Mexico chemistry teacher, is diagnosed with Stage III cancer and given a prognosis of two years left to live. He chooses to enter the dangerous world of drugs and crime in order to secure his family\'s financial future.',
     poster_url: 'https://image.tmdb.org/t/p/w342/ggFHVNu6YYI5L9pCfOacjizRGt.jpg',
@@ -171,6 +173,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     title: 'Attack on Titan',
     original_title: '進撃の巨人',
     release_year: 2013,
+    release_date: '2013-04-07',
     synopsis:
       'Several hundred years ago, humans were nearly exterminated by titans. A small percentage of humanity survived by barricading themselves in a city protected by extremely high walls. Today, a young boy named Eren and his sister Mikasa witness the destruction of that peace.',
     poster_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx16498-buvcRTBx4NSm.jpg',
@@ -241,10 +244,10 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
         episodes: Array.from({ length: 30 }, (_, i) => ({
           id: `aot_e4_${i + 1}`,
           episode_number: i + 1,
-          name: i === 0 ? 'The Other Side of the Sea' : i === 4 ? 'Declaration of War' : `Episode ${i + 1}`,
+          name: i === 0 ? 'The Other Side of the Sea' : i === 4 ? 'Declaration of War' : i === 29 ? 'The Final Chapter: Special' : `Episode ${i + 1}`,
           overview: 'The Rumbling begins as the fate of humanity hangs in the balance.',
           runtime_minutes: 24,
-          air_date: '2020-12-07',
+          air_date: i === 29 ? '2026-11-05' : '2020-12-07',
         })),
       },
     ],
@@ -257,6 +260,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     title: 'Spirited Away',
     original_title: '千と千尋の神隠し',
     release_year: 2001,
+    release_date: '2001-07-20',
     synopsis:
       'A young girl, Chihiro, becomes trapped in a strange new world of spirits. When her parents undergo a mysterious transformation, she must call upon the courage she never knew she had to free herself and her family.',
     poster_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx199-sWefXJvXkDOb.jpg',
@@ -276,6 +280,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     title: 'Attack on Titan (Manga)',
     original_title: '進撃の巨人',
     release_year: 2009,
+    release_date: '2009-09-09',
     synopsis:
       'The original manga masterpiece created by Hajime Isayama. Serialized in Bessatsu Shonen Magazine from 2009 to 2021 spanning 34 volumes and 139 chapters.',
     poster_url: 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx30013-BeslEMqiPhlk.jpg',
@@ -299,6 +304,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     title: 'Solo Leveling',
     original_title: '나 혼자만 레벨업',
     release_year: 2018,
+    release_date: '2018-03-04',
     synopsis:
       'In a world where hunters must battle deadly monsters to protect humanity, Sung Jinwoo, known as "the weakest hunter of all mankind", finds himself in a fatal dual dungeon. He accepts a mysterious quest that turns him into a "player" with an unprecedented ability to level up infinitely.',
     poster_url: 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673Vt5ZSuz3.jpg',

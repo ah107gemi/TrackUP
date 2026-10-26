@@ -31,6 +31,11 @@ test.describe('TrackUp Phase 2: Unified Search & Adaptive Title Detail Pages', (
     await completeBtn.click();
     await expect(completeBtn).toContainText('Watched ✓');
 
+    // Verify Movie release date displays cleanly
+    const releaseBadge = page.locator('[data-testid="detail-release-date"]');
+    await expect(releaseBadge).toBeVisible();
+    await expect(releaseBadge).toContainText('Jul 16, 2010');
+
     // Verify TMDB attribution footer
     await expect(page.locator('[data-testid="tmdb-attribution"]')).toBeVisible();
   });
@@ -66,6 +71,12 @@ test.describe('TrackUp Phase 2: Unified Search & Adaptive Title Detail Pages', (
     // Verify episode checkmark toggle
     const episodeRow = page.locator('[data-testid="episode-row-1"]');
     await expect(episodeRow).toBeVisible();
+
+    // Verify episode air date is displayed
+    const episodeAirDate = page.locator('[data-testid="episode-air-date-1"]');
+    await expect(episodeAirDate).toBeVisible();
+    await expect(episodeAirDate).toContainText('Jan 20, 2008');
+
     await episodeRow.click();
   });
 
@@ -103,5 +114,64 @@ test.describe('TrackUp Phase 2: Unified Search & Adaptive Title Detail Pages', (
     await expect(adaptationsSection).toBeVisible();
     await expect(adaptationsSection).toContainText('Linked Adaptations & Related Works');
     await expect(adaptationsSection).toContainText(/adaptation/i);
+  });
+
+  test('verifies future episode countdowns and dynamic top bar header scroll title swap', async ({ page }) => {
+    await page.goto('/');
+
+    const isMobile = page.viewportSize() ? page.viewportSize()!.width <= 768 : false;
+
+    // Check initial header greeting
+    if (!isMobile) {
+      const greeting = page.locator('[data-testid="header-greeting"]');
+      await expect(greeting).toBeVisible();
+      await expect(greeting).toContainText(/Hello/i);
+    }
+
+    // Open Omnisearch and search for Attack on Titan anime
+    await page.locator('[data-testid="omnisearch-trigger"]').click();
+    const searchInput = page.locator('[data-testid="omnisearch-input"]');
+    await searchInput.fill('Titan');
+
+    // Click Attack on Titan anime result
+    const aotResult = page.locator('[data-testid="omnisearch-result-anime_aot_1429"]');
+    await expect(aotResult).toBeVisible();
+    await aotResult.click();
+
+    // Verify Title Detail Page
+    await expect(page.locator('[data-testid="title-detail-page"]')).toBeVisible();
+    await expect(page.locator('h1')).toContainText('Attack on Titan');
+
+    // Select Season 4 tab
+    const season4Tab = page.locator('[data-testid="season-tab-4"]');
+    await expect(season4Tab).toBeVisible();
+    await season4Tab.click();
+
+    // Verify unaired future episode 30 has countdown badge
+    const countdownPill = page.locator('[data-testid="episode-countdown-30"]');
+    await expect(countdownPill).toBeVisible();
+    await expect(countdownPill).toContainText(/days|hours|today/i);
+
+    // Test dynamic header swap on scroll
+    await page.locator('main').evaluate((el) => {
+      el.scrollTop = 500;
+      el.dispatchEvent(new Event('scroll'));
+    });
+
+    if (isMobile) {
+      await expect(page.locator('[data-testid="mobile-scrolled-header-title"]')).toContainText('Attack on Titan');
+    } else {
+      await expect(page.locator('[data-testid="header-scrolled-title"]')).toContainText('Attack on Titan');
+    }
+
+    // Scroll back to top and verify greeting reverts
+    await page.locator('main').evaluate((el) => {
+      el.scrollTop = 0;
+      el.dispatchEvent(new Event('scroll'));
+    });
+
+    if (!isMobile) {
+      await expect(page.locator('[data-testid="header-greeting"]')).toBeVisible();
+    }
   });
 });

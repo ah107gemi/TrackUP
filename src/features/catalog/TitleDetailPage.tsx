@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   ArrowLeft,
   Heart,
@@ -12,6 +12,7 @@ import {
   Minus,
   CheckCheck,
   MessageSquare,
+  Clock,
 } from 'lucide-react';
 import {
   getCatalogTitleById,
@@ -45,6 +46,8 @@ import {
   toggleFavorite,
 } from '../favorites/favoritesService';
 import { RatingComparisonWidget } from '../social/RatingComparisonWidget';
+import { useUIStore } from '../../stores/uiStore';
+import { formatReleaseDate, getAirDateCountdown } from '../../lib/dateUtils';
 
 interface TitleDetailPageProps {
   titleId: string;
@@ -85,6 +88,45 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   const [reviews, setReviews] = useState<Review[]>([]);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [editingReview, setEditingReview] = useState<Review | null>(null);
+
+  const heroRef = useRef<HTMLDivElement>(null);
+  const { setScrolledHeaderTitle } = useUIStore();
+
+  // Scroll listener: dynamically replaces top bar header greeting with title when scrolling past hero
+  useEffect(() => {
+    const mainEl = document.querySelector('main');
+    if (!title) return;
+
+    const handleScroll = () => {
+      const mainScroll = mainEl ? mainEl.scrollTop : window.scrollY;
+      if (mainScroll > 260) {
+        setScrolledHeaderTitle(title.title);
+        return;
+      }
+      if (heroRef.current) {
+        const heroRect = heroRef.current.getBoundingClientRect();
+        if (heroRect.bottom < 120) {
+          setScrolledHeaderTitle(title.title);
+          return;
+        }
+      }
+      setScrolledHeaderTitle(null);
+    };
+
+    if (mainEl) {
+      mainEl.addEventListener('scroll', handleScroll, { passive: true });
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+
+    return () => {
+      if (mainEl) {
+        mainEl.removeEventListener('scroll', handleScroll);
+      }
+      window.removeEventListener('scroll', handleScroll);
+      setScrolledHeaderTitle(null);
+    };
+  }, [title, setScrolledHeaderTitle]);
 
   // Find user's existing tracked record for this title
   const existingEntry = userLibrary.find((item) => item.title_id === titleId);
@@ -347,7 +389,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         {/* Content Floating over Backdrop */}
         <div className="relative -mt-36 md:-mt-48 px-4 sm:px-6 md:px-10 pb-8 flex flex-col md:flex-row gap-6 md:gap-8 items-start">
           {/* Poster Card */}
-          <div className="w-36 md:w-56 shrink-0 rounded-2xl overflow-hidden border-2 border-surface-elevated shadow-2xl bg-surface">
+          <div ref={heroRef} className="w-36 md:w-56 shrink-0 rounded-2xl overflow-hidden border-2 border-surface-elevated shadow-2xl bg-surface">
             <img
               src={title.poster_url || '/assets/trackup-logo.jpg'}
               alt={title.title}
@@ -365,12 +407,33 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
               <span className="px-2.5 py-0.5 rounded-md text-xs font-bold tracking-wider uppercase bg-accent text-background">
                 {title.media_type.replace('_', ' ')}
               </span>
-              {title.release_year && (
-                <span className="text-xs font-mono text-text-muted flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5" />
-                  {title.release_year}
+              {title.release_date ? (
+                <span
+                  data-testid="detail-release-date"
+                  className="text-xs font-mono text-text-muted flex items-center gap-1.5 bg-surface-elevated/70 px-2.5 py-0.5 rounded-md border border-surface-elevated"
+                >
+                  <Calendar className="w-3.5 h-3.5 text-accent" />
+                  <span>
+                    {title.media_type === 'movie' || title.media_type === 'anime_film'
+                      ? 'Theatrical Release:'
+                      : 'Premiere Date:'}{' '}
+                    <strong className="text-text-primary font-semibold">
+                      {formatReleaseDate(title.release_date)}
+                    </strong>
+                  </span>
                 </span>
-              )}
+              ) : title.release_year ? (
+                <span
+                  data-testid="detail-release-date"
+                  className="text-xs font-mono text-text-muted flex items-center gap-1.5 bg-surface-elevated/70 px-2.5 py-0.5 rounded-md border border-surface-elevated"
+                >
+                  <Calendar className="w-3.5 h-3.5 text-accent" />
+                  <span>
+                    Release:{' '}
+                    <strong className="text-text-primary font-semibold">{title.release_year}</strong>
+                  </span>
+                </span>
+              ) : null}
               {title.origin_country && (
                 <span className="text-xs font-medium text-text-muted">
                   • {title.origin_country}
@@ -567,17 +630,20 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
               >
                 {title.seasons[activeSeasonIndex]?.episodes.map((ep) => {
                   const isWatched = watchedEpisodesList.includes(ep.id);
+                  const countdown = getAirDateCountdown(ep.air_date);
+                  const formattedAirDate = formatReleaseDate(ep.air_date);
+
                   return (
                     <div
                       key={ep.id}
                       onClick={() => handleToggleEpisode(ep.id)}
                       data-testid={`episode-row-${ep.episode_number}`}
-                      className="flex items-center justify-between p-3 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 transition-colors cursor-pointer border border-transparent hover:border-surface-elevated"
+                      className="flex items-center justify-between p-3 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 transition-colors cursor-pointer border border-transparent hover:border-surface-elevated gap-3"
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
                         <button
                           type="button"
-                          className={`w-6 h-6 rounded-md border flex items-center justify-center transition-colors ${
+                          className={`w-6 h-6 rounded-md border flex items-center justify-center transition-colors shrink-0 ${
                             isWatched
                               ? 'bg-accent border-accent text-background'
                               : 'border-text-muted/40 hover:border-accent'
@@ -585,23 +651,43 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                         >
                           {isWatched && <CheckCircle2 className="w-4 h-4 fill-background text-accent" />}
                         </button>
-                        <div>
-                          <p className="text-sm font-medium text-text-primary">
-                            <span className="font-mono text-accent mr-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-text-primary truncate">
+                            <span className="font-mono text-accent mr-2 font-bold">
                               E{ep.episode_number}
                             </span>
                             {ep.name}
                           </p>
+                          {formattedAirDate && (
+                            <p className="text-[11px] text-text-muted flex items-center gap-1 mt-0.5">
+                              <Calendar className="w-3 h-3 text-text-muted/70 shrink-0" />
+                              <span data-testid={`episode-air-date-${ep.episode_number}`}>
+                                {formattedAirDate}
+                              </span>
+                            </p>
+                          )}
                           {ep.overview && (
-                            <p className="text-xs text-text-muted line-clamp-1">{ep.overview}</p>
+                            <p className="text-xs text-text-muted line-clamp-1 mt-0.5">{ep.overview}</p>
                           )}
                         </div>
                       </div>
-                      {ep.runtime_minutes && (
-                        <span className="text-xs font-mono text-text-muted">
-                          {ep.runtime_minutes}m
-                        </span>
-                      )}
+
+                      {/* Right side: Countdown for unaired future episodes, or runtime for released */}
+                      <div className="shrink-0 flex items-center gap-2">
+                        {countdown ? (
+                          <span
+                            data-testid={`episode-countdown-${ep.episode_number}`}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-accent/15 text-accent border border-accent/30 shadow-sm font-mono"
+                          >
+                            <Clock className="w-3 h-3" />
+                            <span>{countdown}</span>
+                          </span>
+                        ) : ep.runtime_minutes ? (
+                          <span className="text-xs font-mono text-text-muted">
+                            {ep.runtime_minutes}m
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   );
                 })}

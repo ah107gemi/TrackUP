@@ -45,7 +45,7 @@ export interface AniListMediaPayload {
   };
   countryOfOrigin?: string | null; // 'JP', 'KR', 'CN'
   description?: string | null;
-  startDate?: { year?: number | null };
+  startDate?: { year?: number | null; month?: number | null; day?: number | null };
   coverImage?: { large?: string | null; medium?: string | null; extraLarge?: string | null };
   bannerImage?: string | null;
   genres?: string[];
@@ -83,6 +83,7 @@ export function normalizeTmdbMovie(payload: TmdbMoviePayload): NormalizedCatalog
     title: payload.title,
     original_title: payload.original_title || null,
     release_year: releaseYear && !isNaN(releaseYear) ? releaseYear : null,
+    release_date: payload.release_date || null,
     synopsis: payload.overview || null,
     poster_url: poster,
     backdrop_url: backdrop,
@@ -125,6 +126,7 @@ export function normalizeTmdbTv(payload: TmdbTvPayload): NormalizedCatalogItem {
     title: payload.name,
     original_title: payload.original_name || null,
     release_year: releaseYear && !isNaN(releaseYear) ? releaseYear : null,
+    release_date: payload.first_air_date || null,
     synopsis: payload.overview || null,
     poster_url: poster,
     backdrop_url: backdrop,
@@ -171,12 +173,17 @@ export function normalizeAniListMedia(payload: AniListMediaPayload): NormalizedC
     ? payload.description.replace(/<[^>]*>/g, '').trim()
     : null;
 
+  const releaseDateStr = payload.startDate?.year
+    ? `${payload.startDate.year}-${String(payload.startDate.month || 1).padStart(2, '0')}-${String(payload.startDate.day || 1).padStart(2, '0')}`
+    : null;
+
   return {
     id: `anilist_${payload.id}`,
     media_type: mediaType,
     title,
     original_title: originalTitle,
     release_year: payload.startDate?.year || null,
+    release_date: releaseDateStr,
     synopsis: cleanDescription,
     poster_url: poster,
     backdrop_url: backdrop,

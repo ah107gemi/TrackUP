@@ -25,6 +25,8 @@ query ($search: String, $type: MediaType, $format_in: [MediaFormat], $format: Me
       }
       startDate {
         year
+        month
+        day
       }
       description(asHtml: false)
       coverImage {
@@ -71,11 +73,13 @@ query ($id: Int) {
     }
     startDate {
       year
+      month
+      day
     }
     description(asHtml: false)
     coverImage {
-      extraLarge
       large
+      medium
     }
     bannerImage
     genres
@@ -83,6 +87,18 @@ query ($id: Int) {
     chapters
     volumes
     status
+    nextAiringEpisode {
+      episode
+      airingAt
+      timeUntilAiring
+    }
+    airingSchedule(notYetAired: true, perPage: 25) {
+      nodes {
+        episode
+        airingAt
+        timeUntilAiring
+      }
+    }
     characters(perPage: 8, sort: [ROLE, RELEVANCE]) {
       nodes {
         id
@@ -290,14 +306,32 @@ export async function fetchAniListMediaById(
         name: 'Season 1',
         overview: normalized.synopsis ?? null,
         episode_count: s1EpCount,
-        episodes: Array.from({ length: s1EpCount }, (_, i) => ({
-          id: `anilist_${id}_e${i + 1}`,
-          episode_number: i + 1,
-          name: `Episode ${i + 1}`,
-          overview: null,
-          runtime_minutes: 24,
-          air_date: null,
-        })),
+        episodes: Array.from({ length: s1EpCount }, (_, i) => {
+          const epNum = i + 1;
+          const scheduleNode =
+            media.airingSchedule?.nodes?.find((n: { episode: number; airingAt: number }) => n.episode === epNum) ||
+            (media.nextAiringEpisode?.episode === epNum ? media.nextAiringEpisode : null);
+
+          let epAirDate: string | null = null;
+          if (scheduleNode?.airingAt) {
+            epAirDate = new Date(scheduleNode.airingAt * 1000).toISOString().split('T')[0];
+          } else if (media.startDate?.year) {
+            const baseYear = media.startDate.year;
+            const baseMonth = (media.startDate.month || 1) - 1;
+            const baseDay = media.startDate.day || 1;
+            const d = new Date(baseYear, baseMonth, baseDay + i * 7);
+            epAirDate = d.toISOString().split('T')[0];
+          }
+
+          return {
+            id: `anilist_${id}_e${epNum}`,
+            episode_number: epNum,
+            name: `Episode ${epNum}`,
+            overview: null,
+            runtime_minutes: 24,
+            air_date: epAirDate,
+          };
+        }),
       });
 
       // Subsequent franchise seasons from SEQUEL relations

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { NormalizedCatalogItem } from '../../lib/validators';
 import type { MediaType } from '../../types/database.types';
+import { formatReleaseDate } from '../../lib/dateUtils';
 
 interface MediaPosterCardProps {
   item: NormalizedCatalogItem;
@@ -74,11 +75,14 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
           </span>
         </div>
 
-        {/* Release Year Badge */}
-        {item.release_year && (
+        {/* Release Date/Year Badge */}
+        {(item.release_date || item.release_year) && (
           <div className="absolute top-2.5 right-2.5 z-20">
-            <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-medium bg-background/80 text-text-secondary backdrop-blur-md border border-white/10">
-              {item.release_year}
+            <span
+              data-testid={`card-release-date-${item.id}`}
+              className="px-2 py-0.5 rounded-md text-[10px] font-mono font-medium bg-background/80 text-text-secondary backdrop-blur-md border border-white/10"
+            >
+              {formatReleaseDate(item.release_date) || item.release_year}
             </span>
           </div>
         )}

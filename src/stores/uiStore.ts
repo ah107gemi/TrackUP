@@ -30,6 +30,8 @@ interface UIState {
   setSelectedTitleId: (id: string | null) => void;
   libraryViewMode: LibraryViewMode;
   setLibraryViewMode: (mode: LibraryViewMode) => void;
+  scrolledHeaderTitle: string | null;
+  setScrolledHeaderTitle: (title: string | null) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -44,9 +46,11 @@ export const useUIStore = create<UIState>((set) => ({
   profileModalOpen: false,
   setProfileModalOpen: (open) => set({ profileModalOpen: open }),
   activeTab: 'dashboard',
-  setActiveTab: (tab) => set({ activeTab: tab, selectedTitleId: null }),
+  setActiveTab: (tab) => set({ activeTab: tab, selectedTitleId: null, scrolledHeaderTitle: null }),
   selectedTitleId: null,
-  setSelectedTitleId: (id) => set({ selectedTitleId: id }),
+  setSelectedTitleId: (id) => set({ selectedTitleId: id, scrolledHeaderTitle: null }),
   libraryViewMode: 'grid',
   setLibraryViewMode: (mode) => set({ libraryViewMode: mode }),
+  scrolledHeaderTitle: null,
+  setScrolledHeaderTitle: (title) => set({ scrolledHeaderTitle: title }),
 }));

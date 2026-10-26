@@ -155,21 +155,31 @@ export async function fetchTmdbMediaById(
         episode_count: number;
       }[])
         .filter((s) => s.season_number > 0)
-        .map((s) => ({
-          id: `tmdb_season_${s.id}`,
-          season_number: s.season_number,
-          name: s.name || `Season ${s.season_number}`,
-          overview: s.overview || null,
-          episode_count: s.episode_count || 0,
-          episodes: Array.from({ length: Math.min(s.episode_count || 0, 24) }, (_, idx) => ({
-            id: `tmdb_ep_${s.season_number}_${idx + 1}`,
-            episode_number: idx + 1,
-            name: `Episode ${idx + 1}`,
-            overview: null,
-            runtime_minutes: 45,
-            air_date: null,
-          })),
-        }));
+        .map((s) => {
+          const baseDate = data.first_air_date ? new Date(data.first_air_date) : null;
+          return {
+            id: `tmdb_season_${s.id}`,
+            season_number: s.season_number,
+            name: s.name || `Season ${s.season_number}`,
+            overview: s.overview || null,
+            episode_count: s.episode_count || 0,
+            episodes: Array.from({ length: Math.min(s.episode_count || 0, 24) }, (_, idx) => {
+              let epAirDate: string | null = null;
+              if (baseDate && !isNaN(baseDate.getTime())) {
+                const epD = new Date(baseDate.getTime() + (s.season_number - 1) * 365 * 86400000 + idx * 7 * 86400000);
+                epAirDate = epD.toISOString().split('T')[0];
+              }
+              return {
+                id: `tmdb_ep_${s.season_number}_${idx + 1}`,
+                episode_number: idx + 1,
+                name: `Episode ${idx + 1}`,
+                overview: null,
+                runtime_minutes: 45,
+                air_date: epAirDate,
+              };
+            }),
+          };
+        });
     }
 
     return {

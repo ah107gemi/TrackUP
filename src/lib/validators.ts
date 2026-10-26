@@ -52,6 +52,7 @@ export const NormalizedCatalogItemSchema = z.object({
   title: z.string().min(1),
   original_title: z.string().nullable().optional(),
   release_year: z.number().int().nullable().optional(),
+  release_date: z.string().nullable().optional(),
   synopsis: z.string().nullable().optional(),
   poster_url: z.string().nullable().optional(),
   backdrop_url: z.string().nullable().optional(),

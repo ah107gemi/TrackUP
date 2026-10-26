@@ -6,50 +6,71 @@ import { MobileNavDrawer } from './MobileNavDrawer';
 
 export const TopUtilityBar: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { setOmnisearchOpen, setAuthModalOpen, setProfileModalOpen } = useUIStore();
+  const {
+    setOmnisearchOpen,
+    setAuthModalOpen,
+    setProfileModalOpen,
+    scrolledHeaderTitle,
+  } = useUIStore();
   const { user, profile, signOut } = useAuth();
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
-  };
-
-  const name = profile?.display_name || user?.username || 'Tracker';
+  const username = profile?.display_name || user?.username;
 
   return (
     <>
       <header className="h-16 px-4 md:px-8 border-b border-surface-elevated bg-surface/80 backdrop-blur-md flex items-center justify-between sticky top-0 z-20">
-        {/* Left: Mobile Hamburger & Logo / Desktop Greeting */}
-        <div className="flex items-center gap-2 md:gap-3">
+        {/* Left: Mobile Hamburger & Logo / Desktop Greeting or Scrolled Title */}
+        <div className="flex items-center gap-2 md:gap-3 min-w-0">
           {/* Top-left Hamburger Menu for Mobile */}
           <button
             onClick={() => setMobileMenuOpen(true)}
             data-testid="mobile-hamburger-trigger"
             aria-label="Open navigation menu"
-            className="md:hidden p-2 -ml-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-surface-elevated transition-colors"
+            className="md:hidden p-2 -ml-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-surface-elevated transition-colors shrink-0"
           >
             <Menu className="w-5 h-5 text-accent" />
           </button>
 
-          <div className="md:hidden flex items-center gap-2">
+          <div className="md:hidden flex items-center gap-2 min-w-0">
             <img
               src="/assets/trackup-logo.jpg"
               alt="TrackUp Logo"
-              className="w-7 h-7 rounded-lg object-cover"
+              className="w-7 h-7 rounded-lg object-cover shrink-0"
             />
-            <span className="font-bold text-base text-text-primary">
-              Track<span className="text-accent">Up</span>
-            </span>
+            {scrolledHeaderTitle ? (
+              <span
+                data-testid="mobile-scrolled-header-title"
+                className="font-bold text-sm text-accent truncate max-w-[160px]"
+              >
+                {scrolledHeaderTitle}
+              </span>
+            ) : (
+              <span className="font-bold text-base text-text-primary truncate">
+                Track<span className="text-accent">Up</span>
+              </span>
+            )}
           </div>
 
-          <div className="hidden md:block">
-            <p className="text-sm text-text-secondary">
-              {getGreeting()},{' '}
-              <span className="text-text-primary font-semibold">{name}</span> —{' '}
-              <span className="text-accent italic">Ready to track what you love?</span>
-            </p>
+          <div className="hidden md:block min-w-0">
+            {scrolledHeaderTitle ? (
+              <p
+                data-testid="header-scrolled-title"
+                className="text-base font-bold text-accent truncate max-w-lg transition-all"
+              >
+                {scrolledHeaderTitle}
+              </p>
+            ) : (
+              <p data-testid="header-greeting" className="text-sm text-text-secondary truncate">
+                {username ? (
+                  <>
+                    Hello <span className="text-text-primary font-semibold">{username}</span>, Let&apos;s{' '}
+                    <span className="text-accent font-bold">TrackUp</span>
+                  </>
+                ) : (
+                  <span>Hello Tracker</span>
+                )}
+              </p>
+            )}
           </div>
         </div>
 
