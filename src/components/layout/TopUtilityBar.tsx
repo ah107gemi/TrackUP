@@ -1,9 +1,11 @@
-import React from 'react';
-import { Search, User as UserIcon, LogIn, LogOut } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, User as UserIcon, LogIn, LogOut, Menu } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../features/auth/AuthContext';
+import { MobileNavDrawer } from './MobileNavDrawer';
 
 export const TopUtilityBar: React.FC = () => {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { setOmnisearchOpen, setAuthModalOpen, setProfileModalOpen } = useUIStore();
   const { user, profile, signOut } = useAuth();
 
@@ -17,27 +19,39 @@ export const TopUtilityBar: React.FC = () => {
   const name = profile?.display_name || user?.username || 'Tracker';
 
   return (
-    <header className="h-16 px-4 md:px-8 border-b border-surface-elevated bg-surface/80 backdrop-blur-md flex items-center justify-between sticky top-0 z-20">
-      {/* Greeting on desktop / mobile title */}
-      <div className="flex items-center gap-3">
-        <div className="md:hidden flex items-center gap-2">
-          <img
-            src="/assets/trackup-logo.jpg"
-            alt="TrackUp Logo"
-            className="w-7 h-7 rounded-lg object-cover"
-          />
-          <span className="font-bold text-base text-text-primary">
-            Track<span className="text-accent">Up</span>
-          </span>
+    <>
+      <header className="h-16 px-4 md:px-8 border-b border-surface-elevated bg-surface/80 backdrop-blur-md flex items-center justify-between sticky top-0 z-20">
+        {/* Left: Mobile Hamburger & Logo / Desktop Greeting */}
+        <div className="flex items-center gap-2 md:gap-3">
+          {/* Top-left Hamburger Menu for Mobile */}
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            data-testid="mobile-hamburger-trigger"
+            aria-label="Open navigation menu"
+            className="md:hidden p-2 -ml-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-surface-elevated transition-colors"
+          >
+            <Menu className="w-5 h-5 text-accent" />
+          </button>
+
+          <div className="md:hidden flex items-center gap-2">
+            <img
+              src="/assets/trackup-logo.jpg"
+              alt="TrackUp Logo"
+              className="w-7 h-7 rounded-lg object-cover"
+            />
+            <span className="font-bold text-base text-text-primary">
+              Track<span className="text-accent">Up</span>
+            </span>
+          </div>
+
+          <div className="hidden md:block">
+            <p className="text-sm text-text-secondary">
+              {getGreeting()},{' '}
+              <span className="text-text-primary font-semibold">{name}</span> —{' '}
+              <span className="text-accent italic">Ready to track what you love?</span>
+            </p>
+          </div>
         </div>
-        <div className="hidden md:block">
-          <p className="text-sm text-text-secondary">
-            {getGreeting()},{' '}
-            <span className="text-text-primary font-semibold">{name}</span> —{' '}
-            <span className="text-accent italic">Ready to track what you love?</span>
-          </p>
-        </div>
-      </div>
 
       {/* Right Controls: Omnisearch trigger + Auth action */}
       <div className="flex items-center gap-3">
@@ -93,5 +107,12 @@ export const TopUtilityBar: React.FC = () => {
         )}
       </div>
     </header>
+
+    {/* Slide-out Mobile Navigation Drawer */}
+    <MobileNavDrawer
+      isOpen={mobileMenuOpen}
+      onClose={() => setMobileMenuOpen(false)}
+    />
+  </>
   );
 };

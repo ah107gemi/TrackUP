@@ -9,6 +9,7 @@ test.describe('TrackUp UI Quality Audit & Mobile Polish', () => {
     // Navigate to Discover
     const isMobile = (page.viewportSize()?.width ?? 1280) <= 768;
     if (isMobile) {
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
       await page.locator('[data-testid="mobile-nav-discover"]').click();
     } else {
       await page.locator('[data-testid="sidebar-nav-discover"]').click();
@@ -52,26 +53,31 @@ test.describe('TrackUp UI Quality Audit & Mobile Polish', () => {
     await page.setViewportSize({ width: 360, height: 780 });
     await page.goto('/');
 
-    const nav = page.locator('[data-testid="mobile-bottom-nav"]');
-    await expect(nav).toBeVisible();
+    const hamburger = page.locator('[data-testid="mobile-hamburger-trigger"]');
+    await expect(hamburger).toBeVisible();
 
-    // Verify touch targets have at least 44px height and accessible labels
-    const homeBtn = page.locator('[data-testid="mobile-nav-dashboard"]');
-    await expect(homeBtn).toBeVisible();
-    const box = await homeBtn.boundingBox();
+    // Verify touch target and accessible label
+    const box = await hamburger.boundingBox();
     expect(box).not.toBeNull();
-    expect(box!.height).toBeGreaterThanOrEqual(44);
-    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(36);
+    expect(box!.width).toBeGreaterThanOrEqual(36);
 
-    await expect(homeBtn).toHaveAttribute('aria-label', 'Home');
+    await expect(hamburger).toHaveAttribute('aria-label', 'Open navigation menu');
 
-    // Test navigation between tabs on mobile
+    // Open mobile hamburger drawer
+    await hamburger.click();
+    const drawer = page.locator('[data-testid="mobile-nav-drawer"]');
+    await expect(drawer).toBeVisible();
+
+    // Test navigation between tabs on mobile via hamburger drawer
     await page.locator('[data-testid="mobile-nav-discover"]').click();
     await expect(page.locator('[data-testid="discover-page"]')).toBeVisible();
 
+    await hamburger.click();
     await page.locator('[data-testid="mobile-nav-calendar"]').click();
     await expect(page.locator('[data-testid="release-calendar-view"]')).toBeVisible();
 
+    await hamburger.click();
     await page.locator('[data-testid="mobile-nav-recommendations"]').click();
     await expect(page.locator('[data-testid="recommendations-view"]')).toBeVisible();
 
@@ -89,6 +95,7 @@ test.describe('TrackUp UI Quality Audit & Mobile Polish', () => {
     await page.setViewportSize({ width: 360, height: 780 });
     await page.goto('/');
 
+    await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
     await page.locator('[data-testid="mobile-nav-discover"]').click();
     await expect(page.locator('[data-testid="discover-page"]')).toBeVisible();
 

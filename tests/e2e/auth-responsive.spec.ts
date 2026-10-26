@@ -7,13 +7,13 @@ test.describe('TrackUp Phase 1: Responsive Layout & App Shell', () => {
     const isMobile = page.viewportSize() ? page.viewportSize()!.width <= 768 : false;
 
     if (isMobile) {
-      // Mobile: desktop sidebar is hidden, mobile bottom nav is visible
+      // Mobile: desktop sidebar is hidden, mobile hamburger trigger is visible
       await expect(page.locator('[data-testid="desktop-sidebar"]')).toBeHidden();
-      await expect(page.locator('[data-testid="mobile-bottom-nav"]')).toBeVisible();
+      await expect(page.locator('[data-testid="mobile-hamburger-trigger"]')).toBeVisible();
     } else {
-      // Desktop: desktop sidebar is visible, mobile bottom nav is hidden
+      // Desktop: desktop sidebar is visible, mobile hamburger trigger is hidden
       await expect(page.locator('[data-testid="desktop-sidebar"]')).toBeVisible();
-      await expect(page.locator('[data-testid="mobile-bottom-nav"]')).toBeHidden();
+      await expect(page.locator('[data-testid="mobile-hamburger-trigger"]')).toBeHidden();
     }
   });
 
@@ -46,7 +46,8 @@ test.describe('TrackUp Phase 1: Responsive Layout & App Shell', () => {
     const isMobile = page.viewportSize() ? page.viewportSize()!.width <= 768 : false;
 
     if (isMobile) {
-      await page.locator('[data-testid="mobile-bottom-nav"] button:has-text("Watch")').click();
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await page.locator('[data-testid="mobile-nav-watch"]').click();
     } else {
       await page.locator('[data-testid="desktop-sidebar"] button:has-text("Watch Library")').click();
     }
@@ -73,7 +74,8 @@ test.describe('TrackUp Phase 1: Responsive Layout & App Shell', () => {
     if (await authTrigger.isVisible()) {
       await authTrigger.click();
     } else {
-      await page.locator('[data-testid="mobile-bottom-nav"] button:has-text("Sign In")').click();
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await page.locator('[data-testid="mobile-nav-profile"]').click();
     }
 
     await expect(page.locator('[data-testid="auth-modal"]')).toBeVisible();
@@ -105,7 +107,8 @@ test.describe('TrackUp Phase 1: Responsive Layout & App Shell', () => {
       await expect(profileBtn).toBeVisible();
       await profileBtn.click();
     } else {
-      await page.locator('[data-testid="mobile-bottom-nav"] button:has-text("Profile")').click();
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await page.locator('[data-testid="mobile-nav-profile"]').click();
     }
 
     // Profile modal opens
@@ -127,9 +130,10 @@ test.describe('TrackUp Phase 1: Responsive Layout & App Shell', () => {
       await page.locator('[data-testid="signout-button"]').click();
       await expect(page.locator('[data-testid="auth-modal-trigger"]')).toBeVisible();
     } else {
-      await page.locator('[data-testid="mobile-bottom-nav"] button:has-text("Profile")').click();
-      await page.locator('[data-testid="profile-signout-button"]').click();
-      await expect(page.locator('[data-testid="mobile-bottom-nav"] button:has-text("Sign In")')).toBeVisible();
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await page.locator('[data-testid="mobile-drawer-signout"]').click();
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await expect(page.locator('[data-testid="mobile-nav-profile"]')).toContainText('Sign In');
     }
   });
 });

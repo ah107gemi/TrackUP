@@ -64,7 +64,7 @@ describe('Security & Normalization Layer (Phase 2)', () => {
       expect(result.title).toBe('Inception');
       expect(result.release_year).toBe(2010);
       expect(result.runtime_minutes).toBe(148);
-      expect(result.poster_url).toContain('https://image.tmdb.org/t/p/w500/');
+      expect(result.poster_url).toContain('https://image.tmdb.org/t/p/w342/');
     });
 
     it('classifies Japanese animation film as anime_film', () => {

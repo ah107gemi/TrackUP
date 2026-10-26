@@ -236,10 +236,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
                   data-testid={`library-item-${item.id}`}
                   className="group relative flex flex-col bg-surface rounded-2xl overflow-hidden border border-surface-elevated hover:border-accent/40 transition-all duration-200 cursor-pointer shadow-lg hover:-translate-y-1 select-none"
                 >
-                  <div className="relative aspect-[2/3] w-full bg-surface-elevated overflow-hidden">
+                  <div className="relative aspect-[2/3] w-full bg-[#16161D] overflow-hidden">
                     <img
                       src={item.title.poster_url || '/assets/trackup-logo.jpg'}
                       alt={item.title.title}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     <div className="absolute top-2 left-2">
@@ -293,7 +295,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
                   <img
                     src={item.title.poster_url || '/assets/trackup-logo.jpg'}
                     alt={item.title.title}
-                    className="w-12 h-16 rounded-lg object-cover shrink-0"
+                    loading="lazy"
+                    decoding="async"
+                    className="w-12 h-16 rounded-lg object-cover shrink-0 bg-[#16161D]"
                   />
                   <div className="flex-1 min-w-0">
                     <h4 className="text-xs font-bold text-text-primary truncate group-hover:text-accent">
@@ -349,7 +353,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
                         <img
                           src={item.title.poster_url || '/assets/trackup-logo.jpg'}
                           alt={item.title.title}
-                          className="w-8 h-12 rounded object-cover shrink-0"
+                          loading="lazy"
+                          decoding="async"
+                          className="w-8 h-12 rounded object-cover shrink-0 bg-[#16161D]"
                         />
                         <div className="min-w-0">
                           <p className="font-bold text-text-primary group-hover:text-accent truncate">

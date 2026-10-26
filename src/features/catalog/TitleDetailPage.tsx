@@ -503,25 +503,68 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
           {title.seasons && title.seasons.length > 0 ? (
             <div className="space-y-4">
-              {/* Season Tabs */}
-              <div className="flex gap-2 border-b border-surface-elevated pb-2 overflow-x-auto">
-                {title.seasons.map((s, idx) => (
-                  <button
-                    key={s.id}
-                    onClick={() => setActiveSeasonIndex(idx)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium shrink-0 transition-colors ${
-                      activeSeasonIndex === idx
-                        ? 'bg-accent text-background font-semibold'
-                        : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
-                    }`}
-                  >
-                    {s.name}
-                  </button>
-                ))}
+              {/* Season Selector: Visible Tabs + Dropdown Selector for Fast Switching */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-surface-elevated pb-3 gap-3">
+                <div
+                  data-testid="season-selector-tabs"
+                  className="flex gap-2 overflow-x-auto pb-1 max-w-full"
+                >
+                  {title.seasons.map((s, idx) => (
+                    <button
+                      key={s.id}
+                      onClick={() => setActiveSeasonIndex(idx)}
+                      data-testid={`season-tab-${s.season_number}`}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-semibold shrink-0 transition-all ${
+                        activeSeasonIndex === idx
+                          ? 'bg-accent text-background font-bold shadow-md'
+                          : 'bg-surface-elevated text-text-secondary hover:text-text-primary hover:bg-surface-elevated/80'
+                      }`}
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Dropdown for long-running series with 3+ seasons */}
+                {title.seasons.length > 2 && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[11px] text-text-muted hidden sm:inline">Jump to:</span>
+                    <select
+                      value={activeSeasonIndex}
+                      onChange={(e) => setActiveSeasonIndex(Number(e.target.value))}
+                      data-testid="season-dropdown-select"
+                      aria-label="Select season"
+                      className="px-3 py-1.5 bg-surface-elevated text-text-primary border border-surface-elevated rounded-xl text-xs focus:outline-none focus:border-accent font-medium cursor-pointer"
+                    >
+                      {title.seasons.map((s, idx) => (
+                        <option key={s.id} value={idx}>
+                          {s.name} ({s.episode_count} eps)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
-              {/* Episodes List */}
-              <div className="space-y-2">
+              {/* Current Season Info Header */}
+              {title.seasons[activeSeasonIndex] && (
+                <div className="flex items-center justify-between text-xs text-text-muted px-1">
+                  <span className="font-medium text-text-secondary">
+                    {title.seasons[activeSeasonIndex].name} — {title.seasons[activeSeasonIndex].episode_count || title.seasons[activeSeasonIndex].episodes.length} Episodes
+                  </span>
+                  {title.seasons[activeSeasonIndex].overview && (
+                    <span className="text-[11px] text-text-muted italic hidden md:inline truncate max-w-md">
+                      {title.seasons[activeSeasonIndex].overview}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Scrollable Episodes List Container: max-h-96 with smooth vertical scrolling */}
+              <div
+                data-testid="scrollable-episodes-list"
+                className="max-h-96 overflow-y-auto pr-1.5 space-y-2 focus:outline-none"
+              >
                 {title.seasons[activeSeasonIndex]?.episodes.map((ep) => {
                   const isWatched = watchedEpisodesList.includes(ep.id);
                   return (

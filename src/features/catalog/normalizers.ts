@@ -46,7 +46,7 @@ export interface AniListMediaPayload {
   countryOfOrigin?: string | null; // 'JP', 'KR', 'CN'
   description?: string | null;
   startDate?: { year?: number | null };
-  coverImage?: { large?: string | null; extraLarge?: string | null };
+  coverImage?: { large?: string | null; medium?: string | null; extraLarge?: string | null };
   bannerImage?: string | null;
   genres?: string[];
   episodes?: number | null;
@@ -69,7 +69,7 @@ export function normalizeTmdbMovie(payload: TmdbMoviePayload): NormalizedCatalog
     : null;
 
   const poster = payload.poster_path
-    ? sanitizeUrl(`https://image.tmdb.org/t/p/w500${payload.poster_path}`)
+    ? sanitizeUrl(`https://image.tmdb.org/t/p/w342${payload.poster_path}`)
     : null;
   const backdrop = payload.backdrop_path
     ? sanitizeUrl(`https://image.tmdb.org/t/p/w1280${payload.backdrop_path}`)
@@ -111,7 +111,7 @@ export function normalizeTmdbTv(payload: TmdbTvPayload): NormalizedCatalogItem {
     : null;
 
   const poster = payload.poster_path
-    ? sanitizeUrl(`https://image.tmdb.org/t/p/w500${payload.poster_path}`)
+    ? sanitizeUrl(`https://image.tmdb.org/t/p/w342${payload.poster_path}`)
     : null;
   const backdrop = payload.backdrop_path
     ? sanitizeUrl(`https://image.tmdb.org/t/p/w1280${payload.backdrop_path}`)
@@ -163,7 +163,7 @@ export function normalizeAniListMedia(payload: AniListMediaPayload): NormalizedC
   const title = payload.title.english || payload.title.romaji || 'Untitled';
   const originalTitle = payload.title.native || payload.title.romaji || null;
 
-  const poster = sanitizeUrl(payload.coverImage?.extraLarge || payload.coverImage?.large);
+  const poster = sanitizeUrl(payload.coverImage?.large || payload.coverImage?.medium || payload.coverImage?.extraLarge);
   const backdrop = sanitizeUrl(payload.bannerImage);
 
   // Clean HTML tags from AniList synopsis if present

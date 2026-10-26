@@ -16,7 +16,8 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
     if (!isMobile) {
       await page.locator('[data-testid="auth-modal-trigger"]').click();
     } else {
-      await page.locator('[data-testid="mobile-bottom-nav"] button:has-text("Sign In")').click();
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await page.locator('[data-testid="mobile-nav-profile"]').click();
     }
 
     await page.locator('[data-testid="auth-tab-register"]').click();
@@ -30,6 +31,7 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-recommendations"]').click();
     } else {
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
       await page.locator('[data-testid="mobile-nav-recommendations"]').click();
     }
 
@@ -56,6 +58,7 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-recommendations"]').click();
     } else {
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
       await page.locator('[data-testid="mobile-nav-recommendations"]').click();
     }
     await expect(page.locator('[data-testid="recommendations-view"]')).toBeVisible();
@@ -74,6 +77,7 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-calendar"]').click();
     } else {
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
       await page.locator('[data-testid="mobile-nav-calendar"]').click();
     }
     await expect(page.locator('[data-testid="release-calendar-view"]')).toBeVisible();
@@ -93,7 +97,7 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
     await expect(filterBtn).toContainText('Showing: Tracked Only');
   });
 
-  test('responsive verification: desktop shows sidebar and hides mobile bottom bar; mobile hides sidebar and shows mobile bottom bar', async ({
+  test('responsive verification: desktop shows sidebar and hides mobile bottom bar; mobile hides sidebar and shows mobile hamburger trigger', async ({
     page,
   }) => {
     await page.goto('/');
@@ -101,12 +105,13 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
 
     if (!isMobile) {
       await expect(page.locator('[data-testid="desktop-sidebar"]')).toBeVisible();
-      await expect(page.locator('[data-testid="mobile-bottom-nav"]')).toBeHidden();
+      await expect(page.locator('[data-testid="mobile-hamburger-trigger"]')).toBeHidden();
       await expect(page.locator('[data-testid="sidebar-nav-calendar"]')).toBeVisible();
       await expect(page.locator('[data-testid="sidebar-nav-recommendations"]')).toBeVisible();
     } else {
       await expect(page.locator('[data-testid="desktop-sidebar"]')).toBeHidden();
-      await expect(page.locator('[data-testid="mobile-bottom-nav"]')).toBeVisible();
+      await expect(page.locator('[data-testid="mobile-hamburger-trigger"]')).toBeVisible();
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
       await expect(page.locator('[data-testid="mobile-nav-calendar"]')).toBeVisible();
       await expect(page.locator('[data-testid="mobile-nav-recommendations"]')).toBeVisible();
     }

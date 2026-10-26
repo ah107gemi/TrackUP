@@ -47,7 +47,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     release_year: 2010,
     synopsis:
       'Cobb, a skilled thief who commits corporate espionage by infiltrating the subconscious of his targets, is offered a chance to regain his old life as payment for a task considered to be impossible: "inception", the implantation of another person\'s idea into a target\'s subconscious.',
-    poster_url: 'https://image.tmdb.org/t/p/w500/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg',
+    poster_url: 'https://image.tmdb.org/t/p/w342/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg',
     backdrop_url: 'https://image.tmdb.org/t/p/w1280/8ZTVqvKDQ8emSGUEMjsS4yHAwrp.jpg',
     genres: ['Action', 'Science Fiction', 'Adventure'],
     origin_country: 'US',
@@ -71,7 +71,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     release_year: 2008,
     synopsis:
       'Walter White, a New Mexico chemistry teacher, is diagnosed with Stage III cancer and given a prognosis of two years left to live. He chooses to enter the dangerous world of drugs and crime in order to secure his family\'s financial future.',
-    poster_url: 'https://image.tmdb.org/t/p/w500/ggFHVNu6YYI5L9pCfOacjizRGt.jpg',
+    poster_url: 'https://image.tmdb.org/t/p/w342/ggFHVNu6YYI5L9pCfOacjizRGt.jpg',
     backdrop_url: 'https://image.tmdb.org/t/p/w1280/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg',
     genres: ['Drama', 'Crime'],
     origin_country: 'US',
@@ -86,26 +86,80 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     ],
     seasons: [
       {
-        id: 's1',
+        id: 'bb_s1',
         season_number: 1,
         name: 'Season 1',
         overview: 'Walter White begins cooking methamphetamine.',
         episode_count: 7,
         episodes: [
-          { id: 'e1', episode_number: 1, name: 'Pilot', overview: 'Walter decides to cook meth.', runtime_minutes: 58, air_date: '2008-01-20' },
-          { id: 'e2', episode_number: 2, name: 'Cat\'s in the Bag...', overview: 'Walt and Jesse clean up a mess.', runtime_minutes: 48, air_date: '2008-01-27' },
-          { id: 'e3', episode_number: 3, name: '...And the Bag\'s in the River', overview: 'Walt faces a moral dilemma.', runtime_minutes: 48, air_date: '2008-02-10' },
+          { id: 'bb_e1_1', episode_number: 1, name: 'Pilot', overview: 'Walter decides to cook meth.', runtime_minutes: 58, air_date: '2008-01-20' },
+          { id: 'bb_e1_2', episode_number: 2, name: 'Cat\'s in the Bag...', overview: 'Walt and Jesse clean up a mess.', runtime_minutes: 48, air_date: '2008-01-27' },
+          { id: 'bb_e1_3', episode_number: 3, name: '...And the Bag\'s in the River', overview: 'Walt faces a moral dilemma.', runtime_minutes: 48, air_date: '2008-02-10' },
+          { id: 'bb_e1_4', episode_number: 4, name: 'Cancer Man', overview: 'Walt tells his family about cancer.', runtime_minutes: 48, air_date: '2008-02-17' },
+          { id: 'bb_e1_5', episode_number: 5, name: 'Gray Matter', overview: 'Walt rejects Elliott and Gretchen\'s offer.', runtime_minutes: 48, air_date: '2008-02-24' },
+          { id: 'bb_e1_6', episode_number: 6, name: 'Crazy Handful of Nothin\'', overview: 'Walt adopts the persona Heisenberg.', runtime_minutes: 48, air_date: '2008-03-02' },
+          { id: 'bb_e1_7', episode_number: 7, name: 'A No-Rough-Stuff-Type Deal', overview: 'Walt and Jesse do business with Tuco.', runtime_minutes: 48, air_date: '2008-03-09' },
         ],
       },
       {
-        id: 's2',
+        id: 'bb_s2',
         season_number: 2,
         name: 'Season 2',
         overview: 'Walt and Jesse expand their distribution operation.',
         episode_count: 13,
-        episodes: [
-          { id: 'e4', episode_number: 1, name: 'Seven Thirty-Seven', overview: 'Walt calculates how much money he needs.', runtime_minutes: 47, air_date: '2009-03-08' },
-        ],
+        episodes: Array.from({ length: 13 }, (_, i) => ({
+          id: `bb_e2_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'Seven Thirty-Seven' : `Episode ${i + 1}`,
+          overview: 'Walt and Jesse navigate dangerous drug kingpins.',
+          runtime_minutes: 47,
+          air_date: '2009-03-08',
+        })),
+      },
+      {
+        id: 'bb_s3',
+        season_number: 3,
+        name: 'Season 3',
+        overview: 'Walt enters an uneasy partnership with Gus Fring.',
+        episode_count: 13,
+        episodes: Array.from({ length: 13 }, (_, i) => ({
+          id: `bb_e3_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'No Más' : `Episode ${i + 1}`,
+          overview: 'The Cousins seek vengeance as Walt works the superlab.',
+          runtime_minutes: 47,
+          air_date: '2010-03-21',
+        })),
+      },
+      {
+        id: 'bb_s4',
+        season_number: 4,
+        name: 'Season 4',
+        overview: 'Walt and Gus engage in a deadly chess match.',
+        episode_count: 13,
+        episodes: Array.from({ length: 13 }, (_, i) => ({
+          id: `bb_e4_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'Box Cutter' : `Episode ${i + 1}`,
+          overview: 'Tensions between Walt and Gus reach a boiling point.',
+          runtime_minutes: 47,
+          air_date: '2011-07-17',
+        })),
+      },
+      {
+        id: 'bb_s5',
+        season_number: 5,
+        name: 'Season 5',
+        overview: 'Heisenberg ascends to total power before the empire collapses.',
+        episode_count: 16,
+        episodes: Array.from({ length: 16 }, (_, i) => ({
+          id: `bb_e5_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'Live Free or Die' : i === 13 ? 'Ozymandias' : i === 15 ? 'Felina' : `Episode ${i + 1}`,
+          overview: 'The final chapter of Walter White\'s rise and fall.',
+          runtime_minutes: 48,
+          air_date: '2012-07-15',
+        })),
       },
     ],
   },
@@ -139,10 +193,59 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
         name: 'Season 1: Fall of Shiganshina',
         overview: 'The Colossal Titan breaches Wall Maria.',
         episode_count: 25,
-        episodes: [
-          { id: 'aot_e1', episode_number: 1, name: 'To You, in 2000 Years', overview: 'The fall of Shiganshina district.', runtime_minutes: 24, air_date: '2013-04-07' },
-          { id: 'aot_e2', episode_number: 2, name: 'That Day', overview: 'Eren, Mikasa, and Armin flee.', runtime_minutes: 24, air_date: '2013-04-14' },
-        ],
+        episodes: Array.from({ length: 25 }, (_, i) => ({
+          id: `aot_e1_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'To You, in 2000 Years' : i === 1 ? 'That Day' : `Episode ${i + 1}`,
+          overview: 'Eren, Mikasa, and Armin join the 104th Training Corps.',
+          runtime_minutes: 24,
+          air_date: '2013-04-07',
+        })),
+      },
+      {
+        id: 'aot_s2',
+        season_number: 2,
+        name: 'Season 2: Clash of the Titans',
+        overview: 'Beast Titan emerges as Wall Rose is suspected breached.',
+        episode_count: 12,
+        episodes: Array.from({ length: 12 }, (_, i) => ({
+          id: `aot_e2_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'Beast Titan' : i === 5 ? 'Warrior' : `Episode ${i + 1}`,
+          overview: 'The Scout Regiment uncovers betrayal from within.',
+          runtime_minutes: 24,
+          air_date: '2017-04-01',
+        })),
+      },
+      {
+        id: 'aot_s3',
+        season_number: 3,
+        name: 'Season 3: Return to Shiganshina',
+        overview: 'The battle to retake Wall Maria and reach the basement.',
+        episode_count: 22,
+        episodes: Array.from({ length: 22 }, (_, i) => ({
+          id: `aot_e3_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'Smoke Signal' : i === 15 ? 'Hero' : i === 19 ? 'The Basement' : `Episode ${i + 1}`,
+          overview: 'The Scouts reach the basement and discover the truth of the world.',
+          runtime_minutes: 24,
+          air_date: '2018-07-23',
+        })),
+      },
+      {
+        id: 'aot_s4',
+        season_number: 4,
+        name: 'The Final Season',
+        overview: 'War with Marley begins across the sea.',
+        episode_count: 30,
+        episodes: Array.from({ length: 30 }, (_, i) => ({
+          id: `aot_e4_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'The Other Side of the Sea' : i === 4 ? 'Declaration of War' : `Episode ${i + 1}`,
+          overview: 'The Rumbling begins as the fate of humanity hangs in the balance.',
+          runtime_minutes: 24,
+          air_date: '2020-12-07',
+        })),
       },
     ],
   },
@@ -277,6 +380,24 @@ export async function searchCatalog(
     } catch (err) {
       console.warn('Error fetching live catalog results:', err);
     }
+  }
+
+  // 3. Popularity & Relevance sorting: exact matches and prefix matches rank first
+  if (normalizedQuery.length >= 2) {
+    results.sort((a, b) => {
+      const aTitle = a.title.toLowerCase();
+      const bTitle = b.title.toLowerCase();
+
+      const aExact = aTitle === normalizedQuery ? 1 : 0;
+      const bExact = bTitle === normalizedQuery ? 1 : 0;
+      if (aExact !== bExact) return bExact - aExact;
+
+      const aStarts = aTitle.startsWith(normalizedQuery) ? 1 : 0;
+      const bStarts = bTitle.startsWith(normalizedQuery) ? 1 : 0;
+      if (aStarts !== bStarts) return bStarts - aStarts;
+
+      return 0;
+    });
   }
 
   return results;

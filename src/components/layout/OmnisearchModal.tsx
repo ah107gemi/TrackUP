@@ -138,11 +138,13 @@ export const OmnisearchModal: React.FC<OmnisearchModalProps> = ({ onSelectTitle 
                   className="flex items-center justify-between p-3 rounded-xl bg-surface-elevated/40 hover:bg-surface-elevated border border-transparent hover:border-surface-elevated transition-all cursor-pointer group"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-14 rounded-lg overflow-hidden bg-surface shrink-0 border border-surface-elevated">
+                    <div className="w-10 h-14 rounded-lg overflow-hidden bg-[#16161D] shrink-0 border border-surface-elevated">
                       {item.poster_url ? (
                         <img
                           src={item.poster_url}
                           alt={item.title}
+                          loading="lazy"
+                          decoding="async"
                           className="w-full h-full object-cover"
                           onError={(e) => {
                             e.currentTarget.onerror = null;

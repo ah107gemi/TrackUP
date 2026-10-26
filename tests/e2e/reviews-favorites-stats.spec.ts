@@ -16,7 +16,8 @@ test.describe('TrackUp Phase 4: Ratings, Reviews, Favorites & Dashboard Stats', 
     if (!isMobile) {
       await page.locator('[data-testid="auth-modal-trigger"]').click();
     } else {
-      await page.locator('[data-testid="mobile-bottom-nav"] button:has-text("Sign In")').click();
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await page.locator('[data-testid="mobile-nav-profile"]').click();
     }
 
     await page.locator('[data-testid="auth-tab-register"]').click();
@@ -93,6 +94,7 @@ test.describe('TrackUp Phase 4: Ratings, Reviews, Favorites & Dashboard Stats', 
     if (!isMobile) {
       await page.locator('[data-testid="profile-button"]').click();
     } else {
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
       await page.locator('[data-testid="mobile-nav-profile"]').click();
     }
 
@@ -112,6 +114,7 @@ test.describe('TrackUp Phase 4: Ratings, Reviews, Favorites & Dashboard Stats', 
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-dashboard"]').click();
     } else {
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
       await page.locator('[data-testid="mobile-nav-dashboard"]').click();
     }
 

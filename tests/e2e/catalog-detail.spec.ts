@@ -41,7 +41,8 @@ test.describe('TrackUp Phase 2: Unified Search & Adaptive Title Detail Pages', (
     // Navigate to Discover
     const isMobile = page.viewportSize() ? page.viewportSize()!.width <= 768 : false;
     if (isMobile) {
-      await page.locator('[data-testid="mobile-bottom-nav"] button:has-text("Discover")').click();
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await page.locator('[data-testid="mobile-nav-discover"]').click();
     } else {
       await page.locator('[data-testid="desktop-sidebar"] button:has-text("Discover")').click();
     }

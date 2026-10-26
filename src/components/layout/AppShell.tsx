@@ -1,7 +1,6 @@
 import React from 'react';
 import { DesktopSidebar } from './DesktopSidebar';
 import { TopUtilityBar } from './TopUtilityBar';
-import { MobileBottomNav } from './MobileBottomNav';
 import { OmnisearchModal } from './OmnisearchModal';
 import { AuthModal } from '../../features/auth/AuthModal';
 import { ProfileModal } from '../../features/auth/ProfileModal';
@@ -63,7 +62,7 @@ export const AppShell: React.FC = () => {
         <TopUtilityBar />
 
         {/* Scrollable Viewport */}
-        <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6 pb-28 md:pb-8">
+        <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6 pb-8">
           {selectedTitleId ? (
             <TitleDetailPage
               titleId={selectedTitleId}
@@ -268,10 +267,7 @@ export const AppShell: React.FC = () => {
         </main>
       </div>
 
-      {/* 3. Mobile Bottom Navigation Bar */}
-      <MobileBottomNav />
-
-      {/* 4. Global Modals */}
+      {/* Global Modals */}
       <OmnisearchModal onSelectTitle={handleSelectTitle} />
       <AuthModal />
       <ProfileModal onSelectTitle={handleSelectTitle} />

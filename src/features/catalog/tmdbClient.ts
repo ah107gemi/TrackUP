@@ -48,6 +48,7 @@ export async function searchTmdb(
   const apiKeyParam = getTmdbApiKeyParam();
   const headers = authHeader || { 'Content-Type': 'application/json', Accept: 'application/json' };
   const encodedQuery = encodeURIComponent(query.trim());
+  const cleanQ = query.trim().toLowerCase();
 
   const results: NormalizedCatalogItem[] = [];
 
@@ -57,7 +58,19 @@ export async function searchTmdb(
       const res = await fetch(url, { headers });
       if (res.ok) {
         const json = await res.json();
-        const movies: TmdbMoviePayload[] = json.results || [];
+        const movies: (TmdbMoviePayload & { popularity?: number })[] = json.results || [];
+        // Sort by popularity descending with exact title match boost
+        movies.sort((a, b) => {
+          const aExact = a.title?.toLowerCase() === cleanQ ? 1 : 0;
+          const bExact = b.title?.toLowerCase() === cleanQ ? 1 : 0;
+          if (aExact !== bExact) return bExact - aExact;
+
+          const aStarts = a.title?.toLowerCase().startsWith(cleanQ) ? 1 : 0;
+          const bStarts = b.title?.toLowerCase().startsWith(cleanQ) ? 1 : 0;
+          if (aStarts !== bStarts) return bStarts - aStarts;
+
+          return (b.popularity || 0) - (a.popularity || 0);
+        });
         results.push(...movies.map((m) => normalizeTmdbMovie(m)));
       }
     }
@@ -67,7 +80,19 @@ export async function searchTmdb(
       const res = await fetch(url, { headers });
       if (res.ok) {
         const json = await res.json();
-        const tvs: TmdbTvPayload[] = json.results || [];
+        const tvs: (TmdbTvPayload & { popularity?: number })[] = json.results || [];
+        // Sort by popularity descending with exact title match boost (e.g. "Yellowstone")
+        tvs.sort((a, b) => {
+          const aExact = a.name?.toLowerCase() === cleanQ ? 1 : 0;
+          const bExact = b.name?.toLowerCase() === cleanQ ? 1 : 0;
+          if (aExact !== bExact) return bExact - aExact;
+
+          const aStarts = a.name?.toLowerCase().startsWith(cleanQ) ? 1 : 0;
+          const bStarts = b.name?.toLowerCase().startsWith(cleanQ) ? 1 : 0;
+          if (aStarts !== bStarts) return bStarts - aStarts;
+
+          return (b.popularity || 0) - (a.popularity || 0);
+        });
         results.push(...tvs.map((t) => normalizeTmdbTv(t)));
       }
     }

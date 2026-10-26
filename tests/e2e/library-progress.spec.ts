@@ -16,7 +16,8 @@ test.describe('TrackUp Phase 3: Watch & Read Libraries, 3 View Modes & Granular 
     if (!isMobile) {
       await page.locator('[data-testid="auth-modal-trigger"]').click();
     } else {
-      await page.locator('[data-testid="mobile-bottom-nav"] button:has-text("Sign In")').click();
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await page.locator('[data-testid="mobile-nav-profile"]').click();
     }
 
     await page.locator('[data-testid="auth-tab-register"]').click();
@@ -71,7 +72,8 @@ test.describe('TrackUp Phase 3: Watch & Read Libraries, 3 View Modes & Granular 
     if (!isMobile) {
       await page.locator('[data-testid="desktop-sidebar"] button:has-text("Watch Library")').click();
     } else {
-      await page.locator('[data-testid="mobile-bottom-nav"] button:has-text("Watch")').click();
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await page.locator('[data-testid="mobile-nav-watch"]').click();
     }
 
     await expect(page.locator('[data-testid="watch-library-view"]')).toBeVisible();
@@ -100,7 +102,8 @@ test.describe('TrackUp Phase 3: Watch & Read Libraries, 3 View Modes & Granular 
     if (!isMobile) {
       await page.locator('[data-testid="desktop-sidebar"] button:has-text("Reading Library")').click();
     } else {
-      await page.locator('[data-testid="mobile-bottom-nav"] button:has-text("Read")').click();
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await page.locator('[data-testid="mobile-nav-read"]').click();
     }
 
     await expect(page.locator('[data-testid="read-library-view"]')).toBeVisible();
@@ -121,7 +124,8 @@ test.describe('TrackUp Phase 3: Watch & Read Libraries, 3 View Modes & Granular 
     if (!isMobile) {
       await page.locator('[data-testid="desktop-sidebar"] button:has-text("Dashboard")').click();
     } else {
-      await page.locator('[data-testid="mobile-bottom-nav"] button:has-text("Home")').click();
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await page.locator('[data-testid="mobile-nav-dashboard"]').click();
     }
 
     const upNext = page.locator('[data-testid="dashboard-up-next-section"]');

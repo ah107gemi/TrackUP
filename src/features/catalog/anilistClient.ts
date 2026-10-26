@@ -28,8 +28,8 @@ query ($search: String, $type: MediaType, $format_in: [MediaFormat], $format: Me
       }
       description(asHtml: false)
       coverImage {
-        extraLarge
         large
+        medium
       }
       bannerImage
       genres
@@ -37,6 +37,20 @@ query ($search: String, $type: MediaType, $format_in: [MediaFormat], $format: Me
       chapters
       volumes
       status
+      relations {
+        edges {
+          relationType
+          node {
+            id
+            type
+            format
+            title {
+              english
+              romaji
+            }
+          }
+        }
+      }
     }
   }
 }
@@ -92,6 +106,8 @@ query ($id: Int) {
             english
             romaji
           }
+          episodes
+          description(asHtml: false)
         }
       }
     }
@@ -148,7 +164,47 @@ export async function searchAniList(
     const json = await response.json();
     const mediaList: AniListMediaPayload[] = json?.data?.Page?.media || [];
 
-    return mediaList.map((item) => normalizeAniListMedia(item));
+    // Franchise Grouping: filter out redundant sequels/subsequent seasons from primary search grid
+    const searchIds = new Set(mediaList.map((m) => m.id));
+    const sequelIds = new Set<number>();
+
+    for (const m of mediaList) {
+      for (const edge of (m as any).relations?.edges || []) {
+        if (!edge.node?.id || !searchIds.has(edge.node.id)) continue;
+
+        if (edge.relationType === 'SEQUEL') {
+          const target = mediaList.find((x) => x.id === edge.node.id);
+          if (target) {
+            const targetTitle = (target.title.english || target.title.romaji || '').toLowerCase();
+            const isExplicitSequel = /season|part\s*\d|final|2nd|3rd|4th|cour/i.test(targetTitle);
+            if (isExplicitSequel || (m.format === 'TV' && target.format === 'TV')) {
+              sequelIds.add(target.id);
+            }
+          }
+        }
+      }
+    }
+
+    const filtered = mediaList.filter((m) => !sequelIds.has(m.id));
+
+    // Sort by exact title match boost while preserving POPULARITY_DESC
+    const cleanQ = query.trim().toLowerCase();
+    filtered.sort((a, b) => {
+      const aTitle = (a.title.english || a.title.romaji || '').toLowerCase();
+      const bTitle = (b.title.english || b.title.romaji || '').toLowerCase();
+
+      const aExact = aTitle === cleanQ ? 1 : 0;
+      const bExact = bTitle === cleanQ ? 1 : 0;
+      if (aExact !== bExact) return bExact - aExact;
+
+      const aStarts = aTitle.startsWith(cleanQ) ? 1 : 0;
+      const bStarts = bTitle.startsWith(cleanQ) ? 1 : 0;
+      if (aStarts !== bStarts) return bStarts - aStarts;
+
+      return 0;
+    });
+
+    return filtered.map((item) => normalizeAniListMedia(item));
   } catch (err) {
     console.warn('Failed to query AniList API:', err);
     return [];
@@ -221,27 +277,63 @@ export async function fetchAniListMediaById(
       }
     }
 
-    // Synthesize season detail for anime series
+    // Synthesize full multi-season details for anime series
     let seasons: CatalogSeasonDetail[] | undefined = undefined;
-    if (normalized.media_type === 'anime_series' && normalized.total_episodes) {
-      const epCount = Math.min(normalized.total_episodes, 24); // generate first season slice
-      seasons = [
-        {
-          id: `anilist_${id}_s1`,
-          season_number: 1,
-          name: 'Season 1',
-          overview: normalized.synopsis ?? null,
-          episode_count: epCount,
-          episodes: Array.from({ length: epCount }, (_, i) => ({
-            id: `anilist_${id}_e${i + 1}`,
-            episode_number: i + 1,
-            name: `Episode ${i + 1}`,
-            overview: null,
-            runtime_minutes: 24,
-            air_date: null,
-          })),
-        },
-      ];
+    if (normalized.media_type === 'anime_series') {
+      const seasonList: CatalogSeasonDetail[] = [];
+      const s1EpCount = normalized.total_episodes || 12;
+
+      // Primary Series / Season 1
+      seasonList.push({
+        id: `anilist_${id}_s1`,
+        season_number: 1,
+        name: 'Season 1',
+        overview: normalized.synopsis ?? null,
+        episode_count: s1EpCount,
+        episodes: Array.from({ length: s1EpCount }, (_, i) => ({
+          id: `anilist_${id}_e${i + 1}`,
+          episode_number: i + 1,
+          name: `Episode ${i + 1}`,
+          overview: null,
+          runtime_minutes: 24,
+          air_date: null,
+        })),
+      });
+
+      // Subsequent franchise seasons from SEQUEL relations
+      if (media.relations?.edges) {
+        let seasonNum = 2;
+        for (const edge of media.relations.edges) {
+          if (
+            edge.relationType === 'SEQUEL' &&
+            edge.node?.type === 'ANIME' &&
+            edge.node?.id
+          ) {
+            const seq = edge.node;
+            const seqTitle = seq.title?.english || seq.title?.romaji || `Season ${seasonNum}`;
+            const seqEpisodes = seq.episodes || 12;
+
+            seasonList.push({
+              id: `anilist_${seq.id}_s${seasonNum}`,
+              season_number: seasonNum,
+              name: `Season ${seasonNum}: ${seqTitle}`,
+              overview: seq.description || null,
+              episode_count: seqEpisodes,
+              episodes: Array.from({ length: seqEpisodes }, (_, i) => ({
+                id: `anilist_${seq.id}_e${i + 1}`,
+                episode_number: i + 1,
+                name: `Episode ${i + 1}`,
+                overview: null,
+                runtime_minutes: 24,
+                air_date: null,
+              })),
+            });
+            seasonNum++;
+          }
+        }
+      }
+
+      seasons = seasonList;
     }
 
     return {
