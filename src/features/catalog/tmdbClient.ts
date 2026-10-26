@@ -1,0 +1,159 @@
+import type { NormalizedCatalogItem } from '../../lib/validators';
+import {
+  normalizeTmdbMovie,
+  normalizeTmdbTv,
+  type TmdbMoviePayload,
+  type TmdbTvPayload,
+} from './normalizers';
+import type { CastMember, CatalogSeasonDetail } from './catalogService';
+
+const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+
+function getTmdbAuthHeader(): Record<string, string> | null {
+  const token = import.meta.env.VITE_TMDB_READ_ACCESS_TOKEN;
+  if (token && typeof token === 'string' && token.trim().length > 10) {
+    return {
+      Authorization: `Bearer ${token.trim()}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+  }
+  return null;
+}
+
+function getTmdbApiKeyParam(): string | null {
+  const key = import.meta.env.VITE_TMDB_API_KEY;
+  if (key && typeof key === 'string' && key.trim().length > 5) {
+    return `api_key=${encodeURIComponent(key.trim())}`;
+  }
+  return null;
+}
+
+export function isTmdbConfigured(): boolean {
+  return !!getTmdbAuthHeader() || !!getTmdbApiKeyParam();
+}
+
+/**
+ * Searches TMDB for movies and TV shows if credentials are configured.
+ */
+export async function searchTmdb(
+  query: string,
+  type: 'movie' | 'tv' | 'all' = 'all'
+): Promise<NormalizedCatalogItem[]> {
+  if (!isTmdbConfigured() || !query.trim()) {
+    return [];
+  }
+
+  const authHeader = getTmdbAuthHeader();
+  const apiKeyParam = getTmdbApiKeyParam();
+  const headers = authHeader || { 'Content-Type': 'application/json', Accept: 'application/json' };
+  const encodedQuery = encodeURIComponent(query.trim());
+
+  const results: NormalizedCatalogItem[] = [];
+
+  try {
+    if (type === 'movie' || type === 'all') {
+      const url = `${TMDB_BASE_URL}/search/movie?query=${encodedQuery}${apiKeyParam ? `&${apiKeyParam}` : ''}`;
+      const res = await fetch(url, { headers });
+      if (res.ok) {
+        const json = await res.json();
+        const movies: TmdbMoviePayload[] = json.results || [];
+        results.push(...movies.map((m) => normalizeTmdbMovie(m)));
+      }
+    }
+
+    if (type === 'tv' || type === 'all') {
+      const url = `${TMDB_BASE_URL}/search/tv?query=${encodedQuery}${apiKeyParam ? `&${apiKeyParam}` : ''}`;
+      const res = await fetch(url, { headers });
+      if (res.ok) {
+        const json = await res.json();
+        const tvs: TmdbTvPayload[] = json.results || [];
+        results.push(...tvs.map((t) => normalizeTmdbTv(t)));
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to query TMDB API:', err);
+  }
+
+  return results;
+}
+
+/**
+ * Fetches full details for a TMDB title by numeric ID.
+ */
+export async function fetchTmdbMediaById(
+  id: number,
+  type: 'movie' | 'tv'
+): Promise<
+  | (NormalizedCatalogItem & {
+      cast?: CastMember[];
+      seasons?: CatalogSeasonDetail[];
+    })
+  | null
+> {
+  if (!isTmdbConfigured()) {
+    return null;
+  }
+
+  const authHeader = getTmdbAuthHeader();
+  const apiKeyParam = getTmdbApiKeyParam();
+  const headers = authHeader || { 'Content-Type': 'application/json', Accept: 'application/json' };
+
+  try {
+    const url = `${TMDB_BASE_URL}/${type}/${id}?append_to_response=credits${type === 'tv' ? ',season/1' : ''}${apiKeyParam ? `&${apiKeyParam}` : ''}`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) return null;
+
+    const data = await res.json();
+
+    const normalized =
+      type === 'movie'
+        ? normalizeTmdbMovie(data as TmdbMoviePayload)
+        : normalizeTmdbTv(data as TmdbTvPayload);
+
+    const cast: CastMember[] = (data.credits?.cast || []).slice(0, 10).map(
+      (c: { id: number; name: string; character: string; profile_path: string | null }) => ({
+        id: `tmdb_cast_${c.id}`,
+        name: c.name,
+        character: c.character || 'Cast',
+        profile_url: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null,
+      })
+    );
+
+    let seasons: CatalogSeasonDetail[] | undefined = undefined;
+    if (type === 'tv' && data.seasons) {
+      seasons = (data.seasons as {
+        id: number;
+        season_number: number;
+        name: string;
+        overview: string;
+        episode_count: number;
+      }[])
+        .filter((s) => s.season_number > 0)
+        .map((s) => ({
+          id: `tmdb_season_${s.id}`,
+          season_number: s.season_number,
+          name: s.name || `Season ${s.season_number}`,
+          overview: s.overview || null,
+          episode_count: s.episode_count || 0,
+          episodes: Array.from({ length: Math.min(s.episode_count || 0, 24) }, (_, idx) => ({
+            id: `tmdb_ep_${s.season_number}_${idx + 1}`,
+            episode_number: idx + 1,
+            name: `Episode ${idx + 1}`,
+            overview: null,
+            runtime_minutes: 45,
+            air_date: null,
+          })),
+        }));
+    }
+
+    return {
+      ...normalized,
+      cast,
+      seasons,
+    };
+  } catch (err) {
+    console.warn(`Failed to fetch TMDB details for ${type} ID ${id}:`, err);
+    return null;
+  }
+}

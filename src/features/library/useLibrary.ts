@@ -27,6 +27,7 @@ export function useUpsertLibrary() {
       rating?: number | null;
       isPrivate?: boolean;
       notes?: string | null;
+      titleData?: import('../../lib/validators').NormalizedCatalogItem;
     }) => upsertLibraryItem(params),
     onMutate: async (newEntry) => {
       await queryClient.cancelQueries({ queryKey: ['library', newEntry.userId] });

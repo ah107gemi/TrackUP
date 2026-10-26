@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Compass, SlidersHorizontal } from 'lucide-react';
+import { Search, Compass, SlidersHorizontal, Info } from 'lucide-react';
 import { searchCatalog } from './catalogService';
+import { isTmdbConfigured } from './tmdbClient';
 import type { NormalizedCatalogItem } from '../../lib/validators';
 import type { MediaType } from '../../types/database.types';
 import { MediaPosterCard } from '../../components/shared/MediaPosterCard';
@@ -93,6 +94,19 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onSelectTitle }) => {
         {/* Subtle right-edge fade mask for mobile discovery */}
         <div className="pointer-events-none absolute right-0 top-0 bottom-2 w-8 bg-gradient-to-l from-background to-transparent md:hidden" />
       </div>
+
+      {/* TMDB Optional Configuration Notice when viewing movies/tv without a key */}
+      {(activeCategory === 'movie' || activeCategory === 'tv') && !isTmdbConfigured() && (
+        <div
+          data-testid="tmdb-setup-notice"
+          className="p-3.5 rounded-2xl bg-surface/80 border border-surface-elevated text-xs text-text-secondary flex items-start sm:items-center gap-3 animate-in fade-in"
+        >
+          <Info className="w-4 h-4 text-accent shrink-0 mt-0.5 sm:mt-0" />
+          <span>
+            <strong className="text-text-primary">Curated Hollywood Showcase:</strong> Anime and Manga categories feature live public AniList search. To search the entire live TMDB movie and TV library, add <code className="text-accent bg-surface-elevated px-1.5 py-0.5 rounded font-mono text-[11px]">VITE_TMDB_API_KEY</code> to your <code className="font-mono text-[11px] text-text-primary">.env.local</code>.
+          </span>
+        </div>
+      )}
 
       {/* Results Grid */}
       {loading ? (

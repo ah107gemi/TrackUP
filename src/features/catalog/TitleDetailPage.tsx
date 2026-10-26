@@ -152,6 +152,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       userId: activeUserId,
       titleId: title.id,
       status: newStatus,
+      titleData: title,
     });
   };
 
@@ -161,6 +162,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       userId: activeUserId,
       titleId: title.id,
       rating: newRating || null,
+      titleData: title,
     });
   };
 
@@ -219,6 +221,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         userId: activeUserId,
         titleId: title.id,
         status: 'active',
+        titleData: title,
       });
       libId = created.id;
     }
@@ -243,6 +246,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         userId: activeUserId,
         titleId: title.id,
         status: 'active',
+        titleData: title,
       });
       libId = created.id;
     }
@@ -286,6 +290,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         userId: activeUserId,
         titleId: title.id,
         status: 'active',
+        titleData: title,
       });
       libId = created.id;
     }
@@ -303,6 +308,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       userId: activeUserId,
       titleId: title.id,
       status: target,
+      titleData: title,
     });
   };
 

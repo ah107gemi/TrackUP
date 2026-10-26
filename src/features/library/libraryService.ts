@@ -1,6 +1,6 @@
 import type { TrackingStatus } from '../../types/database.types';
 import type { NormalizedCatalogItem } from '../../lib/validators';
-import { MOCK_CATALOG_FIXTURES } from '../catalog/catalogService';
+import { MOCK_CATALOG_FIXTURES, getCatalogTitleById } from '../catalog/catalogService';
 
 export interface UserLibraryItem {
   id: string;
@@ -74,13 +74,17 @@ export async function upsertLibraryItem(params: {
   rating?: number | null;
   isPrivate?: boolean;
   notes?: string | null;
+  titleData?: NormalizedCatalogItem;
 }): Promise<UserLibraryItem> {
   const all = getStoredLibraries();
   const existingIndex = all.findIndex(
     (item) => item.user_id === params.userId && item.title_id === params.titleId
   );
+  const existing = existingIndex >= 0 ? all[existingIndex] : null;
 
-  const matchedTitle =
+  let resolvedTitle: NormalizedCatalogItem =
+    params.titleData ||
+    existing?.title ||
     MOCK_CATALOG_FIXTURES.find((t) => t.id === params.titleId) || {
       id: params.titleId,
       media_type: 'movie',
@@ -88,16 +92,28 @@ export async function upsertLibraryItem(params: {
       genres: [],
     };
 
+  // If title is not yet hydrated and has a known provider prefix, attempt live lookup
+  if (resolvedTitle.title === 'Unknown Title') {
+    try {
+      const fetched = await getCatalogTitleById(params.titleId);
+      if (fetched) {
+        resolvedTitle = fetched;
+      }
+    } catch {
+      // retain fallback
+    }
+  }
+
   const now = new Date().toISOString();
 
-  if (existingIndex >= 0) {
-    const existing = all[existingIndex];
+  if (existingIndex >= 0 && existing) {
     const updated: UserLibraryItem = {
       ...existing,
       status: params.status !== undefined ? params.status : existing.status,
       rating: params.rating !== undefined ? params.rating : existing.rating,
       is_private: params.isPrivate !== undefined ? params.isPrivate : existing.is_private,
       personal_notes: params.notes !== undefined ? params.notes : existing.personal_notes,
+      title: (params.titleData && params.titleData.title !== 'Unknown Title') ? params.titleData : existing.title,
       last_progressed_at: now,
     };
     all[existingIndex] = updated;
@@ -119,7 +135,7 @@ export async function upsertLibraryItem(params: {
     episodes_watched: [],
     last_chapter_read: 0,
     last_volume_read: 0,
-    title: matchedTitle,
+    title: resolvedTitle,
   };
 
   all.push(newItem);

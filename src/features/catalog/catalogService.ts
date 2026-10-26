@@ -1,5 +1,7 @@
 import type { NormalizedCatalogItem } from '../../lib/validators';
 import type { MediaType, RelationshipType } from '../../types/database.types';
+import { searchAniList, fetchAniListMediaById } from './anilistClient';
+import { searchTmdb, fetchTmdbMediaById, isTmdbConfigured } from './tmdbClient';
 
 export interface CatalogSeasonDetail {
   id: string;
@@ -214,7 +216,8 @@ export async function searchCatalog(
 ): Promise<NormalizedCatalogItem[]> {
   const normalizedQuery = query.trim().toLowerCase();
 
-  return MOCK_CATALOG_FIXTURES.filter((item) => {
+  // 1. Local curated fixtures matching category & query
+  const localMatches = MOCK_CATALOG_FIXTURES.filter((item) => {
     const matchesType = mediaType === 'all' || item.media_type === mediaType;
     if (!matchesType) return false;
 
@@ -226,13 +229,102 @@ export async function searchCatalog(
       item.genres.some((g) => g.toLowerCase().includes(normalizedQuery))
     );
   });
+
+  const seenIds = new Set<string>(localMatches.map((item) => item.id));
+  const results: NormalizedCatalogItem[] = [...localMatches];
+
+  // Only perform live external API queries if a search term of at least 2 characters is provided
+  if (normalizedQuery.length < 2) {
+    return results;
+  }
+
+  // 2. Query Live Providers
+  const promises: Promise<NormalizedCatalogItem[]>[] = [];
+
+  // A. AniList: covers anime_series, anime_film, manga, manhwa (Free, live, no API key needed)
+  const isAnimeOrReading =
+    mediaType === 'all' ||
+    mediaType === 'anime_series' ||
+    mediaType === 'anime_film' ||
+    mediaType === 'manga' ||
+    mediaType === 'manhwa';
+
+  if (isAnimeOrReading) {
+    promises.push(searchAniList(query, mediaType));
+  }
+
+  // B. TMDB: covers movie and tv (if API key / token configured)
+  const isMovieOrTv = mediaType === 'all' || mediaType === 'movie' || mediaType === 'tv';
+  if (isMovieOrTv && isTmdbConfigured()) {
+    const tmdbType = mediaType === 'all' ? 'all' : mediaType;
+    promises.push(searchTmdb(query, tmdbType));
+  }
+
+  if (promises.length > 0) {
+    try {
+      const settled = await Promise.allSettled(promises);
+      for (const res of settled) {
+        if (res.status === 'fulfilled') {
+          for (const item of res.value) {
+            // Deduplicate if already present from local fixtures
+            if (!seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              results.push(item);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching live catalog results:', err);
+    }
+  }
+
+  return results;
 }
 
 export async function getCatalogTitleById(
   id: string
-): Promise<(NormalizedCatalogItem & { cast?: CastMember[]; seasons?: CatalogSeasonDetail[] }) | null> {
-  const match = MOCK_CATALOG_FIXTURES.find((f) => f.id === id);
-  return match || null;
+): Promise<
+  | (NormalizedCatalogItem & {
+      cast?: CastMember[];
+      seasons?: CatalogSeasonDetail[];
+      related_title_ids?: { targetId: string; type: RelationshipType }[];
+    })
+  | null
+> {
+  // 1. Check curated fixtures first
+  const localMatch = MOCK_CATALOG_FIXTURES.find((f) => f.id === id);
+  if (localMatch) {
+    return localMatch;
+  }
+
+  // 2. AniList live hydration
+  if (id.startsWith('anilist_')) {
+    const numId = parseInt(id.replace('anilist_', ''), 10);
+    if (!isNaN(numId)) {
+      const liveAniList = await fetchAniListMediaById(numId);
+      if (liveAniList) return liveAniList;
+    }
+  }
+
+  // 3. TMDB live hydration
+  if (id.startsWith('tmdb_movie_')) {
+    const numId = parseInt(id.replace('tmdb_movie_', ''), 10);
+    if (!isNaN(numId)) {
+      const liveMovie = await fetchTmdbMediaById(numId, 'movie');
+      if (liveMovie) return liveMovie;
+    }
+  }
+
+  if (id.startsWith('tmdb_tv_')) {
+    const numId = parseInt(id.replace('tmdb_tv_', ''), 10);
+    if (!isNaN(numId)) {
+      const liveTv = await fetchTmdbMediaById(numId, 'tv');
+      if (liveTv) return liveTv;
+    }
+  }
+
+  return null;
 }
 
 export async function getRelatedWorks(titleId: string): Promise<RelatedWorkItem[]> {
