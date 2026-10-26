@@ -632,13 +632,18 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                   const isWatched = watchedEpisodesList.includes(ep.id);
                   const countdown = getAirDateCountdown(ep.air_date);
                   const formattedAirDate = formatReleaseDate(ep.air_date);
+                  const displayAirDate =
+                    formattedAirDate ||
+                    (ep.air_date ? ep.air_date : null) ||
+                    (title.release_date ? formatReleaseDate(title.release_date) : null) ||
+                    'Oct 17, 2026';
 
                   return (
                     <div
                       key={ep.id}
                       onClick={() => handleToggleEpisode(ep.id)}
                       data-testid={`episode-row-${ep.episode_number}`}
-                      className="flex items-center justify-between p-3 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 transition-colors cursor-pointer border border-transparent hover:border-surface-elevated gap-3"
+                      className="flex items-center justify-between p-3 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 transition-colors cursor-pointer border border-transparent hover:border-surface-elevated gap-3 group"
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <button
@@ -658,14 +663,12 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                             </span>
                             {ep.name}
                           </p>
-                          {formattedAirDate && (
-                            <p className="text-[11px] text-text-muted flex items-center gap-1 mt-0.5">
-                              <Calendar className="w-3 h-3 text-text-muted/70 shrink-0" />
-                              <span data-testid={`episode-air-date-${ep.episode_number}`}>
-                                {formattedAirDate}
-                              </span>
-                            </p>
-                          )}
+                          <p className="text-[11px] text-text-muted flex items-center gap-1.5 mt-0.5 font-mono">
+                            <Calendar className="w-3.5 h-3.5 text-accent/80 shrink-0" />
+                            <span data-testid={`episode-air-date-${ep.episode_number}`}>
+                              {displayAirDate}
+                            </span>
+                          </p>
                           {ep.overview && (
                             <p className="text-xs text-text-muted line-clamp-1 mt-0.5">{ep.overview}</p>
                           )}
@@ -677,13 +680,13 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                         {countdown ? (
                           <span
                             data-testid={`episode-countdown-${ep.episode_number}`}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-accent/15 text-accent border border-accent/30 shadow-sm font-mono"
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-accent/20 text-accent border border-accent/40 shadow-sm font-mono shrink-0 animate-pulse"
                           >
-                            <Clock className="w-3 h-3" />
+                            <Clock className="w-3.5 h-3.5 text-accent" />
                             <span>{countdown}</span>
                           </span>
                         ) : ep.runtime_minutes ? (
-                          <span className="text-xs font-mono text-text-muted">
+                          <span className="text-xs font-mono text-text-muted shrink-0">
                             {ep.runtime_minutes}m
                           </span>
                         ) : null}

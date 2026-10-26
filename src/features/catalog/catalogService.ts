@@ -115,7 +115,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
           name: i === 0 ? 'Seven Thirty-Seven' : `Episode ${i + 1}`,
           overview: 'Walt and Jesse navigate dangerous drug kingpins.',
           runtime_minutes: 47,
-          air_date: '2009-03-08',
+          air_date: new Date(Date.UTC(2009, 2, 8 + i * 7)).toISOString().split('T')[0],
         })),
       },
       {
@@ -130,7 +130,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
           name: i === 0 ? 'No Más' : `Episode ${i + 1}`,
           overview: 'The Cousins seek vengeance as Walt works the superlab.',
           runtime_minutes: 47,
-          air_date: '2010-03-21',
+          air_date: new Date(Date.UTC(2010, 2, 21 + i * 7)).toISOString().split('T')[0],
         })),
       },
       {
@@ -145,7 +145,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
           name: i === 0 ? 'Box Cutter' : `Episode ${i + 1}`,
           overview: 'Tensions between Walt and Gus reach a boiling point.',
           runtime_minutes: 47,
-          air_date: '2011-07-17',
+          air_date: new Date(Date.UTC(2011, 6, 17 + i * 7)).toISOString().split('T')[0],
         })),
       },
       {
@@ -160,7 +160,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
           name: i === 0 ? 'Live Free or Die' : i === 13 ? 'Ozymandias' : i === 15 ? 'Felina' : `Episode ${i + 1}`,
           overview: 'The final chapter of Walter White\'s rise and fall.',
           runtime_minutes: 48,
-          air_date: '2012-07-15',
+          air_date: new Date(Date.UTC(2012, 6, 15 + i * 7)).toISOString().split('T')[0],
         })),
       },
     ],
@@ -202,7 +202,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
           name: i === 0 ? 'To You, in 2000 Years' : i === 1 ? 'That Day' : `Episode ${i + 1}`,
           overview: 'Eren, Mikasa, and Armin join the 104th Training Corps.',
           runtime_minutes: 24,
-          air_date: '2013-04-07',
+          air_date: new Date(Date.UTC(2013, 3, 7 + i * 7)).toISOString().split('T')[0],
         })),
       },
       {
@@ -217,7 +217,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
           name: i === 0 ? 'Beast Titan' : i === 5 ? 'Warrior' : `Episode ${i + 1}`,
           overview: 'The Scout Regiment uncovers betrayal from within.',
           runtime_minutes: 24,
-          air_date: '2017-04-01',
+          air_date: new Date(Date.UTC(2017, 3, 1 + i * 7)).toISOString().split('T')[0],
         })),
       },
       {
@@ -232,7 +232,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
           name: i === 0 ? 'Smoke Signal' : i === 15 ? 'Hero' : i === 19 ? 'The Basement' : `Episode ${i + 1}`,
           overview: 'The Scouts reach the basement and discover the truth of the world.',
           runtime_minutes: 24,
-          air_date: '2018-07-23',
+          air_date: new Date(Date.UTC(2018, 6, 23 + i * 7)).toISOString().split('T')[0],
         })),
       },
       {
@@ -241,14 +241,39 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
         name: 'The Final Season',
         overview: 'War with Marley begins across the sea.',
         episode_count: 30,
-        episodes: Array.from({ length: 30 }, (_, i) => ({
-          id: `aot_e4_${i + 1}`,
-          episode_number: i + 1,
-          name: i === 0 ? 'The Other Side of the Sea' : i === 4 ? 'Declaration of War' : i === 29 ? 'The Final Chapter: Special' : `Episode ${i + 1}`,
-          overview: 'The Rumbling begins as the fate of humanity hangs in the balance.',
-          runtime_minutes: 24,
-          air_date: i === 29 ? '2026-11-05' : '2020-12-07',
-        })),
+        episodes: Array.from({ length: 30 }, (_, i) => {
+          let airDate = '2020-12-07';
+          if (i < 16) {
+            airDate = new Date(Date.UTC(2020, 11, 7 + i * 7)).toISOString().split('T')[0];
+          } else if (i < 26) {
+            airDate = new Date(Date.UTC(2022, 0, 9 + (i - 16) * 7)).toISOString().split('T')[0];
+          } else if (i === 26) {
+            airDate = '2026-10-31'; // in 5 days
+          } else if (i === 27) {
+            airDate = '2026-11-07'; // in 12 days
+          } else if (i === 28) {
+            airDate = '2026-11-14'; // in 19 days
+          } else {
+            airDate = '2026-11-21'; // in 26 days
+          }
+          return {
+            id: `aot_e4_${i + 1}`,
+            episode_number: i + 1,
+            name:
+              i === 0
+                ? 'The Other Side of the Sea'
+                : i === 4
+                ? 'Declaration of War'
+                : i === 26
+                ? 'The Final Chapters: Special 1'
+                : i === 29
+                ? 'The Final Chapter: Climax Special'
+                : `Episode ${i + 1}`,
+            overview: 'The Rumbling begins as the fate of humanity hangs in the balance.',
+            runtime_minutes: 24,
+            air_date: airDate,
+          };
+        }),
       },
     ],
   },
@@ -316,6 +341,80 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     total_volumes: 8,
     anilist_id: 105398,
     mal_id: 121496,
+    related_title_ids: [
+      { targetId: 'anime_solo_leveling_151807', type: 'adaptation' },
+    ],
+  },
+
+  // 7. POPULAR ANIME SERIES (Solo Leveling Anime)
+  {
+    id: 'anime_solo_leveling_151807',
+    media_type: 'anime_series',
+    title: 'Solo Leveling (Anime)',
+    original_title: '俺だけレベルアップな件',
+    release_year: 2024,
+    release_date: '2024-01-07',
+    synopsis:
+      'In a world where hunters battle deadly monsters, Sung Jinwoo ascends through mysterious dungeons with an unprecedented power to level up infinitely.',
+    poster_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx151807-33ppw6iGsN8C.jpg',
+    backdrop_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/151807-qUaUfV43l0mG.jpg',
+    genres: ['Action', 'Adventure', 'Fantasy'],
+    origin_country: 'JP',
+    status: 'releasing',
+    total_seasons: 2,
+    total_episodes: 24,
+    anilist_id: 151807,
+    related_title_ids: [
+      { targetId: 'manhwa_solo_leveling_105398', type: 'adaptation' },
+    ],
+    seasons: [
+      {
+        id: 'sl_s1',
+        season_number: 1,
+        name: 'Season 1',
+        overview: 'Jinwoo gains the System and begins his secret leveling up.',
+        episode_count: 12,
+        episodes: Array.from({ length: 12 }, (_, i) => ({
+          id: `sl_e1_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'I\'m Used to It' : i === 1 ? 'If I Had One More Chance' : `Episode ${i + 1}`,
+          overview: 'Jinwoo survives the Cartenon Temple and wakes up in the hospital.',
+          runtime_minutes: 24,
+          air_date: new Date(Date.UTC(2024, 0, 7 + i * 7)).toISOString().split('T')[0],
+        })),
+      },
+      {
+        id: 'sl_s2',
+        season_number: 2,
+        name: 'Season 2: Arise from the Shadow',
+        overview: 'Shadow Monarch Jinwoo commands his undead army against new S-rank gates.',
+        episode_count: 12,
+        episodes: Array.from({ length: 12 }, (_, i) => {
+          const futureDates = [
+            '2026-10-31', // in 5 days
+            '2026-11-07', // in 12 days
+            '2026-11-14', // in 19 days
+            '2026-11-21', // in 26 days
+            '2026-11-28', // in 33 days
+            '2026-12-05',
+            '2026-12-12',
+            '2026-12-19',
+            '2026-12-26',
+            '2027-01-02',
+            '2027-01-09',
+            '2027-01-16',
+          ];
+          return {
+            id: `sl_e2_${i + 1}`,
+            episode_number: i + 1,
+            name: i === 0 ? 'You Aren\'t E-Rank, Are You?' : `Episode ${i + 1}`,
+            overview: 'The Shadow Army marches as Red Gate crises erupt across the world.',
+            runtime_minutes: 24,
+            air_date: futureDates[i] || '2026-11-07',
+          };
+        }),
+      },
+    ],
   },
 ];
 

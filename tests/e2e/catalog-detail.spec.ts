@@ -147,6 +147,15 @@ test.describe('TrackUp Phase 2: Unified Search & Adaptive Title Detail Pages', (
     await expect(season4Tab).toBeVisible();
     await season4Tab.click();
 
+    // Verify unaired future episode 27 has formatted air date and countdown badge
+    const episodeAirDate27 = page.locator('[data-testid="episode-air-date-27"]');
+    await expect(episodeAirDate27).toBeVisible();
+    await expect(episodeAirDate27).toContainText('Oct 31, 2026');
+
+    const countdownPill27 = page.locator('[data-testid="episode-countdown-27"]');
+    await expect(countdownPill27).toBeVisible();
+    await expect(countdownPill27).toContainText('5 days');
+
     // Verify unaired future episode 30 has countdown badge
     const countdownPill = page.locator('[data-testid="episode-countdown-30"]');
     await expect(countdownPill).toBeVisible();

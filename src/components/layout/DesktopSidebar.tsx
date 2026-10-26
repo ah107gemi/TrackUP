@@ -55,19 +55,19 @@ export const DesktopSidebar: React.FC = () => {
       }`}
     >
       {/* Brand Header */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-surface-elevated">
+      <div className="h-20 flex items-center justify-between px-4 border-b border-surface-elevated">
         <div className="flex items-center gap-3 overflow-hidden">
           <img
             src="/assets/trackup-logo.jpg"
             alt="TrackUp Logo"
-            className="w-9 h-9 rounded-xl object-cover shrink-0 shadow-md border border-surface-elevated"
+            className="w-11 h-11 rounded-xl object-cover shrink-0 shadow-lg border-2 border-accent/40"
           />
           {!sidebarCollapsed && (
             <div className="flex flex-col">
-              <span className="font-bold text-lg tracking-tight text-text-primary leading-none">
+              <span className="font-extrabold text-2xl tracking-tight text-text-primary leading-none">
                 Track<span className="text-accent">Up</span>
               </span>
-              <span className="text-[10px] text-text-muted font-medium mt-1">
+              <span className="text-xs text-text-muted font-medium mt-1">
                 Track what you love.
               </span>
             </div>

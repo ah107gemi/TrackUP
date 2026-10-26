@@ -96,15 +96,20 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({ isOpen, onClos
       <div className="relative w-72 max-w-[85vw] h-full bg-[#101014] border-r border-[#16161D] flex flex-col z-10 shadow-2xl pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
         {/* Header */}
         <div className="p-4 border-b border-[#16161D] flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             <img
               src="/assets/trackup-logo.jpg"
               alt="TrackUp Logo"
-              className="w-8 h-8 rounded-lg object-cover shadow"
+              className="w-11 h-11 rounded-xl object-cover shadow-lg border-2 border-accent/40"
             />
-            <span className="font-bold text-lg text-text-primary">
-              Track<span className="text-accent">Up</span>
-            </span>
+            <div className="flex flex-col">
+              <span className="font-extrabold text-2xl tracking-tight text-text-primary leading-none">
+                Track<span className="text-accent">Up</span>
+              </span>
+              <span className="text-xs text-text-muted font-medium mt-1">
+                Track what you love.
+              </span>
+            </div>
           </div>
 
           <button

@@ -30,6 +30,8 @@ describe('Date Utilities & Air Date Countdowns', () => {
       expect(getAirDateCountdown('2026-11-07', ref)).toBe('12 days');
       // 1 day ahead
       expect(getAirDateCountdown('2026-10-27', ref)).toBe('1 day');
+      // Today
+      expect(getAirDateCountdown('2026-10-26', ref)).toBe('Today');
     });
 
     it('identifies future dates correctly with isFutureDate', () => {

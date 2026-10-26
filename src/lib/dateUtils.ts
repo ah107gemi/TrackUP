@@ -73,10 +73,10 @@ export function getAirDateCountdown(
   );
 
   const diffMs = targetUtc - refUtc;
-  if (diffMs <= 0) return null; // already aired or airing today
+  if (diffMs < 0) return null; // already aired in past
 
   const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays <= 0) return null;
+  if (diffDays <= 0) return 'Today';
   if (diffDays === 1) return '1 day';
   return `${diffDays} days`;
 }

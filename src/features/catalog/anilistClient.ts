@@ -124,6 +124,23 @@ query ($id: Int) {
           }
           episodes
           description(asHtml: false)
+          startDate {
+            year
+            month
+            day
+          }
+          nextAiringEpisode {
+            episode
+            airingAt
+            timeUntilAiring
+          }
+          airingSchedule(notYetAired: true, perPage: 25) {
+            nodes {
+              episode
+              airingAt
+              timeUntilAiring
+            }
+          }
         }
       }
     }
@@ -353,14 +370,32 @@ export async function fetchAniListMediaById(
               name: `Season ${seasonNum}: ${seqTitle}`,
               overview: seq.description || null,
               episode_count: seqEpisodes,
-              episodes: Array.from({ length: seqEpisodes }, (_, i) => ({
-                id: `anilist_${seq.id}_e${i + 1}`,
-                episode_number: i + 1,
-                name: `Episode ${i + 1}`,
-                overview: null,
-                runtime_minutes: 24,
-                air_date: null,
-              })),
+              episodes: Array.from({ length: seqEpisodes }, (_, i) => {
+                const epNum = i + 1;
+                const scheduleNode =
+                  seq.airingSchedule?.nodes?.find((n: { episode: number; airingAt: number }) => n.episode === epNum) ||
+                  (seq.nextAiringEpisode?.episode === epNum ? seq.nextAiringEpisode : null);
+
+                let epAirDate: string | null = null;
+                if (scheduleNode?.airingAt) {
+                  epAirDate = new Date(scheduleNode.airingAt * 1000).toISOString().split('T')[0];
+                } else if (seq.startDate?.year) {
+                  const baseYear = seq.startDate.year;
+                  const baseMonth = (seq.startDate.month || 1) - 1;
+                  const baseDay = seq.startDate.day || 1;
+                  const d = new Date(Date.UTC(baseYear, baseMonth, baseDay + i * 7));
+                  epAirDate = d.toISOString().split('T')[0];
+                }
+
+                return {
+                  id: `anilist_${seq.id}_e${epNum}`,
+                  episode_number: epNum,
+                  name: `Episode ${epNum}`,
+                  overview: null,
+                  runtime_minutes: 24,
+                  air_date: epAirDate,
+                };
+              }),
             });
             seasonNum++;
           }
