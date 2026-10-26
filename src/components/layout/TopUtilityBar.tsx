@@ -61,6 +61,7 @@ export const TopUtilityBar: React.FC = () => {
             <button
               onClick={() => setProfileModalOpen(true)}
               data-testid="profile-button"
+              aria-label="Open profile"
               className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-surface-elevated text-text-secondary hover:text-text-primary transition-colors"
             >
               <div className="w-7 h-7 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center">
@@ -73,6 +74,7 @@ export const TopUtilityBar: React.FC = () => {
             <button
               onClick={() => signOut()}
               title="Sign Out"
+              aria-label="Sign out"
               data-testid="signout-button"
               className="p-1.5 rounded-xl text-text-muted hover:text-status-dropped hover:bg-status-dropped/10 transition-colors"
             >

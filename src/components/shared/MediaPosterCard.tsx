@@ -36,6 +36,10 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
             alt={item.title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             loading="lazy"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = '/assets/trackup-logo.jpg';
+            }}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center p-4 text-center text-text-muted text-xs">

@@ -87,6 +87,7 @@ export const OmnisearchModal: React.FC<OmnisearchModalProps> = ({ onSelectTitle 
           {query && (
             <button
               onClick={() => setQuery('')}
+              aria-label="Clear search query"
               className="p-1 text-text-muted hover:text-text-primary"
             >
               <X className="w-4 h-4" />
@@ -95,6 +96,7 @@ export const OmnisearchModal: React.FC<OmnisearchModalProps> = ({ onSelectTitle 
           <button
             onClick={() => setOmnisearchOpen(false)}
             data-testid="omnisearch-close"
+            aria-label="Close search modal"
             className="ml-2 text-xs font-mono text-text-muted hover:text-text-primary px-2 py-1 rounded bg-surface-elevated"
           >
             ESC
@@ -102,20 +104,23 @@ export const OmnisearchModal: React.FC<OmnisearchModalProps> = ({ onSelectTitle 
         </div>
 
         {/* Category Pills */}
-        <div className="flex items-center gap-1.5 px-4 py-2.5 overflow-x-auto border-b border-surface-elevated no-scrollbar">
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveCategory(cat.id)}
-              className={`px-3 py-1 rounded-full text-xs font-medium shrink-0 transition-colors ${
-                activeCategory === cat.id
-                  ? 'bg-accent text-background font-semibold'
-                  : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              {cat.label}
-            </button>
-          ))}
+        <div className="relative">
+          <div className="flex items-center gap-1.5 px-4 py-2.5 overflow-x-auto border-b border-surface-elevated scrollbar-none snap-x">
+            {categories.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCategory(cat.id)}
+                className={`min-h-[32px] px-3 py-1 rounded-full text-xs font-medium shrink-0 snap-start transition-colors ${
+                  activeCategory === cat.id
+                    ? 'bg-accent text-background font-semibold'
+                    : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+          <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-surface to-transparent md:hidden" />
         </div>
 
         {/* Results / List */}
@@ -139,6 +144,10 @@ export const OmnisearchModal: React.FC<OmnisearchModalProps> = ({ onSelectTitle 
                           src={item.poster_url}
                           alt={item.title}
                           className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = '/assets/trackup-logo.jpg';
+                          }}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-accent text-xs">

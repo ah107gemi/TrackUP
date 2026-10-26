@@ -29,10 +29,12 @@ import {
   PlayCircle,
 } from 'lucide-react';
 
+const EMPTY_LIBRARY: any[] = [];
+
 export const AppShell: React.FC = () => {
   const { activeTab, setActiveTab, selectedTitleId, setSelectedTitleId } = useUIStore();
   const { user } = useAuth();
-  const { data: userLibrary = [] } = useUserLibrary(user?.id);
+  const { data: userLibrary = EMPTY_LIBRARY } = useUserLibrary(user?.id);
 
   const incrementEpisode = useIncrementEpisode();
   const incrementChapter = useIncrementChapter();
@@ -61,7 +63,7 @@ export const AppShell: React.FC = () => {
         <TopUtilityBar />
 
         {/* Scrollable Viewport */}
-        <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6 pb-24 md:pb-8">
+        <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6 pb-28 md:pb-8">
           {selectedTitleId ? (
             <TitleDetailPage
               titleId={selectedTitleId}

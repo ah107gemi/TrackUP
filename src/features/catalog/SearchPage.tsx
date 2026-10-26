@@ -72,22 +72,26 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onSelectTitle }) => {
       </div>
 
       {/* Category Filter Pills */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-surface-elevated no-scrollbar">
-        <SlidersHorizontal className="w-4 h-4 text-text-muted shrink-0 mr-1" />
-        {categories.map((cat) => (
-          <button
-            key={cat.id}
-            onClick={() => setActiveCategory(cat.id)}
-            data-testid={`filter-category-${cat.id}`}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all ${
-              activeCategory === cat.id
-                ? 'bg-accent text-background shadow-md'
-                : 'bg-surface border border-surface-elevated text-text-secondary hover:text-text-primary hover:bg-surface-elevated'
-            }`}
-          >
-            {cat.label}
-          </button>
-        ))}
+      <div className="relative">
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-surface-elevated scrollbar-none snap-x scroll-smooth">
+          <SlidersHorizontal className="w-4 h-4 text-text-muted shrink-0 mr-1" />
+          {categories.map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => setActiveCategory(cat.id)}
+              data-testid={`filter-category-${cat.id}`}
+              className={`min-h-[38px] px-3.5 py-1.5 rounded-xl text-xs font-semibold shrink-0 snap-start transition-all touch-manipulation flex items-center justify-center ${
+                activeCategory === cat.id
+                  ? 'bg-accent text-background shadow-md font-bold'
+                  : 'bg-surface border border-surface-elevated text-text-secondary hover:text-text-primary hover:bg-surface-elevated'
+              }`}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+        {/* Subtle right-edge fade mask for mobile discovery */}
+        <div className="pointer-events-none absolute right-0 top-0 bottom-2 w-8 bg-gradient-to-l from-background to-transparent md:hidden" />
       </div>
 
       {/* Results Grid */}

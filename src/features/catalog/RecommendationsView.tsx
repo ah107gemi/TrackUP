@@ -12,6 +12,8 @@ import { getPersonalizedRecommendations } from '../recommendations/recommendatio
 import type { RecommendationItem } from '../recommendations/types';
 import type { MediaType } from '../../types/database.types';
 
+const EMPTY_LIBRARY: any[] = [];
+
 interface RecommendationsViewProps {
   onSelectTitle: (id: string) => void;
 }
@@ -20,7 +22,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
   onSelectTitle,
 }) => {
   const { user } = useAuth();
-  const { data: userLibrary = [] } = useUserLibrary(user?.id);
+  const { data: userLibrary = EMPTY_LIBRARY } = useUserLibrary(user?.id);
   const upsertMutation = useUpsertLibrary();
 
   const [loading, setLoading] = useState(true);
@@ -30,7 +32,6 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
 
   useEffect(() => {
     let isMounted = true;
-    setLoading(true);
 
     getPersonalizedRecommendations(userLibrary).then((res) => {
       if (!isMounted) return;

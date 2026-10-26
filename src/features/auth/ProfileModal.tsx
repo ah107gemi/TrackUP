@@ -65,6 +65,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onSelectTitle }) => 
           <button
             onClick={() => setProfileModalOpen(false)}
             data-testid="profile-close-button"
+            aria-label="Close profile modal"
             className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-elevated"
           >
             <X className="w-5 h-5" />

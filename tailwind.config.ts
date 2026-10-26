@@ -20,8 +20,8 @@ const config: Config = {
         },
         text: {
           primary: '#F8FAFC',
-          secondary: '#94A3B8',
-          muted: '#64748B',
+          secondary: '#CBD5E1',
+          muted: '#94A3B8',
         },
         status: {
           watching: '#FFC400',

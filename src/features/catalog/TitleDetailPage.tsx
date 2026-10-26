@@ -328,6 +328,9 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
               src={title.backdrop_url}
               alt={title.title}
               className="w-full h-full object-cover"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-r from-surface to-surface-elevated" />
@@ -336,13 +339,17 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         </div>
 
         {/* Content Floating over Backdrop */}
-        <div className="relative -mt-36 md:-mt-48 px-6 md:px-10 pb-8 flex flex-col md:flex-row gap-6 md:gap-8 items-start">
+        <div className="relative -mt-36 md:-mt-48 px-4 sm:px-6 md:px-10 pb-8 flex flex-col md:flex-row gap-6 md:gap-8 items-start">
           {/* Poster Card */}
           <div className="w-36 md:w-56 shrink-0 rounded-2xl overflow-hidden border-2 border-surface-elevated shadow-2xl bg-surface">
             <img
               src={title.poster_url || '/assets/trackup-logo.jpg'}
               alt={title.title}
               className="w-full aspect-[2/3] object-cover"
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = '/assets/trackup-logo.jpg';
+              }}
             />
           </div>
 
@@ -406,6 +413,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
               <button
                 onClick={handleToggleFavorite}
                 data-testid="favorite-button"
+                aria-label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
                 title={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
                 className={`p-2 rounded-xl border transition-colors ${
                   isFavorited

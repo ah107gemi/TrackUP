@@ -16,6 +16,8 @@ import {
 } from './calendarService';
 import type { MediaType } from '../../types/database.types';
 
+const EMPTY_LIBRARY: any[] = [];
+
 interface ReleaseCalendarViewProps {
   onSelectTitle: (id: string) => void;
 }
@@ -24,7 +26,7 @@ export const ReleaseCalendarView: React.FC<ReleaseCalendarViewProps> = ({
   onSelectTitle,
 }) => {
   const { user } = useAuth();
-  const { data: userLibrary = [] } = useUserLibrary(user?.id);
+  const { data: userLibrary = EMPTY_LIBRARY } = useUserLibrary(user?.id);
   const upsertMutation = useUpsertLibrary();
 
   const [selectedDay, setSelectedDay] = useState<number | null>(null); // null = entire week

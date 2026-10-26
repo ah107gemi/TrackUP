@@ -89,6 +89,7 @@ export const AuthModal: React.FC = () => {
           <button
             onClick={() => setAuthModalOpen(false)}
             data-testid="auth-close-button"
+            aria-label="Close authentication modal"
             className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors"
           >
             <X className="w-5 h-5" />

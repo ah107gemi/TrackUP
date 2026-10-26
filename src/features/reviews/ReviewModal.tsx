@@ -98,6 +98,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
           <button
             onClick={onClose}
             data-testid="close-review-modal"
+            aria-label="Close review modal"
             className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-elevated"
           >
             <X className="w-5 h-5" />
