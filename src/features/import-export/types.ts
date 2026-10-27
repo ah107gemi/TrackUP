@@ -1,7 +1,7 @@
 import type { MediaType, TrackingStatus } from '../../types/database.types';
 import type { NormalizedCatalogItem } from '../../lib/validators';
 
-export type PlatformPreset = 'letterboxd' | 'imdb' | 'trakt' | 'mal' | 'generic';
+export type PlatformPreset = 'letterboxd' | 'imdb' | 'trakt' | 'mal' | 'binger' | 'generic';
 
 export interface ParsedImportRow {
   index: number;

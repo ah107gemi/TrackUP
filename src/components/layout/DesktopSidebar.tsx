@@ -28,10 +28,11 @@ const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'discover', label: 'Discover', icon: Compass },
   { id: 'watch', label: 'Watch Library', icon: Film },
-  { id: 'read', label: 'Reading Library', icon: BookOpen },
+  { id: 'read', label: 'Reading / Manga & Manhwa', icon: BookOpen },
   { id: 'calendar', label: 'Airing Calendar', icon: CalendarDays },
   { id: 'recommendations', label: 'Recommended', icon: Sparkles },
   { id: 'history', label: 'History & Stats', icon: BarChart3 },
+  { id: 'profile', label: 'Profile', icon: UserIcon },
   { id: 'import', label: 'Import / Export', icon: UploadCloud },
   { id: 'social', label: 'Community Feed', icon: Users },
 ];
@@ -119,7 +120,7 @@ export const DesktopSidebar: React.FC = () => {
               sidebarCollapsed ? 'justify-center p-2' : ''
             }`}
           >
-            <div className="w-8 h-8 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center shrink-0 overflow-hidden">
               {profile?.avatar_url ? (
                 <img
                   src={profile.avatar_url}

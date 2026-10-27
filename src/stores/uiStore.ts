@@ -9,7 +9,8 @@ export type NavigationTab =
   | 'recommendations'
   | 'history'
   | 'import'
-  | 'social';
+  | 'social'
+  | 'profile';
 
 export type LibraryViewMode = 'grid' | 'compact' | 'list';
 

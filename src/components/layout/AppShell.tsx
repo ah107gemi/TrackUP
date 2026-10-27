@@ -14,6 +14,7 @@ import { ImportExportView } from '../../features/import-export/ImportExportView'
 import { SocialFeedView } from '../../features/social/SocialFeedView';
 import { RecommendationsView } from '../../features/catalog/RecommendationsView';
 import { ReleaseCalendarView } from '../../features/calendar/ReleaseCalendarView';
+import { ProfilePage } from '../../features/profile/ProfilePage';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../features/auth/AuthContext';
 import {
@@ -233,6 +234,14 @@ export const AppShell: React.FC = () => {
                 <div data-testid="history-view" className="max-w-6xl mx-auto space-y-4">
                   <AuthGuard fallbackTitle="Sign In to View Tracking History" fallbackDescription="Chronological log of watched episodes and read chapters.">
                     <HistoryTimeline userId={user?.id} onSelectTitle={handleSelectTitle} />
+                  </AuthGuard>
+                </div>
+              )}
+
+              {activeTab === 'profile' && (
+                <div data-testid="profile-view" className="max-w-6xl mx-auto space-y-4">
+                  <AuthGuard fallbackTitle="Sign In to View Your Profile" fallbackDescription="View your tracking statistics, showcases, and profile details.">
+                    <ProfilePage onSelectTitle={handleSelectTitle} />
                   </AuthGuard>
                 </div>
               )}

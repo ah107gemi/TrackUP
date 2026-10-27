@@ -67,20 +67,20 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
         <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-transparent opacity-60 group-hover:opacity-40 transition-opacity z-10" />
 
         {/* Category Badge */}
-        <div className="absolute top-2.5 left-2.5 z-20">
+        <div className="absolute top-2.5 left-2.5 z-20 max-w-[65%]">
           <span
-            className={`px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wider border backdrop-blur-md ${meta.color}`}
+            className={`inline-block truncate px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wider border backdrop-blur-md ${meta.color}`}
           >
             {meta.label}
           </span>
         </div>
 
-        {/* Release Date/Year Badge */}
+        {/* Release Date/Year Badge - Positioned at bottom right of poster to prevent top badge collisions */}
         {(item.release_date || item.release_year) && (
-          <div className="absolute top-2.5 right-2.5 z-20">
+          <div className="absolute bottom-2.5 right-2.5 z-20">
             <span
               data-testid={`card-release-date-${item.id}`}
-              className="px-2 py-0.5 rounded-md text-[10px] font-mono font-medium bg-background/80 text-text-secondary backdrop-blur-md border border-white/10"
+              className="px-2 py-0.5 rounded-md text-[10px] font-mono font-medium bg-background/90 text-text-secondary backdrop-blur-md border border-white/10 shadow-sm"
             >
               {formatReleaseDate(item.release_date) || item.release_year}
             </span>
@@ -89,9 +89,9 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
       </div>
 
       {/* Info Body */}
-      <div className="p-3.5 flex flex-col flex-1 justify-between">
+      <div className="p-3.5 flex flex-col flex-1 justify-between gap-2">
         <div>
-          <h3 className="font-semibold text-sm text-text-primary line-clamp-1 group-hover:text-accent transition-colors">
+          <h3 className="font-semibold text-sm text-text-primary line-clamp-2 break-words group-hover:text-accent transition-colors">
             {item.title}
           </h3>
           {item.original_title && item.original_title !== item.title && (
@@ -101,7 +101,7 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
           )}
         </div>
 
-        <div className="mt-2.5 flex items-center justify-between text-xs text-text-secondary">
+        <div className="mt-1 flex items-center justify-between text-xs text-text-secondary">
           {item.genres.length > 0 && (
             <span className="text-[11px] text-text-muted truncate max-w-[120px]">
               {item.genres[0]}

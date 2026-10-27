@@ -99,8 +99,16 @@ export const TopUtilityBar: React.FC = () => {
               aria-label="Open profile"
               className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-surface-elevated text-text-secondary hover:text-text-primary transition-colors"
             >
-              <div className="w-7 h-7 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center">
-                <UserIcon className="w-4 h-4 text-accent" />
+              <div className="w-7 h-7 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center overflow-hidden shrink-0">
+                {profile?.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt={profile.display_name || user.username}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <UserIcon className="w-4 h-4 text-accent" />
+                )}
               </div>
               <span className="hidden lg:inline text-xs font-medium text-text-primary">
                 {profile?.display_name || user.username}

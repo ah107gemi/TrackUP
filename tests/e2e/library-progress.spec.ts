@@ -100,7 +100,7 @@ test.describe('TrackUp Phase 3: Watch & Read Libraries, 3 View Modes & Granular 
 
     // 5. Test Reading Library
     if (!isMobile) {
-      await page.locator('[data-testid="desktop-sidebar"] button:has-text("Reading Library")').click();
+      await page.locator('[data-testid="desktop-sidebar"] [data-testid="sidebar-nav-read"]').click();
     } else {
       await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
       await page.locator('[data-testid="mobile-nav-read"]').click();

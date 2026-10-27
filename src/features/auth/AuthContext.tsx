@@ -40,34 +40,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Initialize session
+  // Initialize session and auth state listener
   useEffect(() => {
     let mounted = true;
 
-    async function checkSession() {
+    async function checkInitialSession() {
       try {
-        // Try live Supabase Auth first
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session && session.user && mounted) {
+        // 1. Try live Supabase Auth getSession first
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (!error && session && session.user && mounted) {
           const u: UserSession = {
             id: session.user.id,
             email: session.user.email || '',
             username: session.user.user_metadata?.username || session.user.email?.split('@')[0] || 'user',
           };
           setUser(u);
-          // fetch profile
+
+          // fetch or create profile
           const { data: p } = await supabase.from('profiles').select('*').eq('id', u.id).single();
           if (p && mounted) {
             setProfile(p as Profile);
+          } else if (mounted) {
+            const fallbackProfile: Profile = {
+              id: u.id,
+              username: u.username,
+              display_name: session.user.user_metadata?.display_name || u.username,
+              avatar_url: session.user.user_metadata?.avatar_url || null,
+              bio: null,
+              library_visibility: 'public',
+              activity_visibility: 'public',
+              rating_display_preference: 'stars_5',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+            setProfile(fallbackProfile);
           }
           setLoading(false);
           return;
         }
       } catch {
-        // Supabase offline/mock fallback
+        // Supabase offline / network error
       }
 
-      // Fallback: check localStorage mock session
+      // 2. Fallback: check localStorage mock session
       const savedSession = localStorage.getItem(LOCAL_STORAGE_SESSION_KEY);
       if (savedSession && mounted) {
         try {
@@ -85,36 +100,99 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (mounted) setLoading(false);
     }
 
-    checkSession();
+    checkInitialSession();
+
+    // Subscribe to live auth state changes from Supabase
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      if (session?.user) {
+        const u: UserSession = {
+          id: session.user.id,
+          email: session.user.email || '',
+          username: session.user.user_metadata?.username || session.user.email?.split('@')[0] || 'user',
+        };
+        setUser(u);
+        const { data: p } = await supabase.from('profiles').select('*').eq('id', u.id).single();
+        if (p && mounted) {
+          setProfile(p as Profile);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        const hasMockSession = localStorage.getItem(LOCAL_STORAGE_SESSION_KEY);
+        if (!hasMockSession) {
+          setUser(null);
+          setProfile(null);
+        }
+      }
+    });
 
     return () => {
       mounted = false;
+      subscription.unsubscribe();
     };
   }, []);
 
   const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
     setLoading(true);
+    const cleanEmail = email.trim();
+
+    // 1. Try Supabase Auth signInWithPassword
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+
       if (!error && data?.user) {
         const u: UserSession = {
           id: data.user.id,
-          email: data.user.email || '',
-          username: data.user.user_metadata?.username || email.split('@')[0],
+          email: data.user.email || cleanEmail,
+          username: data.user.user_metadata?.username || cleanEmail.split('@')[0],
         };
         setUser(u);
+
+        // Fetch or create profile
         const { data: p } = await supabase.from('profiles').select('*').eq('id', u.id).single();
-        if (p) setProfile(p as Profile);
+        if (p) {
+          setProfile(p as Profile);
+        } else {
+          const newProfile: Profile = {
+            id: u.id,
+            username: u.username,
+            display_name: data.user.user_metadata?.display_name || u.username,
+            avatar_url: data.user.user_metadata?.avatar_url || null,
+            bio: null,
+            library_visibility: 'public',
+            activity_visibility: 'public',
+            rating_display_preference: 'stars_5',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          await (supabase.from('profiles') as any).upsert(newProfile);
+          setProfile(newProfile);
+        }
+
+        // Store session for persistence
+        localStorage.setItem(LOCAL_STORAGE_SESSION_KEY, JSON.stringify(u));
         setLoading(false);
         return { error: null };
       }
+
+      if (error) {
+        // If Supabase gave an explicit auth error, check if this email is in mock users before failing
+        const users: MockUserRecord[] = JSON.parse(localStorage.getItem(LOCAL_STORAGE_USERS_KEY) || '[]');
+        const mockMatch = users.find((u) => u.email.toLowerCase() === cleanEmail.toLowerCase());
+        if (!mockMatch) {
+          setLoading(false);
+          return { error: error.message };
+        }
+      }
     } catch {
-      // Offline fallback handling below
+      // Offline / network failure -> proceed to mock auth fallback
     }
 
-    // Mock auth fallback
+    // 2. Mock auth fallback
     const users: MockUserRecord[] = JSON.parse(localStorage.getItem(LOCAL_STORAGE_USERS_KEY) || '[]');
-    const existing = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+    const existing = users.find((u) => u.email.toLowerCase() === cleanEmail.toLowerCase());
 
     if (!existing || existing.passwordHash !== password) {
       setLoading(false);
@@ -146,29 +224,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     displayName?: string
   ): Promise<{ error: string | null }> => {
     setLoading(true);
+    const cleanEmail = email.trim();
+    const cleanUsername = username.trim();
+    const cleanDisplayName = displayName?.trim() || cleanUsername;
+
+    // 1. Try Supabase Auth signUp
     try {
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: cleanEmail,
         password,
         options: {
           data: {
-            username,
-            display_name: displayName || username,
+            username: cleanUsername,
+            display_name: cleanDisplayName,
           },
         },
       });
 
-      if (!error && data?.user) {
+      if (error) {
+        // If error is not a network failure, return the actual Supabase error
+        if (!error.message.includes('fetch') && !error.message.includes('network')) {
+          setLoading(false);
+          return { error: error.message };
+        }
+      } else if (data?.user) {
         const u: UserSession = {
           id: data.user.id,
-          email: data.user.email || '',
-          username,
+          email: data.user.email || cleanEmail,
+          username: cleanUsername,
         };
-        setUser(u);
+
         const newProfile: Profile = {
           id: u.id,
-          username,
-          display_name: displayName || username,
+          username: cleanUsername,
+          display_name: cleanDisplayName,
           avatar_url: null,
           bio: null,
           library_visibility: 'public',
@@ -177,21 +266,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
+
+        // Upsert profile in Supabase
+        await (supabase.from('profiles') as any).upsert(newProfile);
         setProfile(newProfile);
+
+        // Always sync to mock user cache so credentials can log in regardless of network/offline
+        const users: MockUserRecord[] = JSON.parse(localStorage.getItem(LOCAL_STORAGE_USERS_KEY) || '[]');
+        if (!users.some((x) => x.email.toLowerCase() === cleanEmail.toLowerCase())) {
+          users.push({
+            id: u.id,
+            email: cleanEmail,
+            passwordHash: password,
+            username: cleanUsername,
+            displayName: cleanDisplayName,
+          });
+          localStorage.setItem(LOCAL_STORAGE_USERS_KEY, JSON.stringify(users));
+        }
+
+        const profiles: Record<string, Profile> = JSON.parse(localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY) || '{}');
+        profiles[u.id] = newProfile;
+        localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(profiles));
+
+        // Persist session
+        localStorage.setItem(LOCAL_STORAGE_SESSION_KEY, JSON.stringify(u));
+        setUser(u);
+
         setLoading(false);
         return { error: null };
       }
     } catch {
-      // Offline fallback handling below
+      // Offline fallback
     }
 
-    // Mock auth fallback
+    // 2. Mock auth fallback
     const users: MockUserRecord[] = JSON.parse(localStorage.getItem(LOCAL_STORAGE_USERS_KEY) || '[]');
-    if (users.some((u) => u.email.toLowerCase() === email.toLowerCase())) {
+    if (users.some((u) => u.email.toLowerCase() === cleanEmail.toLowerCase())) {
       setLoading(false);
       return { error: 'A user with this email already exists' };
     }
-    if (users.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
+    if (users.some((u) => u.username.toLowerCase() === cleanUsername.toLowerCase())) {
       setLoading(false);
       return { error: 'Username is already taken' };
     }
@@ -199,10 +313,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const newId = 'user_' + Math.random().toString(36).substring(2, 11);
     const newRecord: MockUserRecord = {
       id: newId,
-      email,
+      email: cleanEmail,
       passwordHash: password,
-      username,
-      displayName: displayName || username,
+      username: cleanUsername,
+      displayName: cleanDisplayName,
     };
 
     users.push(newRecord);
@@ -210,8 +324,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const newProfile: Profile = {
       id: newId,
-      username,
-      display_name: displayName || username,
+      username: cleanUsername,
+      display_name: cleanDisplayName,
       avatar_url: null,
       bio: null,
       library_visibility: 'public',
@@ -225,7 +339,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     profiles[newId] = newProfile;
     localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(profiles));
 
-    const session: UserSession = { id: newId, email, username };
+    const session: UserSession = { id: newId, email: cleanEmail, username: cleanUsername };
     localStorage.setItem(LOCAL_STORAGE_SESSION_KEY, JSON.stringify(session));
     setUser(session);
     setProfile(newProfile);

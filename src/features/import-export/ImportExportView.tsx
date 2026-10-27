@@ -33,7 +33,7 @@ export const ImportExportView: React.FC = () => {
   const [platform, setPlatform] = useState<PlatformPreset>('generic');
   const [fileName, setFileName] = useState<string>('');
   const [stagedItems, setStagedItems] = useState<StagedImportItem[]>([]);
-  const [duplicatePolicy, setDuplicatePolicy] = useState<'skip' | 'fill' | 'overwrite'>('fill');
+  const [duplicatePolicy, setDuplicatePolicy] = useState<'skip' | 'fill' | 'merge' | 'overwrite'>('fill');
   const [dragActive, setDragActive] = useState(false);
   const [importResult, setImportResult] = useState<{ committed: number; skipped: number } | null>(null);
 
@@ -120,6 +120,10 @@ export const ImportExportView: React.FC = () => {
   const sampleMAL = `series_title,series_type,series_episodes,my_watched_episodes,my_score,my_status
 Frieren: Beyond Journey's End,TV,28,28,10,2
 Solo Leveling,Manhwa,179,120,9,1`;
+
+  const sampleBinger = `Show,Year,Type,Binge Status,Episodes Seen,Rating
+Breaking Bad,2008,TV,Completed,62,10
+Yellowstone,2018,TV,Watching,25,9`;
 
   const matchedCount = stagedItems.filter((i) => i.status === 'exact_match').length;
   const duplicateCount = stagedItems.filter((i) => i.status === 'duplicate_in_library').length;
@@ -272,6 +276,15 @@ Solo Leveling,Manhwa,179,120,9,1`;
                 <Layers className="w-3.5 h-3.5 text-accent" />
                 <span>Test MyAnimeList CSV</span>
               </button>
+              <button
+                type="button"
+                onClick={() => handleProcessCsvString(sampleBinger, 'binger_app_export.csv')}
+                data-testid="sample-binger-button"
+                className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-accent/15 border border-surface-elevated hover:border-accent text-xs font-semibold text-text-primary transition-all flex items-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-accent" />
+                <span>Test Binger App CSV</span>
+              </button>
             </div>
           </div>
         </div>
@@ -358,7 +371,7 @@ Solo Leveling,Manhwa,179,120,9,1`;
               </p>
             </div>
             <div className="flex items-center gap-1.5">
-              {(['skip', 'fill', 'overwrite'] as const).map((pol) => (
+              {(['skip', 'fill', 'merge', 'overwrite'] as const).map((pol) => (
                 <button
                   key={pol}
                   onClick={() => setDuplicatePolicy(pol)}
@@ -370,7 +383,8 @@ Solo Leveling,Manhwa,179,120,9,1`;
                   }`}
                 >
                   {pol === 'skip' && 'Skip Existing'}
-                  {pol === 'fill' && 'Fill Missing (Default)'}
+                  {pol === 'fill' && 'Fill Missing'}
+                  {pol === 'merge' && 'Merge Progress'}
                   {pol === 'overwrite' && 'Overwrite'}
                 </button>
               ))}

@@ -10,6 +10,7 @@ import {
   parseImdbRow,
   parseTraktRow,
   parseMalRow,
+  parseBingerRow,
   parseGenericRow,
   normalizeTitleString,
 } from './parsers';
@@ -52,6 +53,9 @@ export async function parseCsvFile(
               break;
             case 'mal':
               parsed = parseMalRow(rawRow, idx);
+              break;
+            case 'binger':
+              parsed = parseBingerRow(rawRow, idx);
               break;
             case 'generic':
             default:
@@ -165,7 +169,7 @@ export function stageAndResolveRows(
 export async function commitImportBatch(params: {
   userId: string;
   items: StagedImportItem[];
-  duplicatePolicy?: 'skip' | 'fill' | 'overwrite';
+  duplicatePolicy?: 'skip' | 'fill' | 'overwrite' | 'merge';
 }): Promise<{ committed: number; skipped: number }> {
   const { userId, items, duplicatePolicy = 'skip' } = params;
   const allLibraries = getStoredLibraries();
@@ -196,20 +200,38 @@ export async function commitImportBatch(params: {
       }
 
       const existing = allLibraries[existingIndex];
-      if (duplicatePolicy === 'fill') {
+      if (duplicatePolicy === 'fill' || duplicatePolicy === 'merge') {
+        const incomingEpCount = item.row.episodesWatched || 0;
+        const incomingEps = Array.from(
+          { length: incomingEpCount },
+          (_, i) => `ep_${i + 1}`
+        );
+        const existingEps = existing.episodes_watched || [];
+        const mergedEps = Array.from(new Set([...existingEps, ...incomingEps]));
+
         allLibraries[existingIndex] = {
           ...existing,
-          rating: existing.rating ?? item.row.rating ?? null,
-          status: existing.status || item.row.status,
-          last_chapter_read: existing.last_chapter_read || item.row.chaptersRead || 0,
-          last_volume_read: existing.last_volume_read || item.row.volumesRead || 0,
+          rating: duplicatePolicy === 'merge'
+            ? (item.row.rating ?? existing.rating)
+            : (existing.rating ?? item.row.rating ?? null),
+          status: duplicatePolicy === 'merge' && item.row.status === 'completed'
+            ? 'completed'
+            : (existing.status || item.row.status),
+          episodes_watched: mergedEps,
+          last_chapter_read: Math.max(existing.last_chapter_read || 0, item.row.chaptersRead || 0),
+          last_volume_read: Math.max(existing.last_volume_read || 0, item.row.volumesRead || 0),
           last_progressed_at: now,
         };
       } else if (duplicatePolicy === 'overwrite') {
+        const overwriteEps = item.row.episodesWatched !== undefined
+          ? Array.from({ length: item.row.episodesWatched }, (_, i) => `ep_${i + 1}`)
+          : existing.episodes_watched;
+
         allLibraries[existingIndex] = {
           ...existing,
           rating: item.row.rating ?? existing.rating,
           status: item.row.status,
+          episodes_watched: overwriteEps,
           last_chapter_read: item.row.chaptersRead ?? existing.last_chapter_read,
           last_volume_read: item.row.volumesRead ?? existing.last_volume_read,
           last_progressed_at: now,

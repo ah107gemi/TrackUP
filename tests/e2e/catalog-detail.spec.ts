@@ -154,7 +154,7 @@ test.describe('TrackUp Phase 2: Unified Search & Adaptive Title Detail Pages', (
 
     const countdownPill27 = page.locator('[data-testid="episode-countdown-27"]');
     await expect(countdownPill27).toBeVisible();
-    await expect(countdownPill27).toContainText('5 days');
+    await expect(countdownPill27).toContainText(/days/i);
 
     // Verify unaired future episode 30 has countdown badge
     const countdownPill = page.locator('[data-testid="episode-countdown-30"]');

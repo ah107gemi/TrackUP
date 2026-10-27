@@ -68,9 +68,10 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({ isOpen, onClos
     { id: 'dashboard', label: 'Home / Dashboard', icon: LayoutDashboard },
     { id: 'discover', label: 'Discover Catalog', icon: Compass },
     { id: 'watch', label: 'Watch Library', icon: Film },
-    { id: 'read', label: 'Read Library', icon: BookOpen },
+    { id: 'read', label: 'Reading / Manga & Manhwa', icon: BookOpen },
     { id: 'calendar', label: 'Release Calendar', icon: CalendarDays },
     { id: 'recommendations', label: 'For You', icon: Sparkles },
+    { id: 'profile', label: 'My Profile', icon: UserIcon },
     { id: 'social', label: 'Social Activity', icon: Users },
     { id: 'import', label: 'Import & Export', icon: Layers },
   ];
@@ -134,8 +135,16 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({ isOpen, onClos
                 data-testid="mobile-nav-profile"
                 className="flex items-center gap-2.5 text-left min-w-0 flex-1 hover:opacity-80 transition-opacity"
               >
-                <div className="w-9 h-9 rounded-full bg-accent/20 border border-accent/40 flex items-center justify-center shrink-0">
-                  <UserIcon className="w-5 h-5 text-accent" />
+                <div className="w-9 h-9 rounded-full bg-accent/20 border border-accent/40 flex items-center justify-center shrink-0 overflow-hidden">
+                  {profile?.avatar_url ? (
+                    <img
+                      src={profile.avatar_url}
+                      alt={displayName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <UserIcon className="w-5 h-5 text-accent" />
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-text-primary truncate">
@@ -196,7 +205,7 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({ isOpen, onClos
               <button
                 key={item.id}
                 onClick={() => handleNavClick(item.id)}
-                data-testid={`mobile-nav-${item.id}`}
+                data-testid={item.id === 'profile' ? 'mobile-nav-profile-link' : `mobile-nav-${item.id}`}
                 aria-current={isActive ? 'page' : undefined}
                 className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all ${
                   isActive
