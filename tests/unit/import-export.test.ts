@@ -99,7 +99,7 @@ describe('Phase 5: Resilient 7-Step Import Pipeline & Idempotency', () => {
 
     // 1st Run
     const { rows: firstRows } = await parseCsvFile(csvData);
-    const firstStaged = stageAndResolveRows(firstRows, []);
+    const firstStaged = await stageAndResolveRows(firstRows, []);
     expect(firstStaged.filter((s) => s.status === 'exact_match').length).toBe(2);
 
     const firstCommit = await commitImportBatch({
@@ -116,7 +116,7 @@ describe('Phase 5: Resilient 7-Step Import Pipeline & Idempotency', () => {
 
     // 2nd Run with exact same CSV
     const { rows: secondRows } = await parseCsvFile(csvData);
-    const secondStaged = stageAndResolveRows(secondRows, storedAfterFirst);
+    const secondStaged = await stageAndResolveRows(secondRows, storedAfterFirst);
 
     // Both should now be detected as duplicates
     const duplicates = secondStaged.filter((s) => s.status === 'duplicate_in_library');

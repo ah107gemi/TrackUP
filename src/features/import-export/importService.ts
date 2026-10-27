@@ -15,9 +15,18 @@ import {
   normalizeTitleString,
 } from './parsers';
 import { MOCK_CATALOG_FIXTURES } from '../catalog/catalogService';
+import { searchTmdbMulti } from '../catalog/tmdbClient';
+import { searchAniList } from '../catalog/anilistClient';
 import type { UserLibraryItem } from '../library/libraryService';
-import { getStoredLibraries, saveStoredLibraries } from '../library/libraryService';
+import {
+  getStoredLibraries,
+  saveStoredLibraries,
+  clearUserLibrary,
+  clearImportedDummyTitles,
+} from '../library/libraryService';
 import type { NormalizedCatalogItem } from '../../lib/validators';
+
+export { clearUserLibrary, clearImportedDummyTitles };
 
 export async function parseCsvFile(
   fileContent: string,
@@ -78,92 +87,195 @@ export async function parseCsvFile(
   });
 }
 
-export function stageAndResolveRows(
+// Async worker pool for batching API queries without hitting rate limits
+async function pMap<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  concurrency = 6
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let index = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (index < items.length) {
+      const current = index++;
+      results[current] = await fn(items[current]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * Resolves a parsed row against TMDB Multi-Search API, AniList, or curated fixtures.
+ * Strictly assigns the verified media_type (tv, movie, anime_series, anime_film, manga, manhwa)
+ * and retrieves authentic IDs and artwork.
+ */
+export async function resolveTitleFromApi(
+  row: ParsedImportRow
+): Promise<NormalizedCatalogItem | null> {
+  const normTarget = row.normalizedTitle;
+
+  // 1. Check local catalog fixtures first (instant, covers standard test fixtures)
+  const fixtureMatch = MOCK_CATALOG_FIXTURES.find((f) => {
+    if (row.externalId) {
+      if (f.imdb_id && f.imdb_id.toLowerCase() === row.externalId.toLowerCase()) return true;
+      if (f.tmdb_id && String(f.tmdb_id) === row.externalId) return true;
+      if (f.anilist_id && String(f.anilist_id) === row.externalId) return true;
+    }
+    const normF = normalizeTitleString(f.title);
+    return normF === normTarget;
+  });
+
+  if (fixtureMatch) {
+    return fixtureMatch;
+  }
+
+  // 2. If row indicates Manga or Manhwa (or chapter/volume tracking is present), query AniList
+  const isReading =
+    row.mediaType === 'manga' ||
+    row.mediaType === 'manhwa' ||
+    (row.chaptersRead !== undefined && row.chaptersRead > 0) ||
+    (row.volumesRead !== undefined && row.volumesRead > 0);
+
+  if (isReading) {
+    try {
+      const aniResults = await searchAniList(row.rawTitle, 'manga');
+      if (aniResults && aniResults.length > 0) {
+        const exact = aniResults.find((a) => normalizeTitleString(a.title) === normTarget);
+        if (exact) return exact;
+        return aniResults[0];
+      }
+    } catch (err) {
+      console.warn(`AniList manga search failed for "${row.rawTitle}":`, err);
+    }
+  }
+
+  // 3. TMDB Multi-Search API query (searches movies and TV shows simultaneously)
+  try {
+    const tmdbResults = await searchTmdbMulti(row.rawTitle);
+    if (tmdbResults && tmdbResults.length > 0) {
+      // Look for exact title match
+      const exactTitleMatches = tmdbResults.filter(
+        (t) => normalizeTitleString(t.title) === normTarget
+      );
+
+      if (exactTitleMatches.length > 0) {
+        if (row.year) {
+          const yearMatch = exactTitleMatches.find((t) => t.release_year === row.year);
+          if (yearMatch) return yearMatch;
+        }
+        return exactTitleMatches[0];
+      }
+
+      // Check year match across all results
+      if (row.year) {
+        const yearMatch = tmdbResults.find((t) => t.release_year === row.year);
+        if (yearMatch) return yearMatch;
+      }
+
+      // Return highest popularity match
+      return tmdbResults[0];
+    }
+  } catch (err) {
+    console.warn(`TMDB Multi-Search failed for "${row.rawTitle}":`, err);
+  }
+
+  // 4. AniList fallback search (for Anime series or anime movies)
+  try {
+    const animeResults = await searchAniList(row.rawTitle, 'all');
+    if (animeResults && animeResults.length > 0) {
+      const exact = animeResults.find((a) => normalizeTitleString(a.title) === normTarget);
+      if (exact) return exact;
+      return animeResults[0];
+    }
+  } catch (err) {
+    console.warn(`AniList anime fallback search failed for "${row.rawTitle}":`, err);
+  }
+
+  // 5. Secondary fuzzy check on catalog fixtures (substring match)
+  const fuzzyFixture = MOCK_CATALOG_FIXTURES.find(
+    (f) =>
+      normalizeTitleString(f.title).includes(normTarget) ||
+      normTarget.includes(normalizeTitleString(f.title))
+  );
+  if (fuzzyFixture) {
+    return fuzzyFixture;
+  }
+
+  return null;
+}
+
+export async function stageAndResolveRows(
   rows: ParsedImportRow[],
   userLibrary: UserLibraryItem[]
-): StagedImportItem[] {
-  return rows.map((row) => {
-    // 1. Check if user already has this title in library (duplicate)
-    const existing = userLibrary.find((item) => {
-      const matchTitle =
-        normalizeTitleString(item.title.title) === row.normalizedTitle;
-      const matchType = item.title.media_type === row.mediaType;
-      return matchTitle && matchType;
-    });
+): Promise<StagedImportItem[]> {
+  return pMap(
+    rows,
+    async (row) => {
+      // 1. Check if user already has this title in library (duplicate)
+      const existing = userLibrary.find((item) => {
+        const matchTitle =
+          normalizeTitleString(item.title.title) === row.normalizedTitle;
+        const matchType = item.title.media_type === row.mediaType;
+        return matchTitle && matchType;
+      });
 
-    if (existing) {
-      return {
-        id: `stage_${row.index}_${row.fingerprint}`,
-        row,
-        status: 'duplicate_in_library',
-        resolvedTitle: existing.title,
-        candidates: [],
-        selectedTitleId: existing.title_id,
-      };
-    }
-
-    // 2. Look up in catalog fixtures by external ID or normalized title & media type
-    const exactMatch = MOCK_CATALOG_FIXTURES.find((f) => {
-      // Check external ID matches
-      if (row.externalId) {
-        if (f.imdb_id && f.imdb_id.toLowerCase() === row.externalId.toLowerCase()) return true;
-        if (f.tmdb_id && String(f.tmdb_id) === row.externalId) return true;
+      if (existing) {
+        return {
+          id: `stage_${row.index}_${row.fingerprint}`,
+          row: { ...row, mediaType: existing.title.media_type },
+          status: 'duplicate_in_library',
+          resolvedTitle: existing.title,
+          candidates: [],
+          selectedTitleId: existing.title_id,
+        };
       }
-      // Check title + media_type
-      const normCatalog = normalizeTitleString(f.title);
-      const sameType = f.media_type === row.mediaType;
-      return normCatalog === row.normalizedTitle && sameType;
-    });
 
-    if (exactMatch) {
+      // 2. Query verified API / catalog
+      const verified = await resolveTitleFromApi(row);
+
+      if (verified) {
+        // Strict categorization: synchronize row mediaType with verified API data
+        const updatedRow: ParsedImportRow = {
+          ...row,
+          mediaType: verified.media_type,
+          year: verified.release_year || row.year,
+        };
+
+        // Check if user has this verified title ID in library
+        const existingById = userLibrary.find((item) => item.title_id === verified.id);
+        if (existingById) {
+          return {
+            id: `stage_${row.index}_${row.fingerprint}`,
+            row: updatedRow,
+            status: 'duplicate_in_library',
+            resolvedTitle: verified,
+            candidates: [],
+            selectedTitleId: verified.id,
+          };
+        }
+
+        return {
+          id: `stage_${row.index}_${row.fingerprint}`,
+          row: updatedRow,
+          status: 'exact_match',
+          resolvedTitle: verified,
+          candidates: [],
+          selectedTitleId: verified.id,
+        };
+      }
+
+      // 3. If unverified, mark as unmatched so broken dummy records are not created
       return {
         id: `stage_${row.index}_${row.fingerprint}`,
         row,
-        status: 'exact_match',
-        resolvedTitle: exactMatch,
+        status: 'unmatched',
+        errorMessage: 'Title not found on TMDB or AniList. Skipped to prevent broken library records.',
         candidates: [],
-        selectedTitleId: exactMatch.id,
       };
-    }
-
-    // 3. Look for ambiguous / candidate matches of same media type
-    const candidates = MOCK_CATALOG_FIXTURES.filter(
-      (f) =>
-        f.media_type === row.mediaType &&
-        (normalizeTitleString(f.title).includes(row.normalizedTitle) ||
-          row.normalizedTitle.includes(normalizeTitleString(f.title)))
-    );
-
-    if (candidates.length > 0) {
-      return {
-        id: `stage_${row.index}_${row.fingerprint}`,
-        row,
-        status: 'ambiguous_match',
-        resolvedTitle: candidates[0],
-        candidates,
-        selectedTitleId: candidates[0].id,
-      };
-    }
-
-    // 4. Synthesize imported catalog item so user doesn't lose data
-    const synthesized: NormalizedCatalogItem = {
-      id: `imported_${row.mediaType}_${row.fingerprint.substring(0, 12)}`,
-      media_type: row.mediaType,
-      title: row.rawTitle,
-      release_year: row.year,
-      genres: ['Imported'],
-      status: 'released',
-    };
-
-    return {
-      id: `stage_${row.index}_${row.fingerprint}`,
-      row,
-      status: 'exact_match',
-      resolvedTitle: synthesized,
-      candidates: [],
-      selectedTitleId: synthesized.id,
-    };
-  });
+    },
+    6
+  );
 }
 
 export async function commitImportBatch(params: {
@@ -184,7 +296,7 @@ export async function commitImportBatch(params: {
     }
 
     const titleId = item.selectedTitleId || item.resolvedTitle?.id;
-    if (!titleId) {
+    if (!titleId || titleId.startsWith('imported_')) {
       skipped++;
       return;
     }
@@ -241,13 +353,13 @@ export async function commitImportBatch(params: {
       return;
     }
 
-    // New item creation
-    const catalogItem = item.resolvedTitle || {
-      id: titleId,
-      media_type: item.row.mediaType,
-      title: item.row.rawTitle,
-      genres: [],
-    };
+    // New item creation - only insert if verified title exists
+    if (!item.resolvedTitle || !item.resolvedTitle.id || item.resolvedTitle.id.startsWith('imported_')) {
+      skipped++;
+      return;
+    }
+
+    const catalogItem = item.resolvedTitle;
 
     const newLibraryEntry: UserLibraryItem = {
       id: `lib_${Math.random().toString(36).substring(2, 11)}`,

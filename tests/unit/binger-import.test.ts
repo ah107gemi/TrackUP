@@ -176,7 +176,7 @@ Succession,2018,TV,Completed,39,10`;
 Yellowstone,2018,TV,Watching,25,9`;
 
       const { rows } = await parseCsvFile(csvData);
-      const staged = stageAndResolveRows(rows, [initialEntry]);
+      const staged = await stageAndResolveRows(rows, [initialEntry]);
 
       expect(staged[0].status).toBe('duplicate_in_library');
 
@@ -200,6 +200,118 @@ Yellowstone,2018,TV,Watching,25,9`;
       expect(updated.episodes_watched).toContain('ep_25');
       // Rating updated to 9
       expect(updated.rating).toBe(9);
+    });
+  });
+
+  describe('Deep API Hydration & Strict Categorization', () => {
+    it('hydrates verified TMDB and AniList titles and rejects creating dummy records for unmatched items', async () => {
+      const csv = `Show,Year,Type,Binge Status,Episodes Seen,Rating
+Breaking Bad,2008,TV,Completed,62,10
+Yellowstone,2018,TV,Watching,25,9
+NonExistentTitleXYZ999,2025,TV,Watching,1,5`;
+
+      const { rows } = await parseCsvFile(csv);
+      const staged = await stageAndResolveRows(rows, []);
+
+      expect(staged.length).toBe(3);
+
+      // Breaking Bad: Verified TV fixture/TMDB item with real poster and ID
+      expect(staged[0].status).toBe('exact_match');
+      expect(staged[0].resolvedTitle?.id).toBe('tv_breaking_bad_1396');
+      expect(staged[0].resolvedTitle?.media_type).toBe('tv');
+      expect(staged[0].resolvedTitle?.poster_url).toContain('https://image.tmdb.org');
+      expect(staged[0].selectedTitleId).not.toContain('imported_');
+
+      // Yellowstone: Verified TMDB item with real poster and TV categorization
+      expect(staged[1].status).toBe('exact_match');
+      expect(staged[1].resolvedTitle?.id).toBe('tmdb_tv_73586');
+      expect(staged[1].resolvedTitle?.media_type).toBe('tv');
+      expect(staged[1].resolvedTitle?.poster_url).toContain('https://image.tmdb.org');
+
+      // Non-existent title: MUST NOT create dummy record
+      expect(staged[2].status).toBe('unmatched');
+      expect(staged[2].resolvedTitle).toBeUndefined();
+
+      // Commit items and ensure only valid verified items are committed
+      const commitRes = await commitImportBatch({
+        userId: 'user_hydration_test',
+        items: staged,
+      });
+
+      expect(commitRes.committed).toBe(2);
+      expect(commitRes.skipped).toBe(1); // NonExistentTitleXYZ999 skipped!
+    });
+  });
+
+  describe('Library Cleanup & Re-Import Utility', () => {
+    it('wipes broken dummy import records using clearImportedDummyTitles and clears library using clearUserLibrary', async () => {
+      const userId = 'user_cleanup_test';
+
+      const initialList: UserLibraryItem[] = [
+        {
+          id: 'lib_valid_1',
+          user_id: userId,
+          title_id: 'tmdb_tv_73586',
+          status: 'active',
+          rating: 9,
+          is_private: false,
+          personal_notes: null,
+          started_at: null,
+          completed_at: null,
+          last_progressed_at: '2026-01-01',
+          episodes_watched: ['ep_1'],
+          last_chapter_read: 0,
+          last_volume_read: 0,
+          title: {
+            id: 'tmdb_tv_73586',
+            media_type: 'tv',
+            title: 'Yellowstone',
+            genres: [],
+          },
+        },
+        {
+          id: 'lib_dummy_1',
+          user_id: userId,
+          title_id: 'imported_movie_bad_dummy_1',
+          status: 'completed',
+          rating: null,
+          is_private: false,
+          personal_notes: null,
+          started_at: null,
+          completed_at: null,
+          last_progressed_at: '2026-01-01',
+          episodes_watched: [],
+          last_chapter_read: 0,
+          last_volume_read: 0,
+          title: {
+            id: 'imported_movie_bad_dummy_1',
+            media_type: 'movie',
+            title: 'Broken Dummy Title',
+            genres: ['Imported'],
+          },
+        },
+      ];
+
+      localStorage.setItem('trackup_user_libraries', JSON.stringify(initialList));
+
+      // 1. Wipe only dummy records
+      const { clearImportedDummyTitles, clearUserLibrary } = await import(
+        '../../src/features/import-export/importService'
+      );
+
+      const removedDummies = await clearImportedDummyTitles(userId);
+      expect(removedDummies).toBe(1);
+
+      const afterDummyClean = JSON.parse(localStorage.getItem('trackup_user_libraries') || '[]');
+      expect(afterDummyClean.length).toBe(1);
+      expect(afterDummyClean[0].title_id).toBe('tmdb_tv_73586');
+
+      // 2. Clear entire library
+      const clearedTotal = await clearUserLibrary(userId);
+      expect(clearedTotal).toBe(1);
+
+      const afterFullClear = JSON.parse(localStorage.getItem('trackup_user_libraries') || '[]');
+      expect(afterFullClear.length).toBe(0);
     });
   });
 });

@@ -10,6 +10,8 @@ import {
   RefreshCw,
   Film,
   Sparkles,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import type { ImportPipelineStep, PlatformPreset, StagedImportItem } from './types';
 import {
@@ -18,6 +20,8 @@ import {
   commitImportBatch,
   exportUserLibraryToCsv,
   downloadCsvFile,
+  clearUserLibrary,
+  clearImportedDummyTitles,
 } from './importService';
 import { useAuth } from '../auth/AuthContext';
 import { useUserLibrary } from '../library/useLibrary';
@@ -36,11 +40,43 @@ export const ImportExportView: React.FC = () => {
   const [duplicatePolicy, setDuplicatePolicy] = useState<'skip' | 'fill' | 'merge' | 'overwrite'>('fill');
   const [dragActive, setDragActive] = useState(false);
   const [importResult, setImportResult] = useState<{ committed: number; skipped: number } | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const [clearMessage, setClearMessage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const dummyCount = userLibrary.filter(
+    (item) => item.title_id.startsWith('imported_') || item.title_id.startsWith('generic_')
+  ).length;
+
+  const handleClearLibrary = async () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to clear your library? This will delete all tracked and imported titles so you can re-import cleanly.'
+    );
+    if (!confirmed) return;
+
+    setClearing(true);
+    const count = await clearUserLibrary(activeUserId);
+    queryClient.invalidateQueries({ queryKey: ['library', activeUserId] });
+    queryClient.invalidateQueries({ queryKey: ['user_library', activeUserId] });
+    setStagedItems([]);
+    setStep('idle');
+    setClearMessage(`Successfully cleared ${count} titles from your library.`);
+    setClearing(false);
+  };
+
+  const handleClearDummyRecords = async () => {
+    setClearing(true);
+    const count = await clearImportedDummyTitles(activeUserId);
+    queryClient.invalidateQueries({ queryKey: ['library', activeUserId] });
+    queryClient.invalidateQueries({ queryKey: ['user_library', activeUserId] });
+    setClearMessage(`Removed ${count} unverified dummy titles from your library.`);
+    setClearing(false);
+  };
+
   const handleProcessCsvString = async (csvText: string, name: string) => {
     setFileName(name);
+    setClearMessage(null);
     setStep('uploading');
 
     setTimeout(async () => {
@@ -50,7 +86,7 @@ export const ImportExportView: React.FC = () => {
         setPlatform(preset);
 
         setStep('resolving');
-        const staged = stageAndResolveRows(rows, userLibrary);
+        const staged = await stageAndResolveRows(rows, userLibrary);
         setStagedItems(staged);
 
         setStep('preview');
@@ -96,6 +132,7 @@ export const ImportExportView: React.FC = () => {
     });
     setImportResult(result);
     // Invalidate react query cache
+    queryClient.invalidateQueries({ queryKey: ['library', activeUserId] });
     queryClient.invalidateQueries({ queryKey: ['user_library', activeUserId] });
     setStep('complete');
   };
@@ -147,16 +184,72 @@ Yellowstone,2018,TV,Watching,25,9`;
           </p>
         </div>
 
-        {/* 1-Click Export Library Button */}
-        <button
-          onClick={handleExport}
-          data-testid="export-library-button"
-          className="px-4 py-2.5 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-xs font-bold text-accent flex items-center gap-2 transition-all shadow-md shrink-0"
-        >
-          <Download className="w-4 h-4" />
-          <span>Download Library Data (.csv)</span>
-        </button>
+        {/* Action Buttons: Clear Library & Download Export */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            onClick={handleClearLibrary}
+            data-testid="clear-library-button"
+            disabled={clearing || userLibrary.length === 0}
+            className="px-3.5 py-2.5 rounded-xl bg-status-dropped/10 hover:bg-status-dropped/20 border border-status-dropped/30 text-xs font-bold text-status-dropped flex items-center gap-1.5 transition-all shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>{clearing ? 'Clearing...' : 'Clear Library'}</span>
+          </button>
+
+          <button
+            onClick={handleExport}
+            data-testid="export-library-button"
+            className="px-4 py-2.5 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-xs font-bold text-accent flex items-center gap-2 transition-all shadow-md shrink-0"
+          >
+            <Download className="w-4 h-4" />
+            <span>Download Library Data (.csv)</span>
+          </button>
+        </div>
       </div>
+
+      {/* Success Notification Banner for Clear Operation */}
+      {clearMessage && (
+        <div
+          data-testid="clear-success-banner"
+          className="p-3.5 rounded-xl bg-status-completed/15 border border-status-completed/30 text-xs font-semibold text-status-completed flex items-center justify-between animate-in fade-in"
+        >
+          <span>{clearMessage}</span>
+          <button
+            onClick={() => setClearMessage(null)}
+            className="text-text-muted hover:text-text-primary px-2"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Legacy Dummy / Unverified Records Cleanup Alert */}
+      {dummyCount > 0 && (
+        <div
+          data-testid="dummy-cleanup-banner"
+          className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in"
+        >
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+            <div>
+              <p className="text-xs font-bold text-text-primary">
+                Found {dummyCount} Unverified Legacy Records
+              </p>
+              <p className="text-[11px] text-text-muted mt-0.5">
+                These titles lack verified TMDB/AniList metadata and cause broken posters. Wipe them before re-importing.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleClearDummyRecords}
+            data-testid="cleanup-dummy-button"
+            disabled={clearing}
+            className="px-3.5 py-1.5 rounded-xl bg-amber-500 text-background font-bold text-xs hover:bg-amber-400 transition-all shrink-0"
+          >
+            {clearing ? 'Cleaning...' : `Wipe ${dummyCount} Broken Titles`}
+          </button>
+        </div>
+      )}
 
       {/* Progress Stepper */}
       {step !== 'idle' && (

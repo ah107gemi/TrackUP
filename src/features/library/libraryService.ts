@@ -228,3 +228,32 @@ export async function logReadingProgress(params: {
   saveStoredLibraries(all);
   return updated;
 }
+
+export async function clearUserLibrary(userId: string): Promise<number> {
+  const all = getStoredLibraries();
+  const remaining = all.filter((item) => item.user_id !== userId);
+  const deletedCount = all.length - remaining.length;
+  saveStoredLibraries(remaining);
+  return deletedCount;
+}
+
+export async function clearImportedDummyTitles(userId: string): Promise<number> {
+  const all = getStoredLibraries();
+  const remaining = all.filter(
+    (item) =>
+      item.user_id !== userId ||
+      (!item.title_id.startsWith('imported_') &&
+        !item.title_id.startsWith('generic_') &&
+        (item.title_id.startsWith('tmdb_') ||
+          item.title_id.startsWith('anilist_') ||
+          item.title_id.startsWith('movie_') ||
+          item.title_id.startsWith('tv_') ||
+          item.title_id.startsWith('anime_') ||
+          item.title_id.startsWith('manga_') ||
+          item.title_id.startsWith('manhwa_') ||
+          item.title_id.startsWith('film_')))
+  );
+  const deletedCount = all.length - remaining.length;
+  saveStoredLibraries(remaining);
+  return deletedCount;
+}

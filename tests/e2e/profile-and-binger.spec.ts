@@ -79,5 +79,23 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     await page.locator('[data-testid="commit-import-button"]').click();
     await expect(page.locator('[data-testid="import-complete-section"]')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('text=Import Completed Successfully!')).toBeVisible();
+
+    // 5. Test Clear Library Cleanup Utility
+    // Navigate back to import view
+    if (!isMobile) {
+      await page.locator('[data-testid="sidebar-nav-import"]').click();
+    } else {
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await page.locator('[data-testid="mobile-nav-import"]').click();
+    }
+
+    const clearBtn = page.locator('[data-testid="clear-library-button"]');
+    await expect(clearBtn).toBeVisible();
+
+    page.once('dialog', (dialog) => dialog.accept());
+    await clearBtn.click();
+
+    await expect(page.locator('[data-testid="clear-success-banner"]')).toBeVisible();
+    await expect(page.locator('[data-testid="clear-success-banner"]')).toContainText('Successfully cleared');
   });
 });

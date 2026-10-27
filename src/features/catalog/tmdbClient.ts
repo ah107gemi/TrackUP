@@ -34,6 +34,63 @@ export function isTmdbConfigured(): boolean {
 }
 
 /**
+ * Queries TMDB Multi-Search API (/search/multi) to search across movies and TV shows simultaneously,
+ * returning accurately categorized media (movie, tv, anime_film, anime_series) with verified IDs and poster paths.
+ */
+export async function searchTmdbMulti(
+  query: string
+): Promise<NormalizedCatalogItem[]> {
+  if (!isTmdbConfigured() || !query.trim()) {
+    return [];
+  }
+
+  const authHeader = getTmdbAuthHeader();
+  const apiKeyParam = getTmdbApiKeyParam();
+  const headers = authHeader || { 'Content-Type': 'application/json', Accept: 'application/json' };
+  const encodedQuery = encodeURIComponent(query.trim());
+  const cleanQ = query.trim().toLowerCase();
+
+  try {
+    const url = `${TMDB_BASE_URL}/search/multi?query=${encodedQuery}${apiKeyParam ? `&${apiKeyParam}` : ''}`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) return [];
+
+    const json = await res.json();
+    const rawItems: any[] = json.results || [];
+
+    // Filter to movie and tv only (exclude person)
+    const validItems = rawItems.filter(
+      (item) => item.media_type === 'movie' || item.media_type === 'tv'
+    );
+
+    // Exact match & popularity sorting
+    validItems.sort((a, b) => {
+      const aTitle = (a.title || a.name || '').toLowerCase();
+      const bTitle = (b.title || b.name || '').toLowerCase();
+      const aExact = aTitle === cleanQ ? 1 : 0;
+      const bExact = bTitle === cleanQ ? 1 : 0;
+      if (aExact !== bExact) return bExact - aExact;
+
+      const aStarts = aTitle.startsWith(cleanQ) ? 1 : 0;
+      const bStarts = bTitle.startsWith(cleanQ) ? 1 : 0;
+      if (aStarts !== bStarts) return bStarts - aStarts;
+
+      return (b.popularity || 0) - (a.popularity || 0);
+    });
+
+    return validItems.map((item) => {
+      if (item.media_type === 'movie') {
+        return normalizeTmdbMovie(item as TmdbMoviePayload);
+      }
+      return normalizeTmdbTv(item as TmdbTvPayload);
+    });
+  } catch (err) {
+    console.warn('Failed to query TMDB Multi-Search API:', err);
+    return [];
+  }
+}
+
+/**
  * Searches TMDB for movies and TV shows if credentials are configured.
  */
 export async function searchTmdb(

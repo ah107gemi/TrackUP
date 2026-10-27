@@ -63,6 +63,30 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     ],
   },
 
+  // 1b. MOVIE (Interstellar)
+  {
+    id: 'tmdb_movie_157336',
+    media_type: 'movie',
+    title: 'Interstellar',
+    original_title: 'Interstellar',
+    release_year: 2014,
+    release_date: '2014-11-05',
+    synopsis:
+      'The adventures of a group of explorers who make use of a newly discovered wormhole to surpass the limitations on human space travel and conquer the vast distances involved in an interstellar voyage.',
+    poster_url: 'https://image.tmdb.org/t/p/w342/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg',
+    backdrop_url: 'https://image.tmdb.org/t/p/w1280/xJHokMbljvjADYdit5fK5VQsXEG.jpg',
+    genres: ['Adventure', 'Drama', 'Science Fiction'],
+    origin_country: 'US',
+    status: 'released',
+    runtime_minutes: 169,
+    tmdb_id: 157336,
+    imdb_id: 'tt0816692',
+    cast: [
+      { id: 'c_int_1', name: 'Matthew McConaughey', character: 'Cooper', profile_url: null },
+      { id: 'c_int_2', name: 'Anne Hathaway', character: 'Brand', profile_url: null },
+    ],
+  },
+
   // 2. TV SHOW
   {
     id: 'tv_breaking_bad_1396',
@@ -166,7 +190,86 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     ],
   },
 
+  // 2b. TV SHOW (Yellowstone)
+  {
+    id: 'tmdb_tv_73586',
+    media_type: 'tv',
+    title: 'Yellowstone',
+    original_title: 'Yellowstone',
+    release_year: 2018,
+    release_date: '2018-06-20',
+    synopsis:
+      'Follow the violent world of the Dutton family, who controls the largest contiguous ranch in the United States. Led by their patriarch John Dutton, the family defends their land against constant attack by land developers, an Indian reservation, and America\'s first National Park.',
+    poster_url: 'https://image.tmdb.org/t/p/w342/peNC0eyc3TQJa6x4TdKIIIRizUT.jpg',
+    backdrop_url: 'https://image.tmdb.org/t/p/w1280/7F1s2e5v0QJk5yU7Xw2s2zX.jpg',
+    genres: ['Western', 'Drama'],
+    origin_country: 'US',
+    status: 'returning series',
+    total_seasons: 5,
+    total_episodes: 53,
+    tmdb_id: 73586,
+    imdb_id: 'tt4236770',
+    cast: [
+      { id: 'c_y1', name: 'Kevin Costner', character: 'John Dutton', profile_url: null },
+      { id: 'c_y2', name: 'Kelly Reilly', character: 'Beth Dutton', profile_url: null },
+      { id: 'c_y3', name: 'Cole Hauser', character: 'Rip Wheeler', profile_url: null },
+    ],
+    seasons: [
+      {
+        id: 'ys_s1',
+        season_number: 1,
+        name: 'Season 1',
+        overview: 'The Dutton family battles to protect the Yellowstone ranch.',
+        episode_count: 9,
+        episodes: Array.from({ length: 9 }, (_, i) => ({
+          id: `ys_e1_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'Daybreak' : `Episode ${i + 1}`,
+          overview: 'John Dutton defends his land from land developers and the Broken Rock Reservation.',
+          runtime_minutes: 50,
+          air_date: new Date(Date.UTC(2018, 5, 20 + i * 7)).toISOString().split('T')[0],
+        })),
+      },
+    ],
+  },
+
   // 3. ANIME SERIES
+  {
+    id: 'anilist_anime_154587',
+    media_type: 'anime_series',
+    title: "Frieren: Beyond Journey's End",
+    original_title: '葬送のフリーレン',
+    release_year: 2023,
+    release_date: '2023-09-29',
+    synopsis: 'The adventure is over but life goes on for an elf mage just beginning to learn what living is all about.',
+    poster_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx154587-n2bGQtrackup.jpg',
+    backdrop_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/154587-eJv5WJ8y.jpg',
+    genres: ['Adventure', 'Drama', 'Fantasy'],
+    origin_country: 'JP',
+    status: 'completed',
+    total_seasons: 1,
+    total_episodes: 28,
+    anilist_id: 154587,
+    mal_id: 52991,
+    seasons: [
+      {
+        id: 'frieren_s1',
+        season_number: 1,
+        name: 'Season 1',
+        overview: 'Frieren begins her journey toward Ende.',
+        episode_count: 28,
+        episodes: Array.from({ length: 28 }, (_, i) => ({
+          id: `frieren_e1_${i + 1}`,
+          episode_number: i + 1,
+          name: `Episode ${i + 1}`,
+          overview: null,
+          runtime_minutes: 24,
+          air_date: '2023-09-29',
+        })),
+      },
+    ],
+  },
+
   {
     id: 'anime_aot_1429',
     media_type: 'anime_series',
