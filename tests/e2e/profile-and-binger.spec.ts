@@ -48,11 +48,15 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     await expect(page.locator('[data-testid="profile-page"]')).toBeVisible();
     await expect(page.locator('[data-testid="profile-page"]').getByText(`@bingertester_${timestamp}`)).toBeVisible();
 
-    // Verify TV Time-style sections exist
+    // Verify TV Time-style sections & watch time badges exist
     await expect(page.locator('[data-testid="profile-section-tv"]')).toBeVisible();
+    await expect(page.locator('[data-testid="tv-watch-time"]')).toBeVisible();
     await expect(page.locator('[data-testid="profile-section-movies"]')).toBeVisible();
+    await expect(page.locator('[data-testid="movies-watch-time"]')).toBeVisible();
     await expect(page.locator('[data-testid="profile-section-anime"]')).toBeVisible();
+    await expect(page.locator('[data-testid="anime-watch-time"]')).toBeVisible();
     await expect(page.locator('[data-testid="profile-section-reading"]')).toBeVisible();
+    await expect(page.locator('[data-testid="reading-watch-time"]')).toBeVisible();
     await expect(page.locator('[data-testid="avatar-file-input"]')).toBeAttached();
 
     // 4. Navigate to Import view and test Binger App CSV
@@ -80,7 +84,56 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     await expect(page.locator('[data-testid="import-complete-section"]')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('text=Import Completed Successfully!')).toBeVisible();
 
-    // 5. Test Clear Library Cleanup Utility
+    // Click "Import Another File" to reset to idle state
+    await page.locator('[data-testid="import-another-button"]').click();
+    await expect(page.locator('[data-testid="csv-dropzone"]')).toBeVisible();
+
+    // 5. Also import Letterboxd CSV to verify movie duration display
+    const letterboxdBtn = page.locator('[data-testid="sample-letterboxd-button"]');
+    await expect(letterboxdBtn).toBeVisible();
+    await letterboxdBtn.click();
+    await expect(page.locator('[data-testid="import-preview-section"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=Inception')).toBeVisible();
+    await page.locator('[data-testid="commit-import-button"]').click();
+    await expect(page.locator('[data-testid="import-complete-section"]')).toBeVisible({ timeout: 10000 });
+
+    // 6. Navigate to Watch Library to verify Completed TV show episode count & Movie runtimes
+    if (!isMobile) {
+      await page.locator('[data-testid="desktop-sidebar"] button:has-text("Watch Library")').click();
+    } else {
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await page.locator('[data-testid="mobile-nav-watch"]').click();
+    }
+
+    await expect(page.locator('[data-testid="watch-library-view"]')).toBeVisible();
+
+    // Verify Breaking Bad (completed) displays "62 eps", NEVER "0 eps"
+    await expect(page.locator('text=62 eps')).toBeVisible();
+    // Verify Inception (movie) displays "2h 28m", NEVER "Ch. 0" or "0 eps"
+    await expect(page.locator('text=2h 28m')).toBeVisible();
+    await expect(page.locator('text=Ch. 0')).toHaveCount(0);
+
+    // Switch to compact grid mode and verify quick increment is hidden for movies
+    await page.locator('[data-testid="view-mode-compact"]').click();
+    await expect(page.locator('[data-testid="library-compact-grid"]')).toBeVisible();
+    await expect(page.locator('text=2h 28m')).toBeVisible();
+
+    // 7. Navigate back to Profile page to verify category-specific watch time updates
+    if (!isMobile) {
+      await page.locator('[data-testid="sidebar-nav-profile"]').click();
+    } else {
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await page.locator('[data-testid="mobile-nav-profile-link"]').click();
+    }
+
+    await expect(page.locator('[data-testid="profile-page"]')).toBeVisible();
+    // TV watch time and Movie watch time must not be 0m anymore
+    const tvWatchTime = page.locator('[data-testid="tv-watch-time"]');
+    await expect(tvWatchTime).not.toHaveText('0m');
+    const moviesWatchTime = page.locator('[data-testid="movies-watch-time"]');
+    await expect(moviesWatchTime).not.toHaveText('0m');
+
+    // 8. Test Clear Library Cleanup Utility
     // Navigate back to import view
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-import"]').click();

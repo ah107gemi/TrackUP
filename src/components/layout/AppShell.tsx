@@ -27,6 +27,7 @@ import {
   PlayCircle,
   Compass,
 } from 'lucide-react';
+import { formatRuntime } from '../../lib/dateUtils';
 
 const EMPTY_LIBRARY: any[] = [];
 
@@ -149,9 +150,9 @@ export const AppShell: React.FC = () => {
 
                                 <div className="mt-2 flex items-center justify-between">
                                   <span className="font-mono text-xs font-semibold text-text-secondary">
-                                    {isEpisodic && `${item.episodes_watched.length} eps watched`}
+                                    {isEpisodic && (item.status === 'completed' ? `${item.title.total_episodes || item.episodes_watched.length} eps` : `${item.episodes_watched.length} eps watched`)}
                                     {isReading && `Ch. ${item.last_chapter_read}`}
-                                    {!isEpisodic && !isReading && item.status}
+                                    {!isEpisodic && !isReading && (formatRuntime(item.title.runtime_minutes) || item.status)}
                                   </span>
 
                                   {/* Quick +1 Action */}

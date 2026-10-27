@@ -9,12 +9,14 @@ import {
   Calendar,
   CheckCircle2,
   Edit3,
+  Clock,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useUIStore } from '../../stores/uiStore';
 import { useUserLibrary } from '../library/useLibrary';
 import { uploadAvatarImage } from '../../lib/avatarUpload';
 import { FavoritesShowcase } from '../favorites/FavoritesShowcase';
+import { formatWatchTime } from '../../lib/dateUtils';
 
 interface ProfilePageProps {
   onSelectTitle?: (titleId: string) => void;
@@ -49,7 +51,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
     setUploading(false);
   };
 
-  // Metrics computation for TV Time-style breakdown
+  // Category segregation
   const tvSeriesItems = library.filter((i) => i.title.media_type === 'tv');
   const movieItems = library.filter((i) => i.title.media_type === 'movie');
   const animeItems = library.filter(
@@ -59,14 +61,78 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
     (i) => i.title.media_type === 'manga' || i.title.media_type === 'manhwa'
   );
 
-  const totalEpisodesWatched = library.reduce(
-    (sum, item) => sum + (item.episodes_watched?.length || 0),
-    0
-  );
-  const totalChaptersRead = library.reduce(
+  // 1. TV Series Metrics
+  const tvCompletedCount = tvSeriesItems.filter((i) => i.status === 'completed').length;
+  const tvActiveCount = tvSeriesItems.filter((i) => i.status === 'active').length;
+  const tvEpisodesWatched = tvSeriesItems.reduce((sum, item) => {
+    if (item.episodes_watched && item.episodes_watched.length > 0) {
+      return sum + item.episodes_watched.length;
+    }
+    if (item.status === 'completed' && item.title.total_episodes) {
+      return sum + item.title.total_episodes;
+    }
+    return sum;
+  }, 0);
+  const tvWatchTimeMinutes = tvSeriesItems.reduce((sum, item) => {
+    const epRuntime = item.title.runtime_minutes || 45;
+    const eps = (item.episodes_watched && item.episodes_watched.length > 0)
+      ? item.episodes_watched.length
+      : (item.status === 'completed' ? (item.title.total_episodes || 10) : 0);
+    return sum + eps * epRuntime;
+  }, 0);
+
+  // 2. Movies Metrics
+  const moviesCompletedCount = movieItems.filter((i) => i.status === 'completed').length;
+  const moviesPlannedCount = movieItems.filter((i) => i.status === 'planned').length;
+  const movieWatchTimeMinutes = movieItems.reduce((sum, item) => {
+    if (item.status === 'completed') {
+      return sum + (item.title.runtime_minutes || 110);
+    }
+    return sum;
+  }, 0);
+
+  // 3. Anime Metrics (Anime Series & Anime Films)
+  const animeCompletedCount = animeItems.filter((i) => i.status === 'completed').length;
+  const animeActiveCount = animeItems.filter((i) => i.status === 'active').length;
+  const animeEpisodesWatched = animeItems.reduce((sum, item) => {
+    if (item.title.media_type === 'anime_film') {
+      return sum + (item.status === 'completed' ? 1 : 0);
+    }
+    if (item.episodes_watched && item.episodes_watched.length > 0) {
+      return sum + item.episodes_watched.length;
+    }
+    if (item.status === 'completed' && item.title.total_episodes) {
+      return sum + item.title.total_episodes;
+    }
+    return sum;
+  }, 0);
+  const animeWatchTimeMinutes = animeItems.reduce((sum, item) => {
+    if (item.title.media_type === 'anime_film') {
+      return sum + (item.status === 'completed' ? (item.title.runtime_minutes || 100) : 0);
+    }
+    const epRuntime = item.title.runtime_minutes || 24;
+    const eps = (item.episodes_watched && item.episodes_watched.length > 0)
+      ? item.episodes_watched.length
+      : (item.status === 'completed' ? (item.title.total_episodes || 12) : 0);
+    return sum + eps * epRuntime;
+  }, 0);
+
+  // 4. Reading Metrics
+  const readingCompletedCount = readingItems.filter((i) => i.status === 'completed').length;
+  const readingActiveCount = readingItems.filter((i) => i.status === 'active').length;
+  const totalChaptersRead = readingItems.reduce(
     (sum, item) => sum + (item.last_chapter_read || 0),
     0
   );
+  const totalVolumesRead = readingItems.reduce(
+    (sum, item) => sum + (item.last_volume_read || 0),
+    0
+  );
+  // Average reading time ~6 minutes per chapter
+  const readingTimeMinutes = Math.round(totalChaptersRead * 6);
+
+  // Total aggregate metrics for hero header
+  const totalEpisodesWatched = tvEpisodesWatched + animeEpisodesWatched;
 
   return (
     <div data-testid="profile-page" className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-200">
@@ -193,12 +259,31 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                 {tvSeriesItems.length} Shows
               </span>
             </div>
+
+            {/* Watch Time Badge */}
+            <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-surface-elevated/80 border border-surface-elevated">
+              <Clock className="w-4 h-4 text-purple-400 shrink-0" />
+              <div>
+                <p className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Watch Time</p>
+                <p data-testid="tv-watch-time" className="text-sm font-bold font-mono text-text-primary">
+                  {formatWatchTime(tvWatchTimeMinutes)}
+                </p>
+              </div>
+            </div>
+
             <p className="text-xs text-text-secondary">
               Track multi-season episodes, upcoming airings, and next episodes to watch.
             </p>
-            <div className="pt-2 border-t border-surface-elevated/70 flex items-center justify-between text-xs text-text-muted font-mono">
-              <span>{tvSeriesItems.filter((i) => i.status === 'completed').length} Finished</span>
-              <span>{tvSeriesItems.filter((i) => i.status === 'active').length} Watching</span>
+
+            <div className="pt-2 border-t border-surface-elevated/70 flex flex-col gap-1 text-xs text-text-muted font-mono">
+              <div className="flex items-center justify-between">
+                <span className="text-text-primary font-semibold">{tvEpisodesWatched} eps watched</span>
+                <span className="text-purple-400">{tvCompletedCount} Finished</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span>{tvActiveCount} Watching</span>
+                <span>{tvSeriesItems.length} Shows total</span>
+              </div>
             </div>
           </div>
 
@@ -216,12 +301,31 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                 {movieItems.length} Films
               </span>
             </div>
+
+            {/* Watch Time Badge */}
+            <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-surface-elevated/80 border border-surface-elevated">
+              <Clock className="w-4 h-4 text-blue-400 shrink-0" />
+              <div>
+                <p className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Watch Time</p>
+                <p data-testid="movies-watch-time" className="text-sm font-bold font-mono text-text-primary">
+                  {formatWatchTime(movieWatchTimeMinutes)}
+                </p>
+              </div>
+            </div>
+
             <p className="text-xs text-text-secondary">
               Log theatrical and streaming films, ratings, and runtime achievements.
             </p>
-            <div className="pt-2 border-t border-surface-elevated/70 flex items-center justify-between text-xs text-text-muted font-mono">
-              <span>{movieItems.filter((i) => i.status === 'completed').length} Watched</span>
-              <span>{movieItems.filter((i) => i.status === 'planned').length} Watchlist</span>
+
+            <div className="pt-2 border-t border-surface-elevated/70 flex flex-col gap-1 text-xs text-text-muted font-mono">
+              <div className="flex items-center justify-between">
+                <span className="text-text-primary font-semibold">{moviesCompletedCount} watched</span>
+                <span className="text-blue-400">{moviesPlannedCount} Watchlist</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span>{movieItems.length} Films total</span>
+                <span>{movieItems.length > 0 ? `${Math.round((moviesCompletedCount / movieItems.length) * 100)}%` : '0%'}</span>
+              </div>
             </div>
           </div>
 
@@ -239,12 +343,31 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                 {animeItems.length} Anime
               </span>
             </div>
+
+            {/* Watch Time Badge */}
+            <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-surface-elevated/80 border border-surface-elevated">
+              <Clock className="w-4 h-4 text-accent shrink-0" />
+              <div>
+                <p className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Watch Time</p>
+                <p data-testid="anime-watch-time" className="text-sm font-bold font-mono text-text-primary">
+                  {formatWatchTime(animeWatchTimeMinutes)}
+                </p>
+              </div>
+            </div>
+
             <p className="text-xs text-text-secondary">
               Synchronize weekly airing anime seasons, OVA specials, and films.
             </p>
-            <div className="pt-2 border-t border-surface-elevated/70 flex items-center justify-between text-xs text-text-muted font-mono">
-              <span>{animeItems.filter((i) => i.status === 'completed').length} Completed</span>
-              <span>{animeItems.filter((i) => i.status === 'active').length} Airing</span>
+
+            <div className="pt-2 border-t border-surface-elevated/70 flex flex-col gap-1 text-xs text-text-muted font-mono">
+              <div className="flex items-center justify-between">
+                <span className="text-text-primary font-semibold">{animeEpisodesWatched} eps watched</span>
+                <span className="text-accent">{animeCompletedCount} Completed</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span>{animeActiveCount} Airing</span>
+                <span>{animeItems.length} Anime total</span>
+              </div>
             </div>
           </div>
 
@@ -262,12 +385,31 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                 {readingItems.length} Titles
               </span>
             </div>
+
+            {/* Reading Time Badge */}
+            <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-surface-elevated/80 border border-surface-elevated">
+              <Clock className="w-4 h-4 text-rose-400 shrink-0" />
+              <div>
+                <p className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Reading Time</p>
+                <p data-testid="reading-watch-time" className="text-sm font-bold font-mono text-text-primary">
+                  {formatWatchTime(readingTimeMinutes)}
+                </p>
+              </div>
+            </div>
+
             <p className="text-xs text-text-secondary">
               Granular chapter-by-chapter and volume reading steppers with adaptation links.
             </p>
-            <div className="pt-2 border-t border-surface-elevated/70 flex items-center justify-between text-xs text-text-muted font-mono">
-              <span>{totalChaptersRead} Chs read</span>
-              <span>{readingItems.filter((i) => i.status === 'active').length} Reading</span>
+
+            <div className="pt-2 border-t border-surface-elevated/70 flex flex-col gap-1 text-xs text-text-muted font-mono">
+              <div className="flex items-center justify-between">
+                <span className="text-text-primary font-semibold">{totalChaptersRead} chs read</span>
+                <span className="text-rose-400">{readingCompletedCount} Finished</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span>{totalVolumesRead} vols read</span>
+                <span>{readingActiveCount} Reading</span>
+              </div>
             </div>
           </div>
         </div>

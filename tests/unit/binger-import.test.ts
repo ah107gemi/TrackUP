@@ -314,4 +314,57 @@ NonExistentTitleXYZ999,2025,TV,Watching,1,5`;
       expect(afterFullClear.length).toBe(0);
     });
   });
+
+  describe('Completed Show Total Episodes & Movie Runtime Hydration', () => {
+    it('populates full episode count for completed TV shows when episode count is not specified in import', async () => {
+      const csv = `Show,Year,Type,Binge Status,Episodes Seen,Rating
+Breaking Bad,2008,TV,Completed,,10`;
+
+      const { rows } = await parseCsvFile(csv);
+      const staged = await stageAndResolveRows(rows, []);
+
+      expect(staged.length).toBe(1);
+      expect(staged[0].status).toBe('exact_match');
+      expect(staged[0].resolvedTitle?.id).toBe('tv_breaking_bad_1396');
+      expect(staged[0].resolvedTitle?.total_episodes).toBe(62);
+
+      await commitImportBatch({
+        userId: 'user_completed_eps_test',
+        items: staged,
+      });
+
+      const userLibs: UserLibraryItem[] = JSON.parse(
+        localStorage.getItem('trackup_user_libraries') || '[]'
+      );
+      const bbEntry = userLibs.find((l) => l.user_id === 'user_completed_eps_test' && l.title_id === 'tv_breaking_bad_1396');
+      expect(bbEntry).toBeDefined();
+      expect(bbEntry?.status).toBe('completed');
+      expect(bbEntry?.episodes_watched.length).toBe(62);
+    });
+
+    it('hydrates movie runtime correctly and preserves runtime_minutes', async () => {
+      const csv = `Show,Year,Type,Binge Status,Episodes Seen,Rating
+Inception,2010,Movie,Completed,,9`;
+
+      const { rows } = await parseCsvFile(csv);
+      const staged = await stageAndResolveRows(rows, []);
+
+      expect(staged.length).toBe(1);
+      expect(staged[0].status).toBe('exact_match');
+      expect(staged[0].resolvedTitle?.media_type).toBe('movie');
+      expect(staged[0].resolvedTitle?.runtime_minutes).toBe(148);
+
+      await commitImportBatch({
+        userId: 'user_movie_runtime_test',
+        items: staged,
+      });
+
+      const userLibs: UserLibraryItem[] = JSON.parse(
+        localStorage.getItem('trackup_user_libraries') || '[]'
+      );
+      const incEntry = userLibs.find((l) => l.user_id === 'user_movie_runtime_test' && l.title_id === 'movie_inception_27205');
+      expect(incEntry).toBeDefined();
+      expect(incEntry?.title.runtime_minutes).toBe(148);
+    });
+  });
 });

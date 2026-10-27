@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { NormalizedCatalogItem } from '../../lib/validators';
 import type { MediaType } from '../../types/database.types';
-import { formatReleaseDate } from '../../lib/dateUtils';
+import { formatReleaseDate, formatRuntime } from '../../lib/dateUtils';
 
 interface MediaPosterCardProps {
   item: NormalizedCatalogItem;
@@ -109,17 +109,17 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
           )}
 
           {/* Type-specific progress unit */}
-          {item.runtime_minutes && (
+          {(item.media_type === 'movie' || item.media_type === 'anime_film') && (
             <span className="font-mono text-[11px] text-text-muted">
-              {item.runtime_minutes}m
+              {formatRuntime(item.runtime_minutes) || 'Feature'}
             </span>
           )}
-          {item.total_episodes && (
+          {(item.media_type === 'tv' || item.media_type === 'anime_series') && item.total_episodes && (
             <span className="font-mono text-[11px] text-accent">
               {item.total_episodes} eps
             </span>
           )}
-          {item.total_chapters && (
+          {(item.media_type === 'manga' || item.media_type === 'manhwa') && item.total_chapters && (
             <span className="font-mono text-[11px] text-accent">
               {item.total_chapters} chs
             </span>

@@ -90,3 +90,39 @@ export function isFutureDate(
 ): boolean {
   return getAirDateCountdown(dateStr, referenceDate) !== null;
 }
+
+/**
+ * Formats a duration in minutes into a clean hours & minutes string (e.g. 135 -> "2h 15m", 90 -> "1h 30m", 45 -> "45m").
+ */
+export function formatRuntime(minutes: number | null | undefined): string | null {
+  if (minutes === null || minutes === undefined || isNaN(minutes) || minutes <= 0) return null;
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
+  if (hours > 0 && mins > 0) return `${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${mins}m`;
+}
+
+/**
+ * Formats aggregated watch time into days, hours, and minutes for TV Time-style statistics.
+ * e.g. 2940 minutes -> "2d 1h"
+ * e.g. 150 minutes -> "2h 30m"
+ * e.g. 45 minutes -> "45m"
+ */
+export function formatWatchTime(minutes: number | null | undefined): string {
+  if (!minutes || isNaN(minutes) || minutes <= 0) return '0m';
+  const totalMins = Math.round(minutes);
+  const days = Math.floor(totalMins / 1440);
+  const remainingHours = Math.floor((totalMins % 1440) / 60);
+  const remainingMins = totalMins % 60;
+
+  if (days > 0) {
+    if (remainingHours > 0) return `${days}d ${remainingHours}h`;
+    return `${days}d`;
+  }
+  if (remainingHours > 0) {
+    if (remainingMins > 0) return `${remainingHours}h ${remainingMins}m`;
+    return `${remainingHours}h`;
+  }
+  return `${remainingMins}m`;
+}

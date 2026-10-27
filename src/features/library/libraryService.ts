@@ -107,19 +107,34 @@ export async function upsertLibraryItem(params: {
   const now = new Date().toISOString();
 
   if (existingIndex >= 0 && existing) {
+    const nextStatus = params.status !== undefined ? params.status : existing.status;
+    const isCompleted = nextStatus === 'completed';
+    const isEpisodic = existing.title.media_type === 'tv' || existing.title.media_type === 'anime_series';
+    let episodesWatched = existing.episodes_watched || [];
+    if (isCompleted && isEpisodic && episodesWatched.length === 0 && existing.title.total_episodes) {
+      episodesWatched = Array.from({ length: existing.title.total_episodes }, (_, i) => `ep_${i + 1}`);
+    }
+
     const updated: UserLibraryItem = {
       ...existing,
-      status: params.status !== undefined ? params.status : existing.status,
+      status: nextStatus,
       rating: params.rating !== undefined ? params.rating : existing.rating,
       is_private: params.isPrivate !== undefined ? params.isPrivate : existing.is_private,
       personal_notes: params.notes !== undefined ? params.notes : existing.personal_notes,
       title: (params.titleData && params.titleData.title !== 'Unknown Title') ? params.titleData : existing.title,
+      episodes_watched: episodesWatched,
       last_progressed_at: now,
     };
     all[existingIndex] = updated;
     saveStoredLibraries(all);
     return updated;
   }
+
+  const isNewCompleted = (params.status || 'planned') === 'completed';
+  const isNewEpisodic = resolvedTitle.media_type === 'tv' || resolvedTitle.media_type === 'anime_series';
+  const initialEpisodes = (isNewCompleted && isNewEpisodic && resolvedTitle.total_episodes)
+    ? Array.from({ length: resolvedTitle.total_episodes }, (_, i) => `ep_${i + 1}`)
+    : [];
 
   const newItem: UserLibraryItem = {
     id: `lib_${Math.random().toString(36).substring(2, 11)}`,
@@ -132,7 +147,7 @@ export async function upsertLibraryItem(params: {
     started_at: params.status === 'active' ? now : null,
     completed_at: params.status === 'completed' ? now : null,
     last_progressed_at: now,
-    episodes_watched: [],
+    episodes_watched: initialEpisodes,
     last_chapter_read: 0,
     last_volume_read: 0,
     title: resolvedTitle,

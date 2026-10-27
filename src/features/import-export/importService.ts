@@ -15,7 +15,7 @@ import {
   normalizeTitleString,
 } from './parsers';
 import { MOCK_CATALOG_FIXTURES } from '../catalog/catalogService';
-import { searchTmdbMulti } from '../catalog/tmdbClient';
+import { searchTmdbMulti, fetchTmdbMediaById } from '../catalog/tmdbClient';
 import { searchAniList } from '../catalog/anilistClient';
 import type { UserLibraryItem } from '../library/libraryService';
 import {
@@ -159,22 +159,37 @@ export async function resolveTitleFromApi(
         (t) => normalizeTitleString(t.title) === normTarget
       );
 
+      let verifiedMatch: NormalizedCatalogItem | null = null;
       if (exactTitleMatches.length > 0) {
         if (row.year) {
           const yearMatch = exactTitleMatches.find((t) => t.release_year === row.year);
-          if (yearMatch) return yearMatch;
+          verifiedMatch = yearMatch || exactTitleMatches[0];
+        } else {
+          verifiedMatch = exactTitleMatches[0];
         }
-        return exactTitleMatches[0];
-      }
-
-      // Check year match across all results
-      if (row.year) {
+      } else if (row.year) {
         const yearMatch = tmdbResults.find((t) => t.release_year === row.year);
-        if (yearMatch) return yearMatch;
+        if (yearMatch) verifiedMatch = yearMatch;
       }
 
-      // Return highest popularity match
-      return tmdbResults[0];
+      if (!verifiedMatch && tmdbResults.length > 0) {
+        verifiedMatch = tmdbResults[0];
+      }
+
+      if (verifiedMatch) {
+        if (verifiedMatch.tmdb_id && (!verifiedMatch.runtime_minutes || (verifiedMatch.media_type === 'tv' && !verifiedMatch.total_episodes))) {
+          try {
+            const details = await fetchTmdbMediaById(
+              verifiedMatch.tmdb_id,
+              verifiedMatch.media_type === 'movie' || verifiedMatch.media_type === 'anime_film' ? 'movie' : 'tv'
+            );
+            if (details) return details;
+          } catch {
+            // retain verifiedMatch
+          }
+        }
+        return verifiedMatch;
+      }
     }
   } catch (err) {
     console.warn(`TMDB Multi-Search failed for "${row.rawTitle}":`, err);
@@ -312,8 +327,11 @@ export async function commitImportBatch(params: {
       }
 
       const existing = allLibraries[existingIndex];
+      const isCompleted = item.row.status === 'completed';
+      const isEpisodic = existing.title.media_type === 'tv' || existing.title.media_type === 'anime_series';
+
       if (duplicatePolicy === 'fill' || duplicatePolicy === 'merge') {
-        const incomingEpCount = item.row.episodesWatched || 0;
+        const incomingEpCount = item.row.episodesWatched || (isCompleted && isEpisodic && existing.title.total_episodes ? existing.title.total_episodes : 0);
         const incomingEps = Array.from(
           { length: incomingEpCount },
           (_, i) => `ep_${i + 1}`
@@ -335,9 +353,10 @@ export async function commitImportBatch(params: {
           last_progressed_at: now,
         };
       } else if (duplicatePolicy === 'overwrite') {
+        const defaultCompletedEps = isCompleted && isEpisodic && existing.title.total_episodes ? existing.title.total_episodes : existing.episodes_watched.length;
         const overwriteEps = item.row.episodesWatched !== undefined
           ? Array.from({ length: item.row.episodesWatched }, (_, i) => `ep_${i + 1}`)
-          : existing.episodes_watched;
+          : Array.from({ length: defaultCompletedEps }, (_, i) => `ep_${i + 1}`);
 
         allLibraries[existingIndex] = {
           ...existing,
@@ -360,6 +379,11 @@ export async function commitImportBatch(params: {
     }
 
     const catalogItem = item.resolvedTitle;
+    const isCompleted = item.row.status === 'completed';
+    const isEpisodic = catalogItem.media_type === 'tv' || catalogItem.media_type === 'anime_series';
+    const initialEpCount = item.row.episodesWatched && item.row.episodesWatched > 0
+      ? item.row.episodesWatched
+      : (isCompleted && isEpisodic && catalogItem.total_episodes ? catalogItem.total_episodes : 0);
 
     const newLibraryEntry: UserLibraryItem = {
       id: `lib_${Math.random().toString(36).substring(2, 11)}`,
@@ -373,7 +397,7 @@ export async function commitImportBatch(params: {
       completed_at: item.row.completedAt || (item.row.status === 'completed' ? now : null),
       last_progressed_at: now,
       episodes_watched: Array.from(
-        { length: item.row.episodesWatched || 0 },
+        { length: initialEpCount },
         (_, i) => `ep_${i + 1}`
       ),
       last_chapter_read: item.row.chaptersRead || 0,

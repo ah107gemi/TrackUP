@@ -13,6 +13,7 @@ import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../auth/AuthContext';
 import { useUserLibrary, useIncrementEpisode, useIncrementChapter } from './useLibrary';
 import type { TrackingStatus, MediaType } from '../../types/database.types';
+import { formatRuntime } from '../../lib/dateUtils';
 
 interface LibraryViewProps {
   domain: 'watch' | 'read';
@@ -257,8 +258,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
                     <div className="flex items-center justify-between mt-2 text-[11px] text-text-muted">
                       {item.title.media_type === 'tv' || item.title.media_type === 'anime_series' ? (
                         <span className="font-mono text-accent">
-                          {item.episodes_watched.length}
-                          {item.title.total_episodes ? ` / ${item.title.total_episodes}` : ''} eps
+                          {item.status === 'completed'
+                            ? `${item.title.total_episodes || item.episodes_watched.length || 0} eps`
+                            : `${item.episodes_watched.length}${item.title.total_episodes ? ` / ${item.title.total_episodes}` : ''} eps`}
+                        </span>
+                      ) : item.title.media_type === 'movie' || item.title.media_type === 'anime_film' ? (
+                        <span className="font-mono text-text-muted">
+                          {formatRuntime(item.title.runtime_minutes) || 'Feature'}
                         </span>
                       ) : (
                         <span className="font-mono text-accent">
@@ -307,17 +313,23 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
                     <div className="mt-1 flex items-center justify-between">
                       <span className="font-mono text-[11px] text-accent">
                         {item.title.media_type === 'tv' || item.title.media_type === 'anime_series'
-                          ? `${item.episodes_watched.length} eps`
+                          ? (item.status === 'completed'
+                              ? `${item.title.total_episodes || item.episodes_watched.length || 0} eps`
+                              : `${item.episodes_watched.length} eps`)
+                          : item.title.media_type === 'movie' || item.title.media_type === 'anime_film'
+                          ? (formatRuntime(item.title.runtime_minutes) || 'Feature')
                           : `Ch. ${item.last_chapter_read}`}
                       </span>
-                      <button
-                        onClick={(e) => handleQuickProgress(e, item)}
-                        data-testid={`quick-increment-${item.id}`}
-                        className="px-2 py-0.5 rounded bg-accent text-background font-bold text-[10px] flex items-center gap-0.5 hover:bg-accent-hover transition-colors shadow"
-                      >
-                        <Plus className="w-3 h-3" />
-                        <span>1</span>
-                      </button>
+                      {item.title.media_type !== 'movie' && item.title.media_type !== 'anime_film' && item.status !== 'completed' && (
+                        <button
+                          onClick={(e) => handleQuickProgress(e, item)}
+                          data-testid={`quick-increment-${item.id}`}
+                          className="px-2 py-0.5 rounded bg-accent text-background font-bold text-[10px] flex items-center gap-0.5 hover:bg-accent-hover transition-colors shadow"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>1</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -379,11 +391,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
                       <td className="py-3 px-3 font-mono font-semibold text-text-primary">
                         {item.title.media_type === 'tv' || item.title.media_type === 'anime_series' ? (
                           <span className="text-accent">
-                            {item.episodes_watched.length}
-                            {item.title.total_episodes ? ` / ${item.title.total_episodes}` : ''} eps
+                            {item.status === 'completed'
+                              ? `${item.title.total_episodes || item.episodes_watched.length || 0} eps`
+                              : `${item.episodes_watched.length}${item.title.total_episodes ? ` / ${item.title.total_episodes}` : ''} eps`}
                           </span>
                         ) : item.title.media_type === 'movie' || item.title.media_type === 'anime_film' ? (
-                          <span>{item.title.runtime_minutes ? `${item.title.runtime_minutes}m` : 'Feature'}</span>
+                          <span className="text-text-muted">{formatRuntime(item.title.runtime_minutes) || 'Feature'}</span>
                         ) : (
                           <span className="text-accent">
                             Ch. {item.last_chapter_read}
@@ -392,26 +405,30 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
                         )}
                       </td>
                       <td className="py-3 px-3 text-right">
-                        <div className="inline-flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={(e) => handleQuickProgress(e, item)}
-                            data-testid={`list-increment-${item.id}`}
-                            className="px-2.5 py-1 rounded-lg bg-accent hover:bg-accent-hover text-background font-bold text-xs flex items-center gap-1 shadow transition-colors"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>+1</span>
-                          </button>
-                          {(item.title.media_type === 'manga' || item.title.media_type === 'manhwa') && (
+                        {item.title.media_type !== 'movie' && item.title.media_type !== 'anime_film' ? (
+                          <div className="inline-flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                             <button
-                              onClick={(e) => handleFractionalProgress(e, item)}
-                              data-testid={`fractional-increment-${item.id}`}
-                              title="Add half chapter (+0.5)"
-                              className="px-2 py-1 rounded-lg bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-text-secondary hover:text-text-primary font-mono text-xs transition-colors"
+                              onClick={(e) => handleQuickProgress(e, item)}
+                              data-testid={`list-increment-${item.id}`}
+                              className="px-2.5 py-1 rounded-lg bg-accent hover:bg-accent-hover text-background font-bold text-xs flex items-center gap-1 shadow transition-colors"
                             >
-                              +0.5
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>+1</span>
                             </button>
-                          )}
-                        </div>
+                            {(item.title.media_type === 'manga' || item.title.media_type === 'manhwa') && (
+                              <button
+                                onClick={(e) => handleFractionalProgress(e, item)}
+                                data-testid={`fractional-increment-${item.id}`}
+                                title="Add half chapter (+0.5)"
+                                className="px-2 py-1 rounded-lg bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-text-secondary hover:text-text-primary font-mono text-xs transition-colors"
+                              >
+                                +0.5
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-text-muted font-mono">{formatRuntime(item.title.runtime_minutes) || 'Movie'}</span>
+                        )}
                       </td>
                     </tr>
                   ))}
