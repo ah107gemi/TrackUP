@@ -263,6 +263,7 @@ export async function searchAniList(
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
+      signal: AbortSignal.timeout(12000),
       body: JSON.stringify({
         query: selectedQuery,
         variables,
@@ -291,19 +292,46 @@ export async function searchAniList(
       })),
     });
 
-    // Franchise Grouping: filter out redundant sequels/subsequent seasons from primary search grid for ANIME only.
+    // Franchise Grouping & Promo Filtering:
+    // Filter out music videos, promo clips, and redundant sequels from primary search grid for ANIME only.
     // For Manga & Manhwa (isReading), do NOT drop any items!
     let filtered = mediaList;
     if (!isReading) {
-      const searchIds = new Set(mediaList.map((m) => m.id));
+      filtered = mediaList.filter((m) => {
+        if (m.format === 'MUSIC') return false;
+        const allTitles = [
+          m.title?.english,
+          m.title?.romaji,
+          m.title?.native,
+          ...(Array.isArray(m.synonyms) ? m.synonyms : []),
+        ]
+          .filter((t): t is string => typeof t === 'string' && Boolean(t))
+          .map((t) => t.toLowerCase());
+
+        const isPromoOrMv = allTitles.some(
+          (t) =>
+            t.includes('(music video)') ||
+            t.includes('[music video]') ||
+            t.includes('(mv)') ||
+            t.includes('[mv]') ||
+            t.includes('promo video') ||
+            t.includes('promo clip') ||
+            t.includes('teaser') ||
+            t.includes('let you down')
+        );
+        if (isPromoOrMv && m.format !== 'TV' && m.format !== 'MOVIE') return false;
+        return true;
+      });
+
+      const searchIds = new Set(filtered.map((m) => m.id));
       const sequelIds = new Set<number>();
 
-      for (const m of mediaList) {
+      for (const m of filtered) {
         for (const edge of (m as any).relations?.edges || []) {
           if (!edge.node?.id || !searchIds.has(edge.node.id)) continue;
 
           if (edge.relationType === 'SEQUEL') {
-            const target = mediaList.find((x) => x.id === edge.node.id);
+            const target = filtered.find((x) => x.id === edge.node.id);
             if (target) {
               const targetTitle = (target.title?.english || target.title?.romaji || '').toLowerCase();
               const isExplicitSequel = /season|part\s*\d|final|2nd|3rd|4th|cour/i.test(targetTitle);
@@ -314,7 +342,7 @@ export async function searchAniList(
           }
         }
       }
-      filtered = mediaList.filter((m) => !sequelIds.has(m.id));
+      filtered = filtered.filter((m) => !sequelIds.has(m.id));
     }
 
     // Sort by exact title match boost across romaji, english, native, and synonyms
@@ -391,6 +419,7 @@ export async function fetchAniListMediaById(
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
+      signal: AbortSignal.timeout(12000),
       body: JSON.stringify({
         query: MEDIA_DETAIL_QUERY,
         variables: { id },

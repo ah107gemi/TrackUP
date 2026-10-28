@@ -95,6 +95,10 @@ test.describe('TrackUp Phase 2: Unified Search & Adaptive Title Detail Pages', (
 
     // Verify status is auto-updated to Currently Watching (active)
     await expect(page.locator('[data-testid="status-selector"]')).toHaveValue('active');
+
+    // Verify Remove from Library button is visible
+    const removeBtn = page.locator('[data-testid="remove-from-library-btn"]');
+    await expect(removeBtn).toBeVisible();
   });
 
   test('verifies Manga detail page renders Chapter/Volume Steppers & Linked Adaptations', async ({ page }) => {

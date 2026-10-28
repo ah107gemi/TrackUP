@@ -1,6 +1,7 @@
 import type { TrackingStatus } from '../../types/database.types';
 import type { NormalizedCatalogItem } from '../../lib/validators';
 import { MOCK_CATALOG_FIXTURES, getCatalogTitleById } from '../catalog/catalogService';
+import { supabase } from '../../lib/supabase';
 
 export interface UserLibraryItem {
   id: string;
@@ -193,7 +194,11 @@ export async function logEpisodeProgress(params: {
   }
 
   let nextStatus = item.status;
-  if (params.watched && updatedEpisodes.length > 0) {
+  if (!params.watched && updatedEpisodes.length === 0) {
+    if (item.status === 'active' || item.status === 'completed') {
+      nextStatus = 'planned';
+    }
+  } else if (params.watched && updatedEpisodes.length > 0) {
     if (!item.title.total_episodes || updatedEpisodes.length < item.title.total_episodes) {
       nextStatus = 'active';
     }
@@ -251,7 +256,11 @@ export async function logBatchEpisodeProgress(params: {
   }
 
   let nextStatus = item.status;
-  if (params.watched && updatedEpisodes.length > 0) {
+  if (!params.watched && updatedEpisodes.length === 0) {
+    if (item.status === 'active' || item.status === 'completed') {
+      nextStatus = 'planned';
+    }
+  } else if (params.watched && updatedEpisodes.length > 0) {
     if (!item.title.total_episodes || updatedEpisodes.length < item.title.total_episodes) {
       nextStatus = 'active';
     }
@@ -314,6 +323,60 @@ export async function logReadingProgress(params: {
   all[index] = updated;
   saveStoredLibraries(all);
   return updated;
+}
+
+export async function removeLibraryItem(
+  libraryId: string,
+  userId: string,
+  titleId?: string
+): Promise<boolean> {
+  const all = getStoredLibraries();
+  const target = all.find((item) => (item.id === libraryId || (titleId && item.title_id === titleId)) && item.user_id === userId);
+  const remaining = all.filter(
+    (item) => !( (item.id === libraryId || (titleId && item.title_id === titleId)) && item.user_id === userId )
+  );
+  saveStoredLibraries(remaining);
+
+  const effectiveTitleId = titleId || target?.title_id;
+
+  // Wipe watch history
+  try {
+    const watchHistory = JSON.parse(localStorage.getItem(LOCAL_STORAGE_WATCH_HISTORY_KEY) || '[]');
+    const filteredWatch = watchHistory.filter(
+      (h: any) => !(h.user_id === userId && (h.library_id === libraryId || (effectiveTitleId && h.title_id === effectiveTitleId)))
+    );
+    localStorage.setItem(LOCAL_STORAGE_WATCH_HISTORY_KEY, JSON.stringify(filteredWatch));
+  } catch {
+    // ignore local storage errors
+  }
+
+  // Wipe reading history
+  try {
+    const readingHistory = JSON.parse(localStorage.getItem(LOCAL_STORAGE_READING_HISTORY_KEY) || '[]');
+    const filteredReading = readingHistory.filter(
+      (h: any) => !(h.user_id === userId && (h.library_id === libraryId || (effectiveTitleId && h.title_id === effectiveTitleId)))
+    );
+    localStorage.setItem(LOCAL_STORAGE_READING_HISTORY_KEY, JSON.stringify(filteredReading));
+  } catch {
+    // ignore
+  }
+
+  // Live Supabase hard delete if available
+  if (supabase) {
+    try {
+      if (effectiveTitleId) {
+        await supabase.from('user_libraries').delete().match({ user_id: userId, title_id: effectiveTitleId });
+        await supabase.from('watch_history').delete().match({ user_id: userId, title_id: effectiveTitleId });
+        await supabase.from('reading_history').delete().match({ user_id: userId, title_id: effectiveTitleId });
+      } else {
+        await supabase.from('user_libraries').delete().match({ id: libraryId, user_id: userId });
+      }
+    } catch (err) {
+      console.warn('Failed to delete library entry from Supabase:', err);
+    }
+  }
+
+  return true;
 }
 
 export async function clearUserLibrary(userId: string): Promise<number> {

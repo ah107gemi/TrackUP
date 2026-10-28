@@ -605,52 +605,85 @@ export async function searchCatalog(
   if (promises.length > 0) {
     try {
       const settled = await Promise.allSettled(promises);
+      const liveItems: NormalizedCatalogItem[] = [];
+
       for (const res of settled) {
         if (res.status === 'fulfilled' && Array.isArray(res.value)) {
-          for (const item of res.value) {
-            if (!item || !item.id) continue;
+          liveItems.push(...res.value);
+        }
+      }
 
-            const isReadingItem = item.media_type === 'manga' || item.media_type === 'manhwa';
+      // In Watch domain: strictly prioritize TMDB over AniList to prevent fake season/promo fragmentation
+      if (effectiveDomain === 'watch') {
+        liveItems.sort((a, b) => {
+          const aIsTmdb = a.id.startsWith('tmdb_') ? 1 : 0;
+          const bIsTmdb = b.id.startsWith('tmdb_') ? 1 : 0;
+          return bIsTmdb - aIsTmdb;
+        });
+      }
 
-            // Ensure absolute domain isolation:
-            // Watch domain must NEVER contain reading items
-            if (effectiveDomain === 'watch' && isReadingItem) continue;
-            // Read domain must NEVER contain watch items
-            if (effectiveDomain === 'read' && !isReadingItem) continue;
+      const cleanTitleKey = (t: string) =>
+        t
+          .toLowerCase()
+          .replace(/\b(season\s*\d+|part\s*\d+|cour\s*\d+|final season|2nd season|music video|mv|special|teaser)\b/gi, '')
+          .replace(/[^a-z0-9]/g, '');
 
-            // In reading domain, ensure items are strictly mapped to 'manga' or 'manhwa' badges
-            if (effectiveDomain === 'read') {
-              if (mediaType === 'manhwa') {
-                item.media_type = 'manhwa';
-              } else if (mediaType === 'manga') {
-                item.media_type = 'manga';
-              } else if (item.origin_country === 'KR') {
-                item.media_type = 'manhwa';
-              } else {
-                item.media_type = 'manga';
-              }
-            }
+      const existingWatchTitles = new Set<string>(
+        results.map((r) => cleanTitleKey(r.title))
+      );
 
-            // Ensure episodic total episode counts are preserved and never default to 0
-            if (item.media_type === 'tv' || item.media_type === 'anime_series') {
-              const epCount =
-                (typeof item.total_episodes === 'number' && item.total_episodes > 0)
-                  ? item.total_episodes
-                  : (typeof (item as any).episodes === 'number' && (item as any).episodes > 0)
-                  ? (item as any).episodes
-                  : null;
-              if (epCount) {
-                item.total_episodes = epCount;
-                item.episodes = epCount;
-              }
-            }
+      for (const item of liveItems) {
+        if (!item || !item.id) continue;
 
-            // Deduplicate if already present from local fixtures
-            if (!seenIds.has(item.id)) {
-              seenIds.add(item.id);
-              results.push(item);
-            }
+        const isReadingItem = item.media_type === 'manga' || item.media_type === 'manhwa';
+
+        // Ensure absolute domain isolation:
+        // Watch domain must NEVER contain reading items
+        if (effectiveDomain === 'watch' && isReadingItem) continue;
+        // Read domain must NEVER contain watch items
+        if (effectiveDomain === 'read' && !isReadingItem) continue;
+
+        // In reading domain, ensure items are strictly mapped to 'manga' or 'manhwa' badges
+        if (effectiveDomain === 'read') {
+          if (mediaType === 'manhwa') {
+            item.media_type = 'manhwa';
+          } else if (mediaType === 'manga') {
+            item.media_type = 'manga';
+          } else if (item.origin_country === 'KR') {
+            item.media_type = 'manhwa';
+          } else {
+            item.media_type = 'manga';
           }
+        }
+
+        // Anime Season & Promo Deduplication:
+        // If an authoritative TMDB item already exists for this title, drop overlapping AniList entries
+        if (effectiveDomain === 'watch' && item.id.startsWith('anilist_')) {
+          const titleKey = cleanTitleKey(item.title);
+          if (existingWatchTitles.has(titleKey)) {
+            continue;
+          }
+        }
+
+        // Ensure episodic total episode counts are preserved and never default to 0
+        if (item.media_type === 'tv' || item.media_type === 'anime_series') {
+          const epCount =
+            (typeof item.total_episodes === 'number' && item.total_episodes > 0)
+              ? item.total_episodes
+              : (typeof (item as any).episodes === 'number' && (item as any).episodes > 0)
+              ? (item as any).episodes
+              : null;
+          if (epCount) {
+            item.total_episodes = epCount;
+            item.episodes = epCount;
+          }
+        }
+
+        // Deduplicate by ID and register clean title
+        if (!seenIds.has(item.id)) {
+          seenIds.add(item.id);
+          existingWatchTitles.add(cleanTitleKey(item.title));
+          results.push(item);
         }
       }
     } catch (err) {

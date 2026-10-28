@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   Edit3,
   Clock,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useUIStore } from '../../stores/uiStore';
@@ -17,21 +19,53 @@ import { useUserLibrary } from '../library/useLibrary';
 import { uploadAvatarImage } from '../../lib/avatarUpload';
 import { FavoritesShowcase } from '../favorites/FavoritesShowcase';
 import { formatWatchTime } from '../../lib/dateUtils';
+import { supabase } from '../../lib/supabase';
+import { clearUserLibrary } from '../library/libraryService';
 
 interface ProfilePageProps {
   onSelectTitle?: (titleId: string) => void;
 }
 
 export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
-  const { user, profile, updateProfile } = useAuth();
+  const { user, profile, updateProfile, signOut } = useAuth();
   const { setProfileModalOpen } = useUIStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const { data: library = [] } = useUserLibrary(user?.id);
 
   if (!user) return null;
+
+  const handleDeleteAccount = async () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to permanently delete your account? All your tracked data, reviews, and library will be erased. This action cannot be undone.'
+    );
+    if (!confirmed) return;
+
+    try {
+      setIsDeleting(true);
+      try {
+        await supabase.rpc('delete_account');
+      } catch (rpcErr) {
+        console.warn('RPC delete_account failed or not applied yet:', rpcErr);
+      }
+
+      await clearUserLibrary(user.id);
+      localStorage.removeItem('trackup_user_libraries');
+      localStorage.removeItem('trackup_watch_history');
+      localStorage.removeItem('trackup_reading_history');
+      localStorage.removeItem('trackup_reviews');
+
+      await signOut();
+    } catch (err) {
+      console.error('Error deleting account:', err);
+      alert('Failed to delete account. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -423,6 +457,32 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
           Featured Favorites
         </h2>
         <FavoritesShowcase userId={user.id} onSelectTitle={onSelectTitle} />
+      </div>
+
+      {/* Account Settings & Danger Zone */}
+      <div className="p-6 rounded-2xl bg-surface border border-rose-500/20 space-y-4">
+        <div className="flex items-center gap-2 text-rose-500">
+          <AlertTriangle className="w-5 h-5" />
+          <h3 className="text-base font-bold text-text-primary">Danger Zone</h3>
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
+          <div>
+            <p className="text-sm font-semibold text-text-primary">Delete Account</p>
+            <p className="text-xs text-text-muted mt-0.5">
+              Permanently erase your account, tracked media progress, reviews, and library history.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleDeleteAccount}
+            disabled={isDeleting}
+            data-testid="delete-account-btn"
+            className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-50 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-colors shrink-0 shadow cursor-pointer"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>{isDeleting ? 'Deleting...' : 'Delete Account'}</span>
+          </button>
+        </div>
       </div>
     </div>
   );

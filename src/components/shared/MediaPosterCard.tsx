@@ -28,6 +28,17 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
     color: 'bg-surface-elevated text-text-secondary border-surface-elevated',
   };
 
+  const totalEps =
+    item.total_episodes ||
+    (item as any).episodes ||
+    (item as any).number_of_episodes ||
+    ((item as any).seasons ? (item as any).seasons.reduce((acc: number, s: any) => acc + (s.episode_count || s.episodes?.length || 0), 0) : null);
+
+  const totalChs =
+    item.total_chapters ||
+    (item as any).chapters ||
+    (item as any).number_of_chapters;
+
   return (
     <div
       onClick={onClick}
@@ -117,16 +128,16 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
               {formatRuntime(item.runtime_minutes) || 'Feature'}
             </span>
           )}
-          {(mediaType === 'tv' || mediaType === 'anime_series') && (item.total_episodes || (item as any).episodes) && (item.total_episodes || (item as any).episodes) > 0 && (
+          {(mediaType === 'tv' || mediaType === 'anime_series') && totalEps && totalEps > 0 ? (
             <span className="font-mono text-[11px] text-accent">
-              {item.total_episodes || (item as any).episodes} eps
+              {totalEps} eps
             </span>
-          )}
-          {(mediaType === 'manga' || mediaType === 'manhwa') && (item.total_chapters || (item as any).chapters) && (item.total_chapters || (item as any).chapters) > 0 && (
+          ) : null}
+          {(mediaType === 'manga' || mediaType === 'manhwa') && totalChs && totalChs > 0 ? (
             <span className="font-mono text-[11px] text-accent">
-              {item.total_chapters || (item as any).chapters} chs
+              {totalChs} chs
             </span>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

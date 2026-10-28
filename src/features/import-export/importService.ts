@@ -293,6 +293,19 @@ export async function stageAndResolveRows(
   );
 }
 
+function buildWatchedEpisodeIds(catalogItem: any, count: number): string[] {
+  if (count <= 0) return [];
+  if (catalogItem?.seasons && Array.isArray(catalogItem.seasons)) {
+    const seasonEpIds = catalogItem.seasons.flatMap((s: any) =>
+      Array.isArray(s.episodes) ? s.episodes.map((e: any) => e.id) : []
+    );
+    if (seasonEpIds.length > 0) {
+      return seasonEpIds.slice(0, count);
+    }
+  }
+  return Array.from({ length: count }, (_, i) => `ep_${i + 1}`);
+}
+
 export async function commitImportBatch(params: {
   userId: string;
   items: StagedImportItem[];
@@ -331,11 +344,8 @@ export async function commitImportBatch(params: {
       const isEpisodic = existing.title.media_type === 'tv' || existing.title.media_type === 'anime_series';
 
       if (duplicatePolicy === 'fill' || duplicatePolicy === 'merge') {
-        const incomingEpCount = item.row.episodesWatched || (isCompleted && isEpisodic && existing.title.total_episodes ? existing.title.total_episodes : 0);
-        const incomingEps = Array.from(
-          { length: incomingEpCount },
-          (_, i) => `ep_${i + 1}`
-        );
+        const incomingEpCount = item.row.episodesWatched || (isCompleted && isEpisodic && (existing.title.total_episodes || (existing.title as any).episodes) ? (existing.title.total_episodes || (existing.title as any).episodes) : 0);
+        const incomingEps = buildWatchedEpisodeIds(existing.title, incomingEpCount);
         const existingEps = existing.episodes_watched || [];
         const mergedEps = Array.from(new Set([...existingEps, ...incomingEps]));
 
@@ -353,10 +363,9 @@ export async function commitImportBatch(params: {
           last_progressed_at: now,
         };
       } else if (duplicatePolicy === 'overwrite') {
-        const defaultCompletedEps = isCompleted && isEpisodic && existing.title.total_episodes ? existing.title.total_episodes : existing.episodes_watched.length;
-        const overwriteEps = item.row.episodesWatched !== undefined
-          ? Array.from({ length: item.row.episodesWatched }, (_, i) => `ep_${i + 1}`)
-          : Array.from({ length: defaultCompletedEps }, (_, i) => `ep_${i + 1}`);
+        const defaultCompletedEps = isCompleted && isEpisodic && (existing.title.total_episodes || (existing.title as any).episodes) ? (existing.title.total_episodes || (existing.title as any).episodes) : existing.episodes_watched.length;
+        const targetEpCount = item.row.episodesWatched !== undefined ? item.row.episodesWatched : defaultCompletedEps;
+        const overwriteEps = buildWatchedEpisodeIds(existing.title, targetEpCount);
 
         allLibraries[existingIndex] = {
           ...existing,
@@ -383,7 +392,7 @@ export async function commitImportBatch(params: {
     const isEpisodic = catalogItem.media_type === 'tv' || catalogItem.media_type === 'anime_series';
     const initialEpCount = item.row.episodesWatched && item.row.episodesWatched > 0
       ? item.row.episodesWatched
-      : (isCompleted && isEpisodic && catalogItem.total_episodes ? catalogItem.total_episodes : 0);
+      : (isCompleted && isEpisodic && (catalogItem.total_episodes || (catalogItem as any).episodes) ? (catalogItem.total_episodes || (catalogItem as any).episodes) : 0);
 
     const newLibraryEntry: UserLibraryItem = {
       id: `lib_${Math.random().toString(36).substring(2, 11)}`,
@@ -396,10 +405,7 @@ export async function commitImportBatch(params: {
       started_at: item.row.status === 'active' ? now : null,
       completed_at: item.row.completedAt || (item.row.status === 'completed' ? now : null),
       last_progressed_at: now,
-      episodes_watched: Array.from(
-        { length: initialEpCount },
-        (_, i) => `ep_${i + 1}`
-      ),
+      episodes_watched: buildWatchedEpisodeIds(catalogItem, initialEpCount),
       last_chapter_read: item.row.chaptersRead || 0,
       last_volume_read: item.row.volumesRead || 0,
       title: catalogItem,

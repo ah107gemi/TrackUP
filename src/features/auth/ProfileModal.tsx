@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { X, User, Shield, Star, LogOut, Check, Heart, Settings } from 'lucide-react';
+import { X, User, Shield, Star, LogOut, Check, Heart, Settings, Trash2 } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from './AuthContext';
 import type { PrivacyLevel } from '../../types/database.types';
 import { FavoritesShowcase } from '../favorites/FavoritesShowcase';
+import { supabase } from '../../lib/supabase';
+import { clearUserLibrary } from '../library/libraryService';
 
 interface ProfileModalProps {
   onSelectTitle?: (titleId: string) => void;
@@ -26,6 +28,34 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onSelectTitle }) => 
   const [loading, setLoading] = useState(false);
 
   if (!profileModalOpen || !user) return null;
+
+  const handleDeleteAccount = async () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to permanently delete your account? All your tracked data, reviews, and library will be erased. This action cannot be undone.'
+    );
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      try {
+        await supabase.rpc('delete_account');
+      } catch (rpcErr) {
+        console.warn('RPC delete_account failed or not applied yet:', rpcErr);
+      }
+      await clearUserLibrary(user.id);
+      localStorage.removeItem('trackup_user_libraries');
+      localStorage.removeItem('trackup_watch_history');
+      localStorage.removeItem('trackup_reading_history');
+      localStorage.removeItem('trackup_reviews');
+      setProfileModalOpen(false);
+      await signOut();
+    } catch (err) {
+      console.error('Error deleting account:', err);
+      alert('Failed to delete account. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,19 +226,31 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onSelectTitle }) => 
             </div>
 
             {/* Actions */}
-            <div className="pt-4 border-t border-surface-elevated flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  signOut();
-                  setProfileModalOpen(false);
-                }}
-                data-testid="profile-signout-button"
-                className="px-4 py-2 rounded-xl text-xs font-medium text-status-dropped hover:bg-status-dropped/10 transition-colors flex items-center gap-1.5"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Sign Out</span>
-              </button>
+            <div className="pt-4 border-t border-surface-elevated flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    signOut();
+                    setProfileModalOpen(false);
+                  }}
+                  data-testid="profile-signout-button"
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-status-dropped hover:bg-status-dropped/10 transition-colors flex items-center gap-1.5"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteAccount}
+                  disabled={loading}
+                  data-testid="delete-account-btn"
+                  className="px-3 py-2 rounded-xl text-xs font-semibold text-rose-500 hover:bg-rose-500/10 border border-rose-500/20 transition-colors flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Account</span>
+                </button>
+              </div>
 
               <button
                 type="submit"

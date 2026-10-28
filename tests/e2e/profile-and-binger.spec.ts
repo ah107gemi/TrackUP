@@ -61,6 +61,9 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     // Verify global combined watch time badge in profile header
     await expect(page.locator('[data-testid="global-watch-time"]')).toBeVisible();
 
+    // Verify Danger Zone Delete Account button exists
+    await expect(page.locator('[data-testid="delete-account-btn"]')).toBeVisible();
+
     // 4. Test Friends & Social Search Panel with @username query
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-social"]').click();

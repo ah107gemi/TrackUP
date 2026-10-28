@@ -5,6 +5,7 @@ import {
   logEpisodeProgress,
   logBatchEpisodeProgress,
   logReadingProgress,
+  removeLibraryItem,
   type UserLibraryItem,
 } from './libraryService';
 import type { TrackingStatus } from '../../types/database.types';
@@ -80,9 +81,11 @@ export function useIncrementEpisode() {
               ...item,
               episodes_watched: watched,
               status:
-                variables.watched &&
-                watched.length > 0 &&
-                (!item.title.total_episodes || watched.length < item.title.total_episodes)
+                !variables.watched && watched.length === 0
+                  ? ('planned' as TrackingStatus)
+                  : variables.watched &&
+                    watched.length > 0 &&
+                    (!item.title.total_episodes || watched.length < item.title.total_episodes)
                   ? ('active' as TrackingStatus)
                   : item.status,
             };
@@ -129,9 +132,11 @@ export function useBatchEpisodeProgress() {
               ...item,
               episodes_watched: watched,
               status:
-                variables.watched &&
-                watched.length > 0 &&
-                (!item.title.total_episodes || watched.length < item.title.total_episodes)
+                !variables.watched && watched.length === 0
+                  ? ('planned' as TrackingStatus)
+                  : variables.watched &&
+                    watched.length > 0 &&
+                    (!item.title.total_episodes || watched.length < item.title.total_episodes)
                   ? ('active' as TrackingStatus)
                   : item.status,
             };
@@ -195,6 +200,42 @@ export function useIncrementChapter() {
     },
     onSettled: (_data, _error, variables) => {
       queryClient.invalidateQueries({ queryKey: ['library', variables.userId] });
+    },
+  });
+}
+
+export function useRemoveFromLibrary() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: { libraryId: string; userId: string; titleId?: string }) =>
+      removeLibraryItem(params.libraryId, params.userId, params.titleId),
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: ['library', variables.userId] });
+      const previous = queryClient.getQueryData<UserLibraryItem[]>(['library', variables.userId]);
+
+      if (previous) {
+        queryClient.setQueryData(
+          ['library', variables.userId],
+          previous.filter(
+            (item) =>
+              item.id !== variables.libraryId &&
+              (!variables.titleId || item.title_id !== variables.titleId)
+          )
+        );
+      }
+
+      return { previous };
+    },
+    onError: (_err, variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['library', variables.userId], context.previous);
+      }
+    },
+    onSettled: (_data, _error, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library', variables.userId] });
+      queryClient.invalidateQueries({ queryKey: ['watch_history', variables.userId] });
+      queryClient.invalidateQueries({ queryKey: ['reading_history', variables.userId] });
     },
   });
 }

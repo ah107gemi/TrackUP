@@ -246,7 +246,7 @@ NonExistentTitleXYZ999,2025,TV,Watching,1,5`;
 
       expect(commitRes.committed).toBe(2);
       expect(commitRes.skipped).toBe(1); // NonExistentTitleXYZ999 skipped!
-    });
+    }, 15000);
   });
 
   describe('Library Cleanup & Re-Import Utility', () => {

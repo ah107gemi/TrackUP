@@ -13,6 +13,8 @@ import {
   CheckCheck,
   MessageSquare,
   Clock,
+  Trash2,
+  ChevronDown,
 } from 'lucide-react';
 import {
   getCatalogTitleById,
@@ -31,6 +33,7 @@ import {
   useIncrementEpisode,
   useBatchEpisodeProgress,
   useIncrementChapter,
+  useRemoveFromLibrary,
 } from '../library/useLibrary';
 import type { TrackingStatus, PrivacyLevel } from '../../types/database.types';
 import { StarRating } from '../../components/ui/StarRating';
@@ -69,6 +72,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   const episodeMutation = useIncrementEpisode();
   const batchEpisodeMutation = useBatchEpisodeProgress();
   const chapterMutation = useIncrementChapter();
+  const removeMutation = useRemoveFromLibrary();
 
   const [title, setTitle] = useState<
     (NormalizedCatalogItem & { cast?: CastMember[]; seasons?: CatalogSeasonDetail[] }) | null
@@ -192,6 +196,27 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   const currentChapter: number = existingEntry ? existingEntry.last_chapter_read : localChapter;
   const watchedEpisodesList: string[] = existingEntry ? existingEntry.episodes_watched : localEpisodes;
 
+  const totalEpCount =
+    title.total_episodes ||
+    (title as any).episodes ||
+    (title.seasons ? title.seasons.reduce((acc, s) => acc + (s.episode_count || s.episodes?.length || 0), 0) : null);
+
+  const isEpisodeWatched = (ep: { id: string; episode_number: number }) => {
+    if (watchedEpisodesList.includes(ep.id)) return true;
+    if (watchedEpisodesList.includes(`ep_${ep.episode_number}`)) return true;
+    if (existingEntry?.status === 'completed') return true;
+    if (
+      watchedEpisodesList.length > 0 &&
+      (ep.episode_number <= watchedEpisodesList.length ||
+        watchedEpisodesList.some(
+          (id) => id === `ep_${ep.episode_number}` || id.endsWith(`_${ep.episode_number}`)
+        ))
+    ) {
+      return true;
+    }
+    return false;
+  };
+
   const handleStatusChange = (newStatus: TrackingStatus) => {
     setLocalStatus(newStatus);
     upsertMutation.mutate({
@@ -215,6 +240,19 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   const handleToggleFavorite = async () => {
     const next = await toggleFavorite(activeUserId, title.id);
     setIsFavorited(next);
+  };
+
+  const handleRemoveFromLibrary = async () => {
+    if (!existingEntry) return;
+    await removeMutation.mutateAsync({
+      libraryId: existingEntry.id,
+      userId: activeUserId,
+      titleId: title.id,
+    });
+    setLocalEpisodes([]);
+    setLocalStatus('planned');
+    setLocalRating(null);
+    setIsFavorited(false);
   };
 
   const userReview = reviews.find((r) => r.user_id === activeUserId);
@@ -254,16 +292,51 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     setReviews((prev) => prev.filter((r) => r.id !== reviewId));
   };
 
-  const handleToggleEpisode = async (epId: string) => {
-    const isWatched = watchedEpisodesList.includes(epId);
-    const updatedEpisodes = isWatched
-      ? watchedEpisodesList.filter((id) => id !== epId)
-      : [...watchedEpisodesList, epId];
+  const handleToggleEpisode = async (ep: { id: string; episode_number: number }) => {
+    const isWatched = isEpisodeWatched(ep);
+    let updatedEpisodes: string[];
+
+    if (isWatched) {
+      updatedEpisodes = watchedEpisodesList.filter(
+        (id) =>
+          id !== ep.id &&
+          id !== `ep_${ep.episode_number}` &&
+          !id.endsWith(`_${ep.episode_number}`)
+      );
+      if (existingEntry?.status === 'completed' && updatedEpisodes.length === 0) {
+        const allEps = title.seasons?.flatMap((s) => s.episodes) || [];
+        updatedEpisodes = allEps
+          .filter((e) => e.episode_number !== ep.episode_number && e.id !== ep.id)
+          .map((e) => e.id);
+      }
+    } else {
+      updatedEpisodes = [...new Set([...watchedEpisodesList, ep.id, `ep_${ep.episode_number}`])];
+    }
     setLocalEpisodes(updatedEpisodes);
 
-    // Auto-status transition to 'active' (Currently Watching)
-    if (!isWatched && updatedEpisodes.length > 0 && (!title.total_episodes || updatedEpisodes.length < title.total_episodes)) {
-      setLocalStatus('active');
+    // Auto-revert to 'planned' if progress drops to 0
+    if (updatedEpisodes.length === 0) {
+      setLocalStatus('planned');
+      if (existingEntry) {
+        upsertMutation.mutate({
+          userId: activeUserId,
+          titleId: title.id,
+          status: 'planned',
+          titleData: title,
+        });
+      }
+    } else if (!isWatched && (currentStatus === 'planned' || currentStatus === 'completed')) {
+      if (!totalEpCount || updatedEpisodes.length < totalEpCount) {
+        setLocalStatus('active');
+        if (existingEntry) {
+          upsertMutation.mutate({
+            userId: activeUserId,
+            titleId: title.id,
+            status: 'active',
+            titleData: title,
+          });
+        }
+      }
     }
 
     let libId = existingEntry?.id;
@@ -271,7 +344,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       const created = await upsertMutation.mutateAsync({
         userId: activeUserId,
         titleId: title.id,
-        status: 'active',
+        status: updatedEpisodes.length > 0 ? 'active' : 'planned',
         titleData: title,
       });
       libId = created.id;
@@ -279,15 +352,15 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     episodeMutation.mutate({
       libraryId: libId,
       userId: activeUserId,
-      episodeId: epId,
+      episodeId: ep.id,
       watched: !isWatched,
     });
   };
 
   const handleEpisodeClick = (ep: { id: string; episode_number: number; name: string }) => {
-    const isWatched = watchedEpisodesList.includes(ep.id);
+    const isWatched = isEpisodeWatched(ep);
     if (isWatched) {
-      handleToggleEpisode(ep.id);
+      handleToggleEpisode(ep);
       return;
     }
 
@@ -298,11 +371,10 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     ) || [];
 
     const unmarkedPrevious = previousEpisodes
-      .map((e) => e.id)
-      .filter((id) => !watchedEpisodesList.includes(id));
+      .filter((e) => !isEpisodeWatched(e))
+      .map((e) => e.id);
 
     if (unmarkedPrevious.length > 0) {
-      // Trigger confirmation prompt/modal
       setCatchUpPrompt({
         targetEp: ep,
         previousEpIds: unmarkedPrevious,
@@ -310,7 +382,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       return;
     }
 
-    handleToggleEpisode(ep.id);
+    handleToggleEpisode(ep);
   };
 
   const handleConfirmCatchUp = async () => {
@@ -318,11 +390,11 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     const allToMark = [...catchUpPrompt.previousEpIds, catchUpPrompt.targetEp.id];
     setCatchUpPrompt(null);
 
-    const updatedEpisodes = [...new Set([...watchedEpisodesList, ...allToMark])];
+    const updatedEpisodes = [...new Set([...watchedEpisodesList, ...allToMark, `ep_${catchUpPrompt.targetEp.episode_number}`])];
     setLocalEpisodes(updatedEpisodes);
 
     // Auto update status to active (Currently Watching)
-    if (currentStatus !== 'active' && (!title.total_episodes || updatedEpisodes.length < title.total_episodes)) {
+    if (currentStatus !== 'active' && (!totalEpCount || updatedEpisodes.length < totalEpCount)) {
       setLocalStatus('active');
     }
 
@@ -347,9 +419,9 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
   const handleCancelCatchUp = () => {
     if (!catchUpPrompt) return;
-    const targetId = catchUpPrompt.targetEp.id;
+    const targetEp = catchUpPrompt.targetEp;
     setCatchUpPrompt(null);
-    handleToggleEpisode(targetId);
+    handleToggleEpisode(targetEp);
   };
 
   const handleBatchMarkSeasonWatched = async () => {
@@ -552,21 +624,23 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
             {/* Quick Action Bar */}
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              {/* Tracking Status Selector */}
-              <select
-                value={currentStatus}
-                onChange={(e) => handleStatusChange(e.target.value as TrackingStatus)}
-                data-testid="status-selector"
-                className="px-3.5 py-2 rounded-xl bg-surface-elevated border border-surface-elevated text-text-primary text-xs font-semibold focus:border-accent focus:outline-none"
-              >
-                <option value="planned">Planned (Watchlist / Reading List)</option>
-                <option value="active">
-                  {isReading ? 'Currently Reading' : 'Currently Watching'}
-                </option>
-                <option value="completed">Completed</option>
-                <option value="paused">On Hold / Paused</option>
-                <option value="dropped">Dropped</option>
-              </select>
+              {/* Tracking Status Selector Dropdown */}
+              <div className="relative">
+                <select
+                  value={currentStatus}
+                  onChange={(e) => handleStatusChange(e.target.value as TrackingStatus)}
+                  data-testid="status-selector"
+                  aria-label="Select tracking status"
+                  className="appearance-none pl-4 pr-9 py-2.5 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated hover:border-accent text-text-primary text-xs font-semibold focus:border-accent focus:outline-none transition-all shadow-sm cursor-pointer"
+                >
+                  <option value="active">{isReading ? 'Reading' : 'Watching'}</option>
+                  <option value="planned">Planned</option>
+                  <option value="completed">Completed</option>
+                  <option value="paused">On Hold</option>
+                  <option value="dropped">Dropped</option>
+                </select>
+                <ChevronDown className="w-4 h-4 text-text-muted absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
 
               {/* Favorite Button */}
               <button
@@ -638,11 +712,11 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
               </h2>
             </div>
             <div className="flex items-center gap-3">
-              {title.total_episodes && (
+              {totalEpCount ? (
                 <span className="text-xs font-mono text-text-muted">
-                  {watchedEpisodesList.length} / {title.total_episodes} Watched
+                  {watchedEpisodesList.length} / {totalEpCount} Watched
                 </span>
-              )}
+              ) : null}
               <button
                 onClick={handleBatchMarkSeasonWatched}
                 data-testid="mark-season-watched-btn"
@@ -719,7 +793,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                 className="max-h-96 overflow-y-auto pr-1.5 space-y-2 focus:outline-none"
               >
                 {title.seasons[activeSeasonIndex]?.episodes.map((ep) => {
-                  const isWatched = watchedEpisodesList.includes(ep.id);
+                  const isWatched = isEpisodeWatched(ep);
                   const countdown = getAirDateCountdown(ep.air_date);
                   const formattedAirDate = formatReleaseDate(ep.air_date);
                   const displayAirDate =
@@ -790,6 +864,20 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
             <p className="text-xs text-text-muted py-4">
               Season and episode metadata will hydrate automatically via TMDB.
             </p>
+          )}
+
+          {existingEntry && (
+            <div className="pt-3 border-t border-surface-elevated flex items-center justify-between">
+              <button
+                type="button"
+                onClick={handleRemoveFromLibrary}
+                data-testid="remove-from-library-btn"
+                className="px-4 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500/30 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Remove from Library</span>
+              </button>
+            </div>
           )}
         </section>
       )}
@@ -884,6 +972,20 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
               </div>
             </div>
           </div>
+
+          {existingEntry && (
+            <div className="pt-3 border-t border-surface-elevated flex items-center justify-between">
+              <button
+                type="button"
+                onClick={handleRemoveFromLibrary}
+                data-testid="remove-from-library-btn"
+                className="px-4 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500/30 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Remove from Library</span>
+              </button>
+            </div>
+          )}
         </section>
       )}
 
@@ -904,17 +1006,31 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={handleToggleMovieComplete}
-            data-testid="movie-complete-toggle"
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow ${
-              currentStatus === 'completed'
-                ? 'bg-status-completed text-background'
-                : 'bg-accent text-background hover:bg-accent-hover'
-            }`}
-          >
-            {currentStatus === 'completed' ? 'Watched ✓' : 'Mark Watched'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleToggleMovieComplete}
+              data-testid="movie-complete-toggle"
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow ${
+                currentStatus === 'completed'
+                  ? 'bg-status-completed text-background'
+                  : 'bg-accent text-background hover:bg-accent-hover'
+              }`}
+            >
+              {currentStatus === 'completed' ? 'Watched ✓' : 'Mark Watched'}
+            </button>
+            {existingEntry && (
+              <button
+                type="button"
+                onClick={handleRemoveFromLibrary}
+                data-testid="remove-from-library-btn"
+                className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Remove from Library"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Remove</span>
+              </button>
+            )}
+          </div>
         </section>
       )}
 

@@ -39,7 +39,7 @@ export interface AniListMediaPayload {
   id: number;
   idMal?: number | null;
   type: 'ANIME' | 'MANGA';
-  format?: 'TV' | 'TV_SHORT' | 'MOVIE' | 'SPECIAL' | 'OVA' | 'ONA' | 'MANGA' | 'ONE_SHOT';
+  format?: 'TV' | 'TV_SHORT' | 'MOVIE' | 'SPECIAL' | 'OVA' | 'ONA' | 'MANGA' | 'ONE_SHOT' | 'MUSIC';
   title: {
     romaji?: string;
     english?: string | null;

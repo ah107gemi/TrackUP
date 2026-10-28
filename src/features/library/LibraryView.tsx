@@ -20,6 +20,7 @@ import {
   useIncrementChapter,
   useUpsertLibrary,
 } from './useLibrary';
+import type { UserLibraryItem } from './libraryService';
 import { searchReadingCatalog } from '../catalog/catalogService';
 import type { NormalizedCatalogItem } from '../../lib/validators';
 import type { TrackingStatus, MediaType } from '../../types/database.types';
@@ -47,6 +48,21 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
   const [readingSearchResults, setReadingSearchResults] = useState<NormalizedCatalogItem[]>([]);
   const [isReadingSearching, setIsReadingSearching] = useState(false);
   const [addedItemIds, setAddedItemIds] = useState<Set<string>>(new Set());
+
+  const getEpProgressDisplay = (item: UserLibraryItem) => {
+    const total =
+      item.title.total_episodes ||
+      (item.title as any).episodes ||
+      (item.title as any).number_of_episodes ||
+      (item as any).total_episodes ||
+      (item as any).episodes ||
+      ((item.title as any).seasons ? (item.title as any).seasons.reduce((acc: number, s: any) => acc + (s.episode_count || s.episodes?.length || 0), 0) : null);
+
+    if (item.status === 'completed') {
+      return `${(total && total > 0 ? total : null) || (item.episodes_watched.length > 0 ? item.episodes_watched.length : null) || 12} eps`;
+    }
+    return `${item.episodes_watched.length}${total && total > 0 ? ` / ${total}` : ''} eps`;
+  };
 
   useEffect(() => {
     if (domain !== 'read' || !readingSearchQuery.trim()) {
@@ -453,13 +469,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
                     <div className="flex items-center justify-between mt-2 text-[11px] text-text-muted">
                       {item.title.media_type === 'tv' || item.title.media_type === 'anime_series' ? (
                         <span className="font-mono text-accent">
-                          {(() => {
-                            const total = item.title.total_episodes || (item.title as any).episodes;
-                            if (item.status === 'completed') {
-                              return `${total || item.episodes_watched.length || 1} eps`;
-                            }
-                            return `${item.episodes_watched.length}${total ? ` / ${total}` : ''} eps`;
-                          })()}
+                          {getEpProgressDisplay(item)}
                         </span>
                       ) : item.title.media_type === 'movie' || item.title.media_type === 'anime_film' ? (
                         <span className="font-mono text-text-muted">
@@ -512,13 +522,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
                     <div className="mt-1 flex items-center justify-between">
                       <span className="font-mono text-[11px] text-accent">
                         {item.title.media_type === 'tv' || item.title.media_type === 'anime_series'
-                          ? (() => {
-                              const total = item.title.total_episodes || (item.title as any).episodes;
-                              if (item.status === 'completed') {
-                                return `${total || item.episodes_watched.length || 1} eps`;
-                              }
-                              return `${item.episodes_watched.length}${total ? ` / ${total}` : ''} eps`;
-                            })()
+                          ? getEpProgressDisplay(item)
                           : item.title.media_type === 'movie' || item.title.media_type === 'anime_film'
                           ? (formatRuntime(item.title.runtime_minutes) || 'Feature')
                           : `Ch. ${item.last_chapter_read}`}
@@ -594,13 +598,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
                       <td className="py-3 px-3 font-mono font-semibold text-text-primary">
                         {item.title.media_type === 'tv' || item.title.media_type === 'anime_series' ? (
                           <span className="text-accent">
-                            {(() => {
-                              const total = item.title.total_episodes || (item.title as any).episodes;
-                              if (item.status === 'completed') {
-                                return `${total || item.episodes_watched.length || 1} eps`;
-                              }
-                              return `${item.episodes_watched.length}${total ? ` / ${total}` : ''} eps`;
-                            })()}
+                            {getEpProgressDisplay(item)}
                           </span>
                         ) : item.title.media_type === 'movie' || item.title.media_type === 'anime_film' ? (
                           <span className="text-text-muted">{formatRuntime(item.title.runtime_minutes) || 'Feature'}</span>
