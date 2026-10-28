@@ -218,7 +218,7 @@ export const AppShell: React.FC = () => {
               )}
 
               {activeTab === 'read' && (
-                <AuthGuard fallbackTitle="Sign In to Access Your Reading Library" fallbackDescription="Track your Manga and South Korean Manhwa with chapter and volume steppers.">
+                <AuthGuard fallbackTitle="Sign In to Access Your Reading Library" fallbackDescription="Track your Manga and South Korean Manhwa with chapter reading steppers.">
                   <LibraryView domain="read" onSelectTitle={handleSelectTitle} />
                 </AuthGuard>
               )}

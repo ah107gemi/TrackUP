@@ -192,10 +192,75 @@ export async function logEpisodeProgress(params: {
     updatedEpisodes = updatedEpisodes.filter((id) => id !== params.episodeId);
   }
 
+  let nextStatus = item.status;
+  if (params.watched && updatedEpisodes.length > 0) {
+    if (!item.title.total_episodes || updatedEpisodes.length < item.title.total_episodes) {
+      nextStatus = 'active';
+    }
+  }
+
   const updated: UserLibraryItem = {
     ...item,
     episodes_watched: updatedEpisodes,
-    status: item.status === 'planned' ? 'active' : item.status,
+    status: nextStatus,
+    last_progressed_at: now,
+  };
+
+  all[index] = updated;
+  saveStoredLibraries(all);
+  return updated;
+}
+
+export async function logBatchEpisodeProgress(params: {
+  libraryId: string;
+  userId: string;
+  episodeIds: string[];
+  watched: boolean;
+}): Promise<UserLibraryItem> {
+  const all = getStoredLibraries();
+  const index = all.findIndex((item) => item.id === params.libraryId && item.user_id === params.userId);
+  if (index < 0) throw new Error('Library entry not found');
+
+  const item = all[index];
+  const now = new Date().toISOString();
+  let updatedEpisodes = [...item.episodes_watched];
+
+  if (params.watched) {
+    params.episodeIds.forEach((epId) => {
+      if (!updatedEpisodes.includes(epId)) {
+        updatedEpisodes.push(epId);
+      }
+    });
+    // Append to watch history
+    const history = JSON.parse(localStorage.getItem(LOCAL_STORAGE_WATCH_HISTORY_KEY) || '[]');
+    params.episodeIds.forEach((epId) => {
+      history.push({
+        id: `wh_${Math.random().toString(36).substring(2, 9)}`,
+        user_id: params.userId,
+        library_id: params.libraryId,
+        title_id: item.title_id,
+        type: 'watch',
+        episode_id: epId,
+        timestamp: now,
+      });
+    });
+    localStorage.setItem(LOCAL_STORAGE_WATCH_HISTORY_KEY, JSON.stringify(history));
+  } else {
+    const toRemove = new Set(params.episodeIds);
+    updatedEpisodes = updatedEpisodes.filter((id) => !toRemove.has(id));
+  }
+
+  let nextStatus = item.status;
+  if (params.watched && updatedEpisodes.length > 0) {
+    if (!item.title.total_episodes || updatedEpisodes.length < item.title.total_episodes) {
+      nextStatus = 'active';
+    }
+  }
+
+  const updated: UserLibraryItem = {
+    ...item,
+    episodes_watched: updatedEpisodes,
+    status: nextStatus,
     last_progressed_at: now,
   };
 
@@ -231,11 +296,18 @@ export async function logReadingProgress(params: {
   });
   localStorage.setItem(LOCAL_STORAGE_READING_HISTORY_KEY, JSON.stringify(history));
 
+  let nextStatus = item.status;
+  if (params.chapter > 0) {
+    if (!item.title.total_chapters || params.chapter < item.title.total_chapters) {
+      nextStatus = 'active';
+    }
+  }
+
   const updated: UserLibraryItem = {
     ...item,
     last_chapter_read: params.chapter,
     last_volume_read: params.volume !== undefined ? params.volume : item.last_volume_read,
-    status: item.status === 'planned' ? 'active' : item.status,
+    status: nextStatus,
     last_progressed_at: now,
   };
 

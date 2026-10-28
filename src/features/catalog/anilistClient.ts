@@ -23,6 +23,7 @@ query ($search: String, $type: MediaType, $format_in: [MediaFormat], $format: Me
         english
         native
       }
+      synonyms
       startDate {
         year
         month
@@ -71,6 +72,7 @@ query ($id: Int) {
       english
       native
     }
+    synonyms
     startDate {
       year
       month
@@ -172,9 +174,11 @@ export async function searchAniList(
   } else if (mediaType === 'manga') {
     variables.type = 'MANGA';
     variables.countryOfOrigin = 'JP';
+    variables.format_in = ['MANGA', 'ONE_SHOT'];
   } else if (mediaType === 'manhwa') {
     variables.type = 'MANGA';
     variables.countryOfOrigin = 'KR';
+    variables.format_in = ['MANGA', 'ONE_SHOT'];
   }
 
   try {
@@ -220,18 +224,33 @@ export async function searchAniList(
 
     const filtered = mediaList.filter((m) => !sequelIds.has(m.id));
 
-    // Sort by exact title match boost while preserving POPULARITY_DESC
+    // Sort by exact title match boost across romaji, english, native, and synonyms
     const cleanQ = query.trim().toLowerCase();
     filtered.sort((a, b) => {
-      const aTitle = (a.title.english || a.title.romaji || '').toLowerCase();
-      const bTitle = (b.title.english || b.title.romaji || '').toLowerCase();
+      const aTitles = [
+        a.title.english,
+        a.title.romaji,
+        a.title.native,
+        ...(a.synonyms || []),
+      ]
+        .filter(Boolean)
+        .map((t) => t!.toLowerCase());
 
-      const aExact = aTitle === cleanQ ? 1 : 0;
-      const bExact = bTitle === cleanQ ? 1 : 0;
+      const bTitles = [
+        b.title.english,
+        b.title.romaji,
+        b.title.native,
+        ...(b.synonyms || []),
+      ]
+        .filter(Boolean)
+        .map((t) => t!.toLowerCase());
+
+      const aExact = aTitles.some((t) => t === cleanQ) ? 1 : 0;
+      const bExact = bTitles.some((t) => t === cleanQ) ? 1 : 0;
       if (aExact !== bExact) return bExact - aExact;
 
-      const aStarts = aTitle.startsWith(cleanQ) ? 1 : 0;
-      const bStarts = bTitle.startsWith(cleanQ) ? 1 : 0;
+      const aStarts = aTitles.some((t) => t.startsWith(cleanQ)) ? 1 : 0;
+      const bStarts = bTitles.some((t) => t.startsWith(cleanQ)) ? 1 : 0;
       if (aStarts !== bStarts) return bStarts - aStarts;
 
       return 0;

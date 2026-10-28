@@ -43,6 +43,7 @@ export interface AniListMediaPayload {
     english?: string | null;
     native?: string | null;
   };
+  synonyms?: string[];
   countryOfOrigin?: string | null; // 'JP', 'KR', 'CN'
   description?: string | null;
   startDate?: { year?: number | null; month?: number | null; day?: number | null };

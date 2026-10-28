@@ -167,11 +167,6 @@ export const HistoryTimeline: React.FC<HistoryTimelineProps> = ({
                                   : 'Watched Title'
                                 : `Read Chapter ${item.chapter_number}`}
                             </span>
-                            {item.volume_number ? (
-                              <span className="text-[11px] text-text-muted font-mono">
-                                (Vol. {item.volume_number})
-                              </span>
-                            ) : null}
                           </div>
                         </div>
                       </div>

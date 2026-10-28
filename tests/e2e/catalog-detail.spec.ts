@@ -78,6 +78,23 @@ test.describe('TrackUp Phase 2: Unified Search & Adaptive Title Detail Pages', (
     await expect(episodeAirDate).toContainText('Jan 20, 2008');
 
     await episodeRow.click();
+
+    // Clicking Episode 5 when episodes 2-4 are unmarked triggers Catch-Up confirmation modal
+    const episode5Row = page.locator('[data-testid="episode-row-5"]');
+    await expect(episode5Row).toBeVisible();
+    await episode5Row.click();
+
+    // Verify Catch-Up Modal appears with prompt text
+    const catchUpModal = page.locator('[data-testid="bulk-episodes-modal"]');
+    await expect(catchUpModal).toBeVisible();
+    await expect(catchUpModal).toContainText('Would you like to mark all previous episodes as watched?');
+
+    // Confirm bulk catch-up
+    await page.locator('[data-testid="confirm-bulk-episodes-btn"]').click();
+    await expect(catchUpModal).toBeHidden();
+
+    // Verify status is auto-updated to Currently Watching (active)
+    await expect(page.locator('[data-testid="status-selector"]')).toHaveValue('active');
   });
 
   test('verifies Manga detail page renders Chapter/Volume Steppers & Linked Adaptations', async ({ page }) => {
@@ -97,10 +114,11 @@ test.describe('TrackUp Phase 2: Unified Search & Adaptive Title Detail Pages', (
     await expect(page.locator('[data-testid="title-detail-page"]')).toBeVisible();
     await expect(page.locator('h1')).toContainText('Attack on Titan (Manga)');
 
-    // Verify Reading section (Chapter & Volume progress)
+    // Verify Reading section (Chapter progress only, no volume tracking)
     const readingSection = page.locator('[data-testid="reading-tracking-section"]');
     await expect(readingSection).toBeVisible();
-    await expect(readingSection).toContainText('Reading Progress (Chapters & Volumes)');
+    await expect(readingSection).toContainText('Reading Progress (Chapters)');
+    await expect(readingSection).not.toContainText('Volume Progress');
     await expect(readingSection).toContainText('Ch. 0 / 139');
 
     // Increment chapter

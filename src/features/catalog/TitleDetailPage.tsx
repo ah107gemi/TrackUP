@@ -29,6 +29,7 @@ import {
   useUserLibrary,
   useUpsertLibrary,
   useIncrementEpisode,
+  useBatchEpisodeProgress,
   useIncrementChapter,
 } from '../library/useLibrary';
 import type { TrackingStatus, PrivacyLevel } from '../../types/database.types';
@@ -66,6 +67,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
   const upsertMutation = useUpsertLibrary();
   const episodeMutation = useIncrementEpisode();
+  const batchEpisodeMutation = useBatchEpisodeProgress();
   const chapterMutation = useIncrementChapter();
 
   const [title, setTitle] = useState<
@@ -78,11 +80,14 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   const [localStatus, setLocalStatus] = useState<TrackingStatus>('planned');
   const [localRating, setLocalRating] = useState<number | null>(null);
   const [localChapter, setLocalChapter] = useState<number>(0);
-  const [localVolume, setLocalVolume] = useState<number>(0);
   const [localEpisodes, setLocalEpisodes] = useState<string[]>([]);
   const [isFavorited, setIsFavorited] = useState(false);
   const [activeSeasonIndex, setActiveSeasonIndex] = useState(0);
   const [fractionalInput, setFractionalInput] = useState<string>('');
+  const [catchUpPrompt, setCatchUpPrompt] = useState<{
+    targetEp: { id: string; episode_number: number; name: string };
+    previousEpIds: string[];
+  } | null>(null);
 
   // Reviews state
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -185,7 +190,6 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   const currentStatus: TrackingStatus = existingEntry ? existingEntry.status : localStatus;
   const currentRating: number | null = existingEntry ? existingEntry.rating : localRating;
   const currentChapter: number = existingEntry ? existingEntry.last_chapter_read : localChapter;
-  const currentVolume: number = existingEntry ? existingEntry.last_volume_read : localVolume;
   const watchedEpisodesList: string[] = existingEntry ? existingEntry.episodes_watched : localEpisodes;
 
   const handleStatusChange = (newStatus: TrackingStatus) => {
@@ -257,6 +261,11 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       : [...watchedEpisodesList, epId];
     setLocalEpisodes(updatedEpisodes);
 
+    // Auto-status transition to 'active' (Currently Watching)
+    if (!isWatched && updatedEpisodes.length > 0 && (!title.total_episodes || updatedEpisodes.length < title.total_episodes)) {
+      setLocalStatus('active');
+    }
+
     let libId = existingEntry?.id;
     if (!libId) {
       const created = await upsertMutation.mutateAsync({
@@ -275,12 +284,47 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     });
   };
 
-  const handleBatchMarkSeasonWatched = async () => {
-    const activeSeason = title.seasons?.[activeSeasonIndex];
-    if (!activeSeason) return;
+  const handleEpisodeClick = (ep: { id: string; episode_number: number; name: string }) => {
+    const isWatched = watchedEpisodesList.includes(ep.id);
+    if (isWatched) {
+      handleToggleEpisode(ep.id);
+      return;
+    }
 
-    const allEpIds = activeSeason.episodes.map((e) => e.id);
-    setLocalEpisodes([...new Set([...watchedEpisodesList, ...allEpIds])]);
+    // Inspect active season to see if previous episodes are unmarked
+    const activeSeason = title.seasons?.[activeSeasonIndex];
+    const previousEpisodes = activeSeason?.episodes.filter(
+      (e) => e.episode_number < ep.episode_number
+    ) || [];
+
+    const unmarkedPrevious = previousEpisodes
+      .map((e) => e.id)
+      .filter((id) => !watchedEpisodesList.includes(id));
+
+    if (unmarkedPrevious.length > 0) {
+      // Trigger confirmation prompt/modal
+      setCatchUpPrompt({
+        targetEp: ep,
+        previousEpIds: unmarkedPrevious,
+      });
+      return;
+    }
+
+    handleToggleEpisode(ep.id);
+  };
+
+  const handleConfirmCatchUp = async () => {
+    if (!catchUpPrompt) return;
+    const allToMark = [...catchUpPrompt.previousEpIds, catchUpPrompt.targetEp.id];
+    setCatchUpPrompt(null);
+
+    const updatedEpisodes = [...new Set([...watchedEpisodesList, ...allToMark])];
+    setLocalEpisodes(updatedEpisodes);
+
+    // Auto update status to active (Currently Watching)
+    if (currentStatus !== 'active' && (!title.total_episodes || updatedEpisodes.length < title.total_episodes)) {
+      setLocalStatus('active');
+    }
 
     let libId = existingEntry?.id;
     if (!libId) {
@@ -293,19 +337,60 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       libId = created.id;
     }
 
-    for (const ep of activeSeason.episodes) {
-      episodeMutation.mutate({
-        libraryId: libId,
-        userId: activeUserId,
-        episodeId: ep.id,
-        watched: true,
-      });
+    batchEpisodeMutation.mutate({
+      libraryId: libId,
+      userId: activeUserId,
+      episodeIds: allToMark,
+      watched: true,
+    });
+  };
+
+  const handleCancelCatchUp = () => {
+    if (!catchUpPrompt) return;
+    const targetId = catchUpPrompt.targetEp.id;
+    setCatchUpPrompt(null);
+    handleToggleEpisode(targetId);
+  };
+
+  const handleBatchMarkSeasonWatched = async () => {
+    const activeSeason = title.seasons?.[activeSeasonIndex];
+    if (!activeSeason) return;
+
+    const allEpIds = activeSeason.episodes.map((e) => e.id);
+    const updatedEpisodes = [...new Set([...watchedEpisodesList, ...allEpIds])];
+    setLocalEpisodes(updatedEpisodes);
+
+    if (currentStatus !== 'active' && (!title.total_episodes || updatedEpisodes.length < title.total_episodes)) {
+      setLocalStatus('active');
     }
+
+    let libId = existingEntry?.id;
+    if (!libId) {
+      const created = await upsertMutation.mutateAsync({
+        userId: activeUserId,
+        titleId: title.id,
+        status: 'active',
+        titleData: title,
+      });
+      libId = created.id;
+    }
+
+    batchEpisodeMutation.mutate({
+      libraryId: libId,
+      userId: activeUserId,
+      episodeIds: allEpIds,
+      watched: true,
+    });
   };
 
   const handleStepChapter = async (delta: number) => {
     const newCh = Math.max(0, currentChapter + delta);
     setLocalChapter(newCh);
+
+    // Auto-status transition to 'active' (Currently Reading)
+    if (newCh > 0 && (!title.total_chapters || newCh < title.total_chapters)) {
+      setLocalStatus('active');
+    }
 
     let libId = existingEntry?.id;
     if (!libId) {
@@ -325,6 +410,11 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
   const handleSetCustomChapter = async (val: number) => {
     setLocalChapter(val);
+
+    // Auto-status transition to 'active' (Currently Reading)
+    if (val > 0 && (!title.total_chapters || val < title.total_chapters)) {
+      setLocalStatus('active');
+    }
 
     let libId = existingEntry?.id;
     if (!libId) {
@@ -641,7 +731,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                   return (
                     <div
                       key={ep.id}
-                      onClick={() => handleToggleEpisode(ep.id)}
+                      onClick={() => handleEpisodeClick(ep)}
                       data-testid={`episode-row-${ep.episode_number}`}
                       className="flex items-center justify-between p-3 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 transition-colors cursor-pointer border border-transparent hover:border-surface-elevated gap-3 group"
                     >
@@ -704,7 +794,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         </section>
       )}
 
-      {/* 2. Chapter / Volume Reading Module: Manga & Manhwa */}
+      {/* 2. Chapter Reading Module: Manga & Manhwa */}
       {isReading && (
         <section
           data-testid="reading-tracking-section"
@@ -714,7 +804,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
             <div className="flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-accent" />
               <h2 className="text-base font-bold text-text-primary">
-                Reading Progress (Chapters & Volumes)
+                Reading Progress (Chapters)
               </h2>
             </div>
             {title.total_chapters && (
@@ -724,7 +814,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             {/* Chapter Stepper */}
             <div className="p-4 rounded-xl bg-surface-elevated border border-surface-elevated flex flex-col justify-between gap-3">
               <div className="flex items-center justify-between">
@@ -790,42 +880,6 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                   className="px-2 py-1 bg-accent/20 hover:bg-accent text-accent hover:text-background font-bold text-[11px] rounded transition-colors"
                 >
                   Set
-                </button>
-              </div>
-            </div>
-
-            {/* Volume Stepper */}
-            <div className="p-4 rounded-xl bg-surface-elevated border border-surface-elevated flex items-center justify-between">
-              <div>
-                <p className="text-xs text-text-secondary font-medium">Volume Progress</p>
-                <p className="text-2xl font-bold font-mono text-text-primary mt-1">
-                  Vol. {currentVolume}{' '}
-                  {title.total_volumes && (
-                    <span className="text-sm font-normal text-text-muted">
-                      / {title.total_volumes}
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    const newVol = Math.max(0, currentVolume - 1);
-                    setLocalVolume(newVol);
-                  }}
-                  className="p-2 rounded-lg bg-surface hover:bg-surface-elevated border border-surface text-text-primary"
-                >
-                  <Minus className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => {
-                    const newVol = currentVolume + 1;
-                    setLocalVolume(newVol);
-                  }}
-                  className="px-3 py-2 rounded-lg bg-surface hover:bg-surface-elevated border border-surface text-text-primary font-bold text-sm flex items-center gap-1"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>+1 Vol</span>
                 </button>
               </div>
             </div>
@@ -972,6 +1026,55 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         initialRating={currentRating || 8}
         onSubmit={handleSaveReview}
       />
+
+      {/* Catch-Up Bulk Episode Prompt Modal */}
+      {catchUpPrompt && (
+        <div
+          data-testid="bulk-episodes-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setCatchUpPrompt(null)}
+        >
+          <div
+            className="w-full max-w-md bg-surface border border-surface-elevated rounded-2xl shadow-2xl p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-accent/20 text-accent flex items-center justify-center shrink-0">
+                <CheckCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-text-primary">Catch-Up: Mark Previous Episodes?</h3>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Episode {catchUpPrompt.targetEp.episode_number}: {catchUpPrompt.targetEp.name}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-text-secondary leading-relaxed">
+              Would you like to mark all previous episodes as watched?
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-surface-elevated">
+              <button
+                type="button"
+                onClick={handleCancelCatchUp}
+                data-testid="cancel-bulk-episodes-btn"
+                className="px-4 py-2 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 text-text-secondary hover:text-text-primary text-xs font-semibold transition-colors"
+              >
+                No, Just This Episode
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCatchUp}
+                data-testid="confirm-bulk-episodes-btn"
+                className="px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-background text-xs font-bold transition-colors shadow"
+              >
+                Yes, Mark All Previous
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TMDB Mandatory Attribution Footer */}
       <TmdbAttribution className="mt-12" />

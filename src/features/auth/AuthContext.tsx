@@ -14,7 +14,7 @@ interface AuthContextType {
   user: UserSession | null;
   profile: Profile | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signIn: (identifier: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string, username: string, displayName?: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
@@ -131,86 +131,92 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
+  const signIn = async (identifier: string, password: string): Promise<{ error: string | null }> => {
     setLoading(true);
-    const cleanEmail = email.trim();
+    const cleanInput = identifier.trim();
+    const cleanUsername = cleanInput.startsWith('@') ? cleanInput.slice(1).trim() : cleanInput;
+    const isEmail = cleanInput.includes('@') && cleanInput.includes('.');
 
-    // 1. Try Supabase Auth signInWithPassword
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
+    // Lookup user in local storage to support username-based login
+    const users: MockUserRecord[] = JSON.parse(localStorage.getItem(LOCAL_STORAGE_USERS_KEY) || '[]');
+    const mockMatch = users.find(
+      (u) =>
+        u.email.toLowerCase() === cleanInput.toLowerCase() ||
+        u.username.toLowerCase() === cleanUsername.toLowerCase()
+    );
 
-      if (!error && data?.user) {
-        const u: UserSession = {
-          id: data.user.id,
-          email: data.user.email || cleanEmail,
-          username: data.user.user_metadata?.username || cleanEmail.split('@')[0],
-        };
-        setUser(u);
+    const targetEmail = isEmail ? cleanInput : (mockMatch?.email || null);
 
-        // Fetch or create profile
-        const { data: p } = await supabase.from('profiles').select('*').eq('id', u.id).single();
-        if (p) {
-          setProfile(p as Profile);
-        } else {
-          const newProfile: Profile = {
-            id: u.id,
-            username: u.username,
-            display_name: data.user.user_metadata?.display_name || u.username,
-            avatar_url: data.user.user_metadata?.avatar_url || null,
-            bio: null,
-            library_visibility: 'public',
-            activity_visibility: 'public',
-            rating_display_preference: 'stars_5',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
+    // 1. Try Supabase Auth signInWithPassword if target email is available
+    if (targetEmail) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: targetEmail,
+          password,
+        });
+
+        if (!error && data?.user) {
+          const u: UserSession = {
+            id: data.user.id,
+            email: data.user.email || targetEmail,
+            username: mockMatch?.username || data.user.user_metadata?.username || cleanUsername || targetEmail.split('@')[0],
           };
-          await (supabase.from('profiles') as any).upsert(newProfile);
-          setProfile(newProfile);
+          setUser(u);
+
+          // Fetch or create profile
+          const { data: p } = await supabase.from('profiles').select('*').eq('id', u.id).single();
+          if (p) {
+            setProfile(p as Profile);
+          } else {
+            const newProfile: Profile = {
+              id: u.id,
+              username: u.username,
+              display_name: data.user.user_metadata?.display_name || u.username,
+              avatar_url: data.user.user_metadata?.avatar_url || null,
+              bio: null,
+              library_visibility: 'public',
+              activity_visibility: 'public',
+              rating_display_preference: 'stars_5',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+            await (supabase.from('profiles') as any).upsert(newProfile);
+            setProfile(newProfile);
+          }
+
+          // Store session for persistence
+          localStorage.setItem(LOCAL_STORAGE_SESSION_KEY, JSON.stringify(u));
+          setLoading(false);
+          return { error: null };
         }
 
-        // Store session for persistence
-        localStorage.setItem(LOCAL_STORAGE_SESSION_KEY, JSON.stringify(u));
-        setLoading(false);
-        return { error: null };
-      }
-
-      if (error) {
-        // If Supabase gave an explicit auth error, check if this email is in mock users before failing
-        const users: MockUserRecord[] = JSON.parse(localStorage.getItem(LOCAL_STORAGE_USERS_KEY) || '[]');
-        const mockMatch = users.find((u) => u.email.toLowerCase() === cleanEmail.toLowerCase());
-        if (!mockMatch) {
+        if (error && !mockMatch) {
           setLoading(false);
           return { error: error.message };
         }
+      } catch {
+        // Offline / network failure -> proceed to mock auth fallback
       }
-    } catch {
-      // Offline / network failure -> proceed to mock auth fallback
     }
 
-    // 2. Mock auth fallback
-    const users: MockUserRecord[] = JSON.parse(localStorage.getItem(LOCAL_STORAGE_USERS_KEY) || '[]');
-    const existing = users.find((u) => u.email.toLowerCase() === cleanEmail.toLowerCase());
-
-    if (!existing || existing.passwordHash !== password) {
+    // 2. Mock auth fallback (supports username or email)
+    if (!mockMatch || mockMatch.passwordHash !== password) {
       setLoading(false);
-      return { error: 'Invalid email or password' };
+      return { error: 'Invalid email/username or password' };
     }
 
     const session: UserSession = {
-      id: existing.id,
-      email: existing.email,
-      username: existing.username,
+      id: mockMatch.id,
+      email: mockMatch.email,
+      username: mockMatch.username,
     };
 
     localStorage.setItem(LOCAL_STORAGE_SESSION_KEY, JSON.stringify(session));
     setUser(session);
 
     const profiles: Record<string, Profile> = JSON.parse(localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY) || '{}');
-    if (profiles[existing.id]) {
-      setProfile(profiles[existing.id]);
+    if (profiles[mockMatch.id]) {
+      setProfile(profiles[mockMatch.id]);
     }
 
     setLoading(false);
@@ -225,8 +231,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ): Promise<{ error: string | null }> => {
     setLoading(true);
     const cleanEmail = email.trim();
-    const cleanUsername = username.trim();
+    const cleanUsername = username.trim().startsWith('@') ? username.trim().slice(1) : username.trim();
     const cleanDisplayName = displayName?.trim() || cleanUsername;
+
+    // Check unique username and email constraints locally first
+    const users: MockUserRecord[] = JSON.parse(localStorage.getItem(LOCAL_STORAGE_USERS_KEY) || '[]');
+    if (users.some((u) => u.username.toLowerCase() === cleanUsername.toLowerCase())) {
+      setLoading(false);
+      return { error: 'Username is already taken' };
+    }
+    if (users.some((u) => u.email.toLowerCase() === cleanEmail.toLowerCase())) {
+      setLoading(false);
+      return { error: 'A user with this email already exists' };
+    }
 
     // 1. Try Supabase Auth signUp
     try {
@@ -242,7 +259,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
-        // If error is not a network failure, return the actual Supabase error
         if (!error.message.includes('fetch') && !error.message.includes('network')) {
           setLoading(false);
           return { error: error.message };
@@ -271,8 +287,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await (supabase.from('profiles') as any).upsert(newProfile);
         setProfile(newProfile);
 
-        // Always sync to mock user cache so credentials can log in regardless of network/offline
-        const users: MockUserRecord[] = JSON.parse(localStorage.getItem(LOCAL_STORAGE_USERS_KEY) || '[]');
+        // Always sync to mock user cache so credentials can log in via username or email
         if (!users.some((x) => x.email.toLowerCase() === cleanEmail.toLowerCase())) {
           users.push({
             id: u.id,
@@ -300,16 +315,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // 2. Mock auth fallback
-    const users: MockUserRecord[] = JSON.parse(localStorage.getItem(LOCAL_STORAGE_USERS_KEY) || '[]');
-    if (users.some((u) => u.email.toLowerCase() === cleanEmail.toLowerCase())) {
-      setLoading(false);
-      return { error: 'A user with this email already exists' };
-    }
-    if (users.some((u) => u.username.toLowerCase() === cleanUsername.toLowerCase())) {
-      setLoading(false);
-      return { error: 'Username is already taken' };
-    }
-
     const newId = 'user_' + Math.random().toString(36).substring(2, 11);
     const newRecord: MockUserRecord = {
       id: newId,

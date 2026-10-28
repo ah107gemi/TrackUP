@@ -61,6 +61,36 @@ describe('Phase 6: Social Graph & Self-Follow Prevention', () => {
     expect(searchMarcus.length).toBe(1);
     expect(searchMarcus[0].is_following).toBe(false);
   });
+
+  it('searches users by exact @username and finds registered mock users', async () => {
+    // Save dynamic registered user
+    const dynamicProfiles = {
+      user_bob: {
+        id: 'user_bob',
+        username: 'bob_builder',
+        display_name: 'Bob The Builder',
+        bio: 'Can we fix it? Yes we can!',
+        avatar_url: null,
+      },
+    };
+    localStorage.setItem('trackup_mock_profiles', JSON.stringify(dynamicProfiles));
+
+    // Search by exact @username with @ prefix
+    const searchWithAt = await searchProfiles('@bob_builder', 'user_alice');
+    expect(searchWithAt.length).toBe(1);
+    expect(searchWithAt[0].username).toBe('bob_builder');
+    expect(searchWithAt[0].display_name).toBe('Bob The Builder');
+
+    // Search by exact username without @ prefix
+    const searchWithoutAt = await searchProfiles('bob_builder', 'user_alice');
+    expect(searchWithoutAt.length).toBe(1);
+    expect(searchWithoutAt[0].username).toBe('bob_builder');
+
+    // Search by existing community profile with @ prefix
+    const searchElenaAt = await searchProfiles('@elena_tracker', 'user_alice');
+    expect(searchElenaAt.length).toBe(1);
+    expect(searchElenaAt[0].username).toBe('elena_tracker');
+  });
 });
 
 describe('Phase 6: Activity Feed Privacy & Rating Comparison', () => {

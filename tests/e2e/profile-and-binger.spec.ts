@@ -58,8 +58,26 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     await expect(page.locator('[data-testid="profile-section-reading"]')).toBeVisible();
     await expect(page.locator('[data-testid="reading-watch-time"]')).toBeVisible();
     await expect(page.locator('[data-testid="avatar-file-input"]')).toBeAttached();
+    // Verify global combined watch time badge in profile header
+    await expect(page.locator('[data-testid="global-watch-time"]')).toBeVisible();
 
-    // 4. Navigate to Import view and test Binger App CSV
+    // 4. Test Friends & Social Search Panel with @username query
+    if (!isMobile) {
+      await page.locator('[data-testid="sidebar-nav-social"]').click();
+    } else {
+      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
+      await page.locator('[data-testid="mobile-nav-social"]').click();
+    }
+    await expect(page.locator('[data-testid="social-feed-view"]')).toBeVisible();
+    await expect(page.locator('[data-testid="friends-search-panel"]')).toBeVisible();
+
+    const friendsSearchInput = page.locator('[data-testid="friends-search-input"]');
+    await expect(friendsSearchInput).toBeVisible();
+    await friendsSearchInput.fill('@marcus_anime');
+    await expect(page.locator('[data-testid="profile-card-marcus_anime"]')).toBeVisible();
+    await expect(page.locator('[data-testid="follow-toggle-marcus_anime"]')).toBeVisible();
+
+    // 5. Navigate to Import view and test Binger App CSV
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-import"]').click();
     } else {

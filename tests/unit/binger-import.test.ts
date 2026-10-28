@@ -13,6 +13,12 @@ import {
   parseGenericRow,
 } from '../../src/features/import-export/parsers';
 import type { UserLibraryItem } from '../../src/features/library/libraryService';
+import {
+  logEpisodeProgress,
+  logBatchEpisodeProgress,
+  logReadingProgress,
+  upsertLibraryItem,
+} from '../../src/features/library/libraryService';
 
 // Node.js mock localStorage for unit tests
 const mockStore: Record<string, string> = {};
@@ -365,6 +371,66 @@ Inception,2010,Movie,Completed,,9`;
       const incEntry = userLibs.find((l) => l.user_id === 'user_movie_runtime_test' && l.title_id === 'movie_inception_27205');
       expect(incEntry).toBeDefined();
       expect(incEntry?.title.runtime_minutes).toBe(148);
+    });
+  });
+
+  describe('Auto-Status Transition & Batch Episode Marking', () => {
+    it('automatically transitions media status to active (Watching/Reading) when progress > 0 and < total', async () => {
+      const userId = 'user_auto_status_test';
+
+      // 1. Initial planned TV show
+      const tvItem = await upsertLibraryItem({
+        userId,
+        titleId: 'tv_breaking_bad_1396',
+        status: 'planned',
+      });
+      expect(tvItem.status).toBe('planned');
+
+      // Marking 1 episode should auto transition to 'active'
+      const updatedTv = await logEpisodeProgress({
+        libraryId: tvItem.id,
+        userId,
+        episodeId: 'bb_e1_1',
+        watched: true,
+      });
+      expect(updatedTv.status).toBe('active');
+
+      // 2. Initial paused Manga
+      const mangaItem = await upsertLibraryItem({
+        userId,
+        titleId: 'manhwa_solo_leveling_105398',
+        status: 'paused',
+      });
+      expect(mangaItem.status).toBe('paused');
+
+      // Reading chapter should auto transition to 'active'
+      const updatedManga = await logReadingProgress({
+        libraryId: mangaItem.id,
+        userId,
+        chapter: 5,
+      });
+      expect(updatedManga.status).toBe('active');
+    });
+
+    it('batch marks multiple episodes using logBatchEpisodeProgress', async () => {
+      const userId = 'user_batch_ep_test';
+
+      const tvItem = await upsertLibraryItem({
+        userId,
+        titleId: 'tv_breaking_bad_1396',
+        status: 'planned',
+      });
+
+      const batchResult = await logBatchEpisodeProgress({
+        libraryId: tvItem.id,
+        userId,
+        episodeIds: ['ep_1', 'ep_2', 'ep_3', 'ep_4', 'ep_5'],
+        watched: true,
+      });
+
+      expect(batchResult.episodes_watched.length).toBe(5);
+      expect(batchResult.episodes_watched).toEqual(['ep_1', 'ep_2', 'ep_3', 'ep_4', 'ep_5']);
+      expect(batchResult.status).toBe('active');
     });
   });
 });

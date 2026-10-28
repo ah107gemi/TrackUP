@@ -3,6 +3,7 @@ import {
   fetchUserLibrary,
   upsertLibraryItem,
   logEpisodeProgress,
+  logBatchEpisodeProgress,
   logReadingProgress,
   type UserLibraryItem,
 } from './libraryService';
@@ -78,7 +79,61 @@ export function useIncrementEpisode() {
             return {
               ...item,
               episodes_watched: watched,
-              status: item.status === 'planned' ? ('active' as TrackingStatus) : item.status,
+              status:
+                variables.watched &&
+                watched.length > 0 &&
+                (!item.title.total_episodes || watched.length < item.title.total_episodes)
+                  ? ('active' as TrackingStatus)
+                  : item.status,
+            };
+          }
+          return item;
+        });
+        queryClient.setQueryData(['library', variables.userId], optimistic);
+      }
+
+      return { previous };
+    },
+    onError: (_err, variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['library', variables.userId], context.previous);
+      }
+    },
+    onSettled: (_data, _error, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library', variables.userId] });
+    },
+  });
+}
+
+export function useBatchEpisodeProgress() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: {
+      libraryId: string;
+      userId: string;
+      episodeIds: string[];
+      watched: boolean;
+    }) => logBatchEpisodeProgress(params),
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: ['library', variables.userId] });
+      const previous = queryClient.getQueryData<UserLibraryItem[]>(['library', variables.userId]);
+
+      if (previous) {
+        const optimistic = previous.map((item) => {
+          if (item.id === variables.libraryId) {
+            const watched = variables.watched
+              ? [...new Set([...item.episodes_watched, ...variables.episodeIds])]
+              : item.episodes_watched.filter((id) => !variables.episodeIds.includes(id));
+            return {
+              ...item,
+              episodes_watched: watched,
+              status:
+                variables.watched &&
+                watched.length > 0 &&
+                (!item.title.total_episodes || watched.length < item.title.total_episodes)
+                  ? ('active' as TrackingStatus)
+                  : item.status,
             };
           }
           return item;
@@ -120,7 +175,11 @@ export function useIncrementChapter() {
                 ...item,
                 last_chapter_read: variables.chapter,
                 last_volume_read: variables.volume ?? item.last_volume_read,
-                status: item.status === 'planned' ? ('active' as TrackingStatus) : item.status,
+                status:
+                  variables.chapter > 0 &&
+                  (!item.title.total_chapters || variables.chapter < item.title.total_chapters)
+                    ? ('active' as TrackingStatus)
+                    : item.status,
               }
             : item
         );

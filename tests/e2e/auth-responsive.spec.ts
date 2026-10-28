@@ -135,5 +135,18 @@ test.describe('TrackUp Phase 1: Responsive Layout & App Shell', () => {
       await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
       await expect(page.locator('[data-testid="mobile-nav-profile"]')).toContainText('Sign In');
     }
+
+    // Re-login using username (with @ prefix) to verify username login
+    if (!isMobile) {
+      await page.locator('[data-testid="auth-modal-trigger"]').click();
+    } else {
+      await page.locator('[data-testid="mobile-nav-profile"]').click();
+    }
+    await expect(page.locator('[data-testid="auth-modal"]')).toBeVisible();
+    await page.locator('[data-testid="auth-tab-login"]').click();
+    await page.locator('[data-testid="auth-email-input"]').fill(`@${testUsername}`);
+    await page.locator('[data-testid="auth-password-input"]').fill('SecretPassword123!');
+    await page.locator('[data-testid="auth-submit-button"]').click();
+    await expect(page.locator('[data-testid="auth-modal"]')).toBeHidden();
   });
 });

@@ -124,15 +124,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
     (sum, item) => sum + (item.last_chapter_read || 0),
     0
   );
-  const totalVolumesRead = readingItems.reduce(
-    (sum, item) => sum + (item.last_volume_read || 0),
-    0
-  );
   // Average reading time ~6 minutes per chapter
   const readingTimeMinutes = Math.round(totalChaptersRead * 6);
 
   // Total aggregate metrics for hero header
   const totalEpisodesWatched = tvEpisodesWatched + animeEpisodesWatched;
+  const combinedWatchTimeMinutes = tvWatchTimeMinutes + animeWatchTimeMinutes;
 
   return (
     <div data-testid="profile-page" className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-200">
@@ -221,6 +218,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
               <span className="flex items-center gap-1.5 font-mono">
                 <Tv className="w-3.5 h-3.5 text-purple-400" />
                 <span>{totalEpisodesWatched} eps watched</span>
+              </span>
+              <span data-testid="global-watch-time" className="flex items-center gap-1.5 font-mono">
+                <Clock className="w-3.5 h-3.5 text-accent" />
+                <span className="font-bold text-accent">{formatWatchTime(combinedWatchTimeMinutes)}</span>
+                <span>watch time</span>
               </span>
               <span className="flex items-center gap-1.5 font-mono">
                 <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
@@ -398,7 +400,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
             </div>
 
             <p className="text-xs text-text-secondary">
-              Granular chapter-by-chapter and volume reading steppers with adaptation links.
+              Granular chapter-by-chapter reading stepper with adaptation links.
             </p>
 
             <div className="pt-2 border-t border-surface-elevated/70 flex flex-col gap-1 text-xs text-text-muted font-mono">
@@ -407,8 +409,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                 <span className="text-rose-400">{readingCompletedCount} Finished</span>
               </div>
               <div className="flex items-center justify-between text-[11px]">
-                <span>{totalVolumesRead} vols read</span>
                 <span>{readingActiveCount} Reading</span>
+                <span>{readingItems.length} Titles total</span>
               </div>
             </div>
           </div>

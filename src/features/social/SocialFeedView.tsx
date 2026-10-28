@@ -104,12 +104,12 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ onSelectTitle })
         </div>
       </div>
 
-      {/* Community Member Search Section */}
-      <div className="p-5 rounded-2xl bg-surface border border-surface-elevated space-y-4 shadow">
+      {/* Community Member & Friends Search Section */}
+      <div data-testid="friends-search-panel" className="p-5 rounded-2xl bg-surface border border-surface-elevated space-y-4 shadow">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-accent" />
           <h2 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
-            Find & Follow Community Members
+            Find Friends & Community Members
           </h2>
         </div>
 
@@ -119,8 +119,9 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ onSelectTitle })
             type="text"
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder="Search by username, name, or interests (e.g. Elena, Anime, Nolan)..."
-            data-testid="profile-search-input"
+            placeholder="Search friends by @username or name (e.g. @marcus_anime, @elena)..."
+            data-testid="friends-search-input"
+            aria-label="Search friends by username"
             className="w-full pl-10 pr-4 py-2 bg-surface-elevated border border-surface-elevated rounded-xl text-text-primary text-sm focus:border-accent focus:outline-none"
           />
         </div>

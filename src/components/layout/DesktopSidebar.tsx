@@ -34,7 +34,7 @@ const navItems: NavItem[] = [
   { id: 'history', label: 'History & Stats', icon: BarChart3 },
   { id: 'profile', label: 'Profile', icon: UserIcon },
   { id: 'import', label: 'Import / Export', icon: UploadCloud },
-  { id: 'social', label: 'Community Feed', icon: Users },
+  { id: 'social', label: 'Friends & Social', icon: Users },
 ];
 
 export const DesktopSidebar: React.FC = () => {

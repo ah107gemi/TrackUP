@@ -41,7 +41,7 @@ test.describe('TrackUp Phase 6: Social Graph, Activity Feeds & Rating Comparison
       await expect(page.locator('[data-testid="social-feed-view"]')).toBeVisible();
 
       // 3. Search for Elena Rostova
-      const searchInput = page.locator('[data-testid="profile-search-input"]');
+      const searchInput = page.locator('[data-testid="friends-search-input"], [data-testid="profile-search-input"]');
       await searchInput.fill('Elena');
 
       const elenaCard = page.locator('[data-testid="profile-card-elena_tracker"]');

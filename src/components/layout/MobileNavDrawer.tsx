@@ -72,7 +72,7 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({ isOpen, onClos
     { id: 'calendar', label: 'Release Calendar', icon: CalendarDays },
     { id: 'recommendations', label: 'For You', icon: Sparkles },
     { id: 'profile', label: 'My Profile', icon: UserIcon },
-    { id: 'social', label: 'Social Activity', icon: Users },
+    { id: 'social', label: 'Friends & Social', icon: Users },
     { id: 'import', label: 'Import & Export', icon: Layers },
   ];
 

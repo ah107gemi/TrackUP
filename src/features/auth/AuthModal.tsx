@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Mail, Lock, User as UserIcon } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from './AuthContext';
@@ -17,6 +17,18 @@ export const AuthModal: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (authModalOpen) {
+      setMode('login');
+      setError(null);
+      setSuccess(null);
+      setEmail('');
+      setPassword('');
+      setUsername('');
+      setDisplayName('');
+    }
+  }, [authModalOpen]);
 
   if (!authModalOpen) return null;
 
@@ -189,16 +201,20 @@ export const AuthModal: React.FC = () => {
 
           <div>
             <label className="block text-xs font-medium text-text-secondary mb-1">
-              Email Address *
+              {mode === 'login' ? 'Email or Username *' : 'Email Address *'}
             </label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-text-muted absolute left-3 top-3" />
+              {mode === 'login' ? (
+                <UserIcon className="w-4 h-4 text-text-muted absolute left-3 top-3" />
+              ) : (
+                <Mail className="w-4 h-4 text-text-muted absolute left-3 top-3" />
+              )}
               <input
-                type="email"
+                type={mode === 'login' ? 'text' : 'email'}
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@example.com"
+                placeholder={mode === 'login' ? 'name@example.com or @username' : 'name@example.com'}
                 data-testid="auth-email-input"
                 className="w-full pl-9 pr-3 py-2 bg-surface-elevated border border-surface-elevated rounded-xl text-text-primary text-sm focus:border-accent focus:outline-none"
               />
