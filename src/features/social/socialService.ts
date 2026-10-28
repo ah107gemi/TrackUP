@@ -153,72 +153,160 @@ export async function searchProfiles(query: string, currentUserId: string): Prom
   const follows = getStoredFollows();
   const allProfilesMap = new Map<string, SocialProfile>();
 
-  // 1. Live Supabase query using .ilike() for case-insensitive, partial matching across devices
-  try {
-    let queryBuilder = supabase
-      .from('profiles')
-      .select('id, username, display_name, full_name, avatar_url, bio, library_visibility, activity_visibility, created_at, updated_at');
+  const isLocalSupabase =
+    !import.meta.env.VITE_SUPABASE_URL ||
+    import.meta.env.VITE_SUPABASE_URL.includes('127.0.0.1') ||
+    import.meta.env.VITE_SUPABASE_URL.includes('localhost');
 
-    if (currentUserId) {
-      queryBuilder = queryBuilder.neq('id', currentUserId);
-    }
+  // Fast timeout (350ms) in offline/local test suites; 6000ms in live cloud environments
+  const timeoutMs = isLocalSupabase ? 350 : 6000;
 
-    if (cleanQ) {
-      // Query case-insensitively using .ilike() on username, full_name, and display_name
-      queryBuilder = queryBuilder.or(`username.ilike.%${cleanQ}%,full_name.ilike.%${cleanQ}%,display_name.ilike.%${cleanQ}%`);
-    }
+  const executeWithTimeout = async <T>(thenable: PromiseLike<T>, ms: number): Promise<T> => {
+    return Promise.race([
+      Promise.resolve(thenable),
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error(`Query timed out after ${ms}ms`)), ms)
+      ),
+    ]);
+  };
 
-    // Fast timeout fallback (300ms) so offline / mock local Supabase environments don't hang UI
-    const timeoutMs = 300;
-    const timeoutPromise = new Promise<{ data: null; error: any }>((resolve) =>
-      setTimeout(() => resolve({ data: null, error: new Error('Timeout') }), timeoutMs)
-    );
+  const isNetworkOrTimeout = (err: any) => {
+    if (!err) return false;
+    const msg = typeof err === 'string' ? err : err.message || '';
+    return msg.toLowerCase().includes('timed out') || msg.toLowerCase().includes('fetch failed') || msg.toLowerCase().includes('network');
+  };
 
-    const supaRes = (await Promise.race([queryBuilder.limit(50), timeoutPromise])) as any;
+  let liveProfiles: any[] = [];
+  const queryLogs: { tier: string; error?: any; count?: number }[] = [];
+  let isNetworkDown = false;
 
-    if (supaRes?.data && Array.isArray(supaRes.data)) {
-      supaRes.data.forEach((sp: any) => {
-        allProfilesMap.set(sp.id, {
-          id: sp.id,
-          username: sp.username,
-          display_name: sp.full_name || sp.display_name || sp.username,
-          avatar_url: sp.avatar_url || null,
-          bio: sp.bio || null,
-          library_visibility: sp.library_visibility || 'public',
-          activity_visibility: sp.activity_visibility || 'public',
-          follower_count: sp.follower_count || 0,
-          following_count: sp.following_count || 0,
+  // 1. Live Supabase multi-tier query with graceful null-safety & column fallbacks
+  if (cleanQ) {
+    // Tier 1: Try full multi-column search (username + display_name + full_name)
+    try {
+      let q1 = supabase.from('profiles').select('*');
+      if (currentUserId) q1 = q1.neq('id', currentUserId);
+      q1 = q1.or(`username.ilike.%${cleanQ}%,display_name.ilike.%${cleanQ}%`);
+
+      const res1 = (await executeWithTimeout(q1.limit(50), timeoutMs)) as any;
+      if (!res1.error && res1.data && res1.data.length > 0) {
+        liveProfiles = res1.data;
+        queryLogs.push({ tier: 'Tier 1 (username + display_name)', count: res1.data.length });
+      } else {
+        if (isNetworkOrTimeout(res1.error)) isNetworkDown = true;
+        queryLogs.push({
+          tier: 'Tier 1 (username + display_name)',
+          error: res1.error,
+          count: res1.data?.length || 0,
         });
-      });
-    } else if (supaRes?.error && supaRes.error.message !== 'Timeout') {
-      // Fallback query without full_name in case remote schema has not applied the column yet
-      let fallbackBuilder = supabase.from('profiles').select('*');
-      if (currentUserId) {
-        fallbackBuilder = fallbackBuilder.neq('id', currentUserId);
       }
-      if (cleanQ) {
-        fallbackBuilder = fallbackBuilder.or(`username.ilike.%${cleanQ}%,display_name.ilike.%${cleanQ}%`);
-      }
-      const fallbackRes = (await Promise.race([fallbackBuilder.limit(50), timeoutPromise])) as any;
-      if (fallbackRes?.data && Array.isArray(fallbackRes.data)) {
-        fallbackRes.data.forEach((sp: any) => {
-          allProfilesMap.set(sp.id, {
-            id: sp.id,
-            username: sp.username,
-            display_name: sp.display_name || sp.username,
-            avatar_url: sp.avatar_url || null,
-            bio: sp.bio || null,
-            library_visibility: sp.library_visibility || 'public',
-            activity_visibility: sp.activity_visibility || 'public',
-            follower_count: sp.follower_count || 0,
-            following_count: sp.following_count || 0,
+    } catch (err: any) {
+      if (isNetworkOrTimeout(err)) isNetworkDown = true;
+      queryLogs.push({ tier: 'Tier 1 (username + display_name)', error: err?.message || err });
+    }
+
+    // Tier 2: If Tier 1 returned 0 results or errored with a column issue (not network down), try with full_name
+    if (liveProfiles.length === 0 && !isNetworkDown) {
+      try {
+        let q2 = supabase.from('profiles').select('*');
+        if (currentUserId) q2 = q2.neq('id', currentUserId);
+        q2 = q2.or(`username.ilike.%${cleanQ}%,full_name.ilike.%${cleanQ}%,display_name.ilike.%${cleanQ}%`);
+
+        const res2 = (await executeWithTimeout(q2.limit(50), timeoutMs)) as any;
+        if (!res2.error && res2.data && res2.data.length > 0) {
+          liveProfiles = res2.data;
+          queryLogs.push({ tier: 'Tier 2 (username + full_name + display_name)', count: res2.data.length });
+        } else {
+          if (isNetworkOrTimeout(res2.error)) isNetworkDown = true;
+          queryLogs.push({
+            tier: 'Tier 2 (username + full_name + display_name)',
+            error: res2.error,
+            count: res2.data?.length || 0,
           });
-        });
+        }
+      } catch (err: any) {
+        if (isNetworkOrTimeout(err)) isNetworkDown = true;
+        queryLogs.push({ tier: 'Tier 2 (username + full_name + display_name)', error: err?.message || err });
       }
     }
-  } catch (err) {
-    console.warn('[SocialSearch] Live Supabase profile search error:', err);
+
+    // Tier 3: Bulletproof fallback: query JUST username (guaranteed non-null column on all profiles schemas)
+    if (liveProfiles.length === 0 && !isNetworkDown) {
+      try {
+        let q3 = supabase.from('profiles').select('*');
+        if (currentUserId) q3 = q3.neq('id', currentUserId);
+        q3 = q3.ilike('username', `%${cleanQ}%`);
+
+        const res3 = (await executeWithTimeout(q3.limit(50), timeoutMs)) as any;
+        if (!res3.error && res3.data && res3.data.length > 0) {
+          liveProfiles = res3.data;
+          queryLogs.push({ tier: 'Tier 3 (username only)', count: res3.data.length });
+        } else {
+          queryLogs.push({
+            tier: 'Tier 3 (username only)',
+            error: res3.error,
+            count: res3.data?.length || 0,
+          });
+        }
+      } catch (err: any) {
+        queryLogs.push({ tier: 'Tier 3 (username only)', error: err?.message || err });
+      }
+    }
+  } else {
+    // Initial load without query: get recent profiles
+    try {
+      let qInitial = supabase.from('profiles').select('*');
+      if (currentUserId) qInitial = qInitial.neq('id', currentUserId);
+      const resInit = (await executeWithTimeout(qInitial.limit(30), timeoutMs)) as any;
+      if (!resInit.error && resInit.data) {
+        liveProfiles = resInit.data;
+        queryLogs.push({ tier: 'Initial All Profiles', count: resInit.data.length });
+      } else {
+        queryLogs.push({ tier: 'Initial All Profiles', error: resInit.error });
+      }
+    } catch (err: any) {
+      queryLogs.push({ tier: 'Initial All Profiles', error: err?.message || err });
+    }
   }
+
+  // Extensive logging for debugging live Supabase behavior in browser console
+  if (liveProfiles.length === 0) {
+    console.error('[SocialSearch] Supabase returned 0 profiles. Diagnostic log:', {
+      rawQuery: query,
+      cleanQuery: cleanQ,
+      currentUserId,
+      supabaseUrl: import.meta.env.VITE_SUPABASE_URL || 'default (http://127.0.0.1:54321)',
+      queryLogs,
+    });
+  } else {
+    console.log('[SocialSearch] Supabase returned live profiles:', {
+      query: cleanQ,
+      count: liveProfiles.length,
+      usernames: liveProfiles.map((p) => p.username),
+      queryLogs,
+    });
+  }
+
+  // Populate live profiles with complete null safety
+  liveProfiles.forEach((sp: any) => {
+    const resolvedUsername = sp.username || 'user';
+    const resolvedDisplayName =
+      (typeof sp.full_name === 'string' && sp.full_name.trim()) ||
+      (typeof sp.display_name === 'string' && sp.display_name.trim()) ||
+      resolvedUsername;
+
+    allProfilesMap.set(sp.id, {
+      id: sp.id,
+      username: resolvedUsername,
+      display_name: resolvedDisplayName,
+      avatar_url: sp.avatar_url || null,
+      bio: sp.bio || null,
+      library_visibility: sp.library_visibility || 'public',
+      activity_visibility: sp.activity_visibility || 'public',
+      follower_count: sp.follower_count || 0,
+      following_count: sp.following_count || 0,
+    });
+  });
 
   // 2. Curated community profiles and local mock dynamic seeds for offline/testing fallback
   MOCK_COMMUNITY_PROFILES.forEach((p) => {

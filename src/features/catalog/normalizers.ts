@@ -143,10 +143,15 @@ export function normalizeTmdbTv(payload: TmdbTvPayload): NormalizedCatalogItem {
   };
 }
 
-export function normalizeAniListMedia(payload: AniListMediaPayload): NormalizedCatalogItem {
+export function normalizeAniListMedia(
+  payload: AniListMediaPayload,
+  preferredType?: MediaType
+): NormalizedCatalogItem {
   let mediaType: MediaType;
 
-  if (payload.type === 'MANGA') {
+  if (preferredType === 'manhwa' && payload.type === 'MANGA') {
+    mediaType = 'manhwa';
+  } else if (payload.type === 'MANGA') {
     // STRICT BLUEPRINT RULE:
     // countryOfOrigin: "KR" maps to manhwa, "JP" maps to manga.
     // Also detect Korean Hangul in titles as manhwa if countryOfOrigin is missing

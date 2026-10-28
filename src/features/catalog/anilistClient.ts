@@ -59,6 +59,64 @@ query ($search: String, $type: MediaType, $format_in: [MediaFormat], $format: Me
 }
 `;
 
+/**
+ * Broadest possible search query for Manga & Manhwa without any countryOfOrigin,
+ * format_in, or status restrictions.
+ */
+const SEARCH_MANGA_QUERY = `
+query ($search: String, $type: MediaType, $page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo {
+      total
+      hasNextPage
+    }
+    media(search: $search, type: $type, sort: [POPULARITY_DESC]) {
+      id
+      idMal
+      type
+      format
+      countryOfOrigin
+      title {
+        romaji
+        english
+        native
+      }
+      synonyms
+      startDate {
+        year
+        month
+        day
+      }
+      description(asHtml: false)
+      coverImage {
+        large
+        medium
+      }
+      bannerImage
+      genres
+      episodes
+      chapters
+      volumes
+      status
+      relations {
+        edges {
+          relationType
+          node {
+            id
+            type
+            format
+            title {
+              english
+              romaji
+            }
+          }
+        }
+      }
+    }
+  }
+}
+`;
+
 const MEDIA_DETAIL_QUERY = `
 query ($id: Int) {
   Media(id: $id) {
@@ -159,34 +217,42 @@ export async function searchAniList(
   page: number = 1,
   perPage: number = 20
 ): Promise<NormalizedCatalogItem[]> {
-  const variables: Record<string, unknown> = {
-    search: query.trim() || undefined,
-    page,
-    perPage,
-  };
+  const isReading = mediaType === 'manga' || mediaType === 'manhwa';
 
-  if (mediaType === 'anime_series') {
-    variables.type = 'ANIME';
-    variables.format_in = ['TV', 'TV_SHORT', 'OVA', 'ONA'];
-  } else if (mediaType === 'anime_film') {
-    variables.type = 'ANIME';
-    variables.format = 'MOVIE';
-  } else if (mediaType === 'manga') {
-    // Both Manga, Manhwa, and Manhua are categorized under type: MANGA in AniList.
-    // Do NOT restrict countryOfOrigin to JP so South Korean and Chinese titles are discoverable.
-    variables.type = 'MANGA';
-    variables.format_in = ['MANGA', 'ONE_SHOT'];
-  } else if (mediaType === 'manhwa') {
-    // Manhwa (South Korean webtoons / comics): AniList categorizes these under type: MANGA
-    variables.type = 'MANGA';
-    variables.countryOfOrigin = 'KR';
-    variables.format_in = ['MANGA', 'ONE_SHOT'];
+  // For Manga & Manhwa: use SEARCH_MANGA_QUERY with stripped filters (no countryOfOrigin, no format_in, no status).
+  // The ONLY variables passed are search: "user_query" and type: MANGA.
+  const selectedQuery = isReading ? SEARCH_MANGA_QUERY : SEARCH_MEDIA_QUERY;
+
+  let variables: Record<string, unknown>;
+
+  if (isReading) {
+    variables = {
+      search: query.trim() || undefined,
+      type: 'MANGA',
+      page,
+      perPage,
+    };
+  } else {
+    variables = {
+      search: query.trim() || undefined,
+      page,
+      perPage,
+    };
+
+    if (mediaType === 'anime_series') {
+      variables.type = 'ANIME';
+      variables.format_in = ['TV', 'TV_SHORT', 'OVA', 'ONA'];
+    } else if (mediaType === 'anime_film') {
+      variables.type = 'ANIME';
+      variables.format = 'MOVIE';
+    }
   }
 
   try {
     console.log('[AniList GraphQL Request]', {
       endpoint: ANILIST_GRAPHQL_ENDPOINT,
       mediaType,
+      isReading,
       variables,
     });
 
@@ -197,7 +263,7 @@ export async function searchAniList(
         Accept: 'application/json',
       },
       body: JSON.stringify({
-        query: SEARCH_MEDIA_QUERY,
+        query: selectedQuery,
         variables,
       }),
     });
@@ -208,31 +274,7 @@ export async function searchAniList(
     }
 
     const json = await response.json();
-    let mediaList: AniListMediaPayload[] = json?.data?.Page?.media || [];
-
-    // Fallback: If manhwa search with countryOfOrigin: 'KR' yielded 0 results, retry without country restriction
-    if (mediaList.length === 0 && mediaType === 'manhwa' && variables.countryOfOrigin === 'KR') {
-      const fallbackVars = { ...variables };
-      delete fallbackVars.countryOfOrigin;
-      console.log('[AniList GraphQL Fallback Request]', fallbackVars);
-
-      const fallbackRes = await fetch(ANILIST_GRAPHQL_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({
-          query: SEARCH_MEDIA_QUERY,
-          variables: fallbackVars,
-        }),
-      });
-
-      if (fallbackRes.ok) {
-        const fallbackJson = await fallbackRes.json();
-        mediaList = fallbackJson?.data?.Page?.media || [];
-      }
-    }
+    const mediaList: AniListMediaPayload[] = json?.data?.Page?.media || [];
 
     console.log('[AniList GraphQL Response]', {
       status: response.status,
@@ -303,7 +345,9 @@ export async function searchAniList(
       return 0;
     });
 
-    return filtered.map((item) => normalizeAniListMedia(item));
+    return filtered.map((item) =>
+      normalizeAniListMedia(item, mediaType === 'manhwa' ? 'manhwa' : undefined)
+    );
   } catch (err) {
     console.warn('Failed to query AniList API:', err);
     return [];
