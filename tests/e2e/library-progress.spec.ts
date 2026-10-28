@@ -47,6 +47,7 @@ test.describe('TrackUp Phase 3: Watch & Read Libraries, 3 View Modes & Granular 
 
     // 3. Add Manhwa (Solo Leveling) and set chapter to 12.5
     await page.locator('[data-testid="omnisearch-trigger"]').click();
+    await page.locator('[data-testid="search-mode-read"]').click();
     await page.locator('[data-testid="omnisearch-input"]').fill('Solo Leveling');
     const manhwaResult = page.locator('[data-testid="omnisearch-result-manhwa_solo_leveling_105398"]');
     await expect(manhwaResult).toBeVisible();

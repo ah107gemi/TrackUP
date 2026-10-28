@@ -43,6 +43,7 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
     // 4. Track Attack on Titan Manga via Omnisearch to trigger cross-format recommendation
     await page.locator('[data-testid="omnisearch-trigger"]').click();
     await expect(page.locator('[data-testid="omnisearch-modal"]')).toBeVisible();
+    await page.locator('[data-testid="search-mode-read"]').click();
     await page.locator('[data-testid="omnisearch-input"]').fill('Attack on Titan (Manga)');
     const omniManga = page.locator('[data-testid="omnisearch-result-manga_aot_30013"]');
     await expect(omniManga).toBeVisible();

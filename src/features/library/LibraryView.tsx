@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Grid,
   LayoutGrid,
@@ -8,10 +8,20 @@ import {
   Star,
   Film,
   BookOpen,
+  Search,
+  X,
+  Check,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../auth/AuthContext';
-import { useUserLibrary, useIncrementEpisode, useIncrementChapter } from './useLibrary';
+import {
+  useUserLibrary,
+  useIncrementEpisode,
+  useIncrementChapter,
+  useUpsertLibrary,
+} from './useLibrary';
+import { searchReadingCatalog } from '../catalog/catalogService';
+import type { NormalizedCatalogItem } from '../../lib/validators';
 import type { TrackingStatus, MediaType } from '../../types/database.types';
 import { formatRuntime } from '../../lib/dateUtils';
 
@@ -27,9 +37,40 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
 
   const incrementEpisode = useIncrementEpisode();
   const incrementChapter = useIncrementChapter();
+  const upsertMutation = useUpsertLibrary();
 
   const [activeStatus, setActiveStatus] = useState<TrackingStatus | 'all'>('all');
   const [selectedFormat, setSelectedFormat] = useState<MediaType | 'all'>('all');
+
+  // Dedicated Reading Search & Quick-Add state (Manga/Manhwa only)
+  const [readingSearchQuery, setReadingSearchQuery] = useState('');
+  const [readingSearchResults, setReadingSearchResults] = useState<NormalizedCatalogItem[]>([]);
+  const [isReadingSearching, setIsReadingSearching] = useState(false);
+  const [addedItemIds, setAddedItemIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (domain !== 'read' || !readingSearchQuery.trim()) {
+      setReadingSearchResults([]);
+      setIsReadingSearching(false);
+      return;
+    }
+
+    let mounted = true;
+    setIsReadingSearching(true);
+
+    const timer = setTimeout(async () => {
+      const results = await searchReadingCatalog(readingSearchQuery, 'all');
+      if (mounted) {
+        setReadingSearchResults(results);
+        setIsReadingSearching(false);
+      }
+    }, 150);
+
+    return () => {
+      mounted = false;
+      clearTimeout(timer);
+    };
+  }, [readingSearchQuery, domain]);
 
   const domainMediaTypes: MediaType[] =
     domain === 'watch'
@@ -84,8 +125,52 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
     });
   };
 
+  const handleQuickAddReading = (e: React.MouseEvent, item: NormalizedCatalogItem) => {
+    e.stopPropagation();
+    if (!user) return;
+
+    upsertMutation.mutate({
+      userId: user.id,
+      titleId: item.id,
+      status: 'active',
+      titleData: item,
+    });
+
+    setAddedItemIds((prev) => new Set(prev).add(item.id));
+  };
+
   return (
     <div data-testid={`${domain}-library-view`} className="max-w-6xl mx-auto space-y-6">
+      {/* Master Library Segment Controller: Switch cleanly between Watch and Read Libraries */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="inline-flex items-center gap-1.5 p-1 bg-surface rounded-2xl border border-surface-elevated shadow-sm">
+          <button
+            onClick={() => setActiveTab('watch')}
+            data-testid="library-toggle-watch"
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              domain === 'watch'
+                ? 'bg-accent text-background shadow-md'
+                : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <Film className="w-4 h-4" />
+            <span>Watch Library</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('read')}
+            data-testid="library-toggle-read"
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              domain === 'read'
+                ? 'bg-accent text-background shadow-md'
+                : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            <span>Reading Library (Manga / Manhwa)</span>
+          </button>
+        </div>
+      </div>
+
       {/* Top Header & View Mode Selector */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -95,7 +180,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
           <p className="text-xs md:text-sm text-text-secondary mt-1">
             {domain === 'watch'
               ? 'Movies, TV Shows, Anime Series & Anime Films'
-              : 'Manga & South Korean Manhwa'}
+              : 'Japanese Manga & South Korean Manhwa'}
           </p>
         </div>
 
@@ -142,6 +227,116 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
           </button>
         </div>
       </div>
+
+      {/* Dedicated Reading Search & Quick Add Panel (Only shown in Reading Library) */}
+      {domain === 'read' && (
+        <div
+          data-testid="reading-library-search-panel"
+          className="p-4 rounded-2xl bg-surface border border-surface-elevated space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-cyan-400" />
+              <h2 className="text-sm font-bold text-text-primary">
+                Dedicated Reading Search & Quick Add
+              </h2>
+            </div>
+            <span className="text-[11px] text-text-muted font-mono bg-surface-elevated px-2 py-0.5 rounded">
+              AniList Manga Only
+            </span>
+          </div>
+
+          <div className="relative">
+            <Search className="w-4 h-4 text-accent absolute left-3.5 top-3" />
+            <input
+              type="text"
+              value={readingSearchQuery}
+              onChange={(e) => setReadingSearchQuery(e.target.value)}
+              placeholder="Search Manga or South Korean Manhwa to track (e.g. Solo Leveling, Berserk)..."
+              data-testid="reading-library-search-input"
+              className="w-full pl-10 pr-9 py-2 bg-surface-elevated/60 border border-surface-elevated rounded-xl text-text-primary text-sm focus:border-accent focus:outline-none placeholder:text-text-muted"
+            />
+            {readingSearchQuery && (
+              <button
+                onClick={() => setReadingSearchQuery('')}
+                aria-label="Clear reading search query"
+                className="absolute right-3 top-2.5 p-0.5 text-text-muted hover:text-text-primary"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Quick Add Reading Results Shelf */}
+          {isReadingSearching ? (
+            <div className="py-3 text-center text-xs text-text-muted animate-pulse">
+              Searching AniList Manga & Manhwa...
+            </div>
+          ) : readingSearchResults.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1 max-h-64 overflow-y-auto">
+              {readingSearchResults.slice(0, 6).map((item) => {
+                const isAlreadyAdded =
+                  addedItemIds.has(item.id) || library.some((l) => l.title_id === item.id);
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => onSelectTitle(item.id)}
+                    data-testid={`reading-search-result-${item.id}`}
+                    className="flex items-center justify-between p-2 rounded-xl bg-surface-elevated/70 hover:bg-surface-elevated border border-transparent hover:border-surface-elevated transition-all cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <img
+                        src={item.poster_url || '/assets/trackup-logo.jpg'}
+                        alt={item.title}
+                        className="w-8 h-12 rounded-lg object-cover shrink-0 bg-[#16161D]"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-text-primary truncate group-hover:text-accent transition-colors">
+                          {item.title}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span
+                            className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${
+                              item.media_type === 'manhwa'
+                                ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
+                                : 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                            }`}
+                          >
+                            {item.media_type}
+                          </span>
+                          {item.total_chapters && (
+                            <span className="text-[10px] text-text-muted font-mono">
+                              {item.total_chapters} chs
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={(e) => handleQuickAddReading(e, item)}
+                      disabled={isAlreadyAdded}
+                      title={isAlreadyAdded ? 'Already in Library' : 'Add to Reading Library'}
+                      data-testid={`quick-add-${item.id}`}
+                      className={`shrink-0 ml-2 p-1.5 rounded-lg text-xs font-bold transition-all ${
+                        isAlreadyAdded
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 cursor-default'
+                          : 'bg-accent/20 text-accent hover:bg-accent hover:text-background border border-accent/30'
+                      }`}
+                    >
+                      {isAlreadyAdded ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : readingSearchQuery.length >= 2 ? (
+            <p className="text-xs text-text-muted py-2 text-center">
+              No manga or manhwa matching &quot;{readingSearchQuery}&quot;
+            </p>
+          ) : null}
+        </div>
+      )}
 
       {/* Filter Row: Status Segment Controller + Sub-format filter */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-surface-elevated pb-3">

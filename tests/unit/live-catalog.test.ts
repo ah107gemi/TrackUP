@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { searchCatalog, getCatalogTitleById } from '../../src/features/catalog/catalogService';
+import {
+  searchCatalog,
+  searchWatchCatalog,
+  searchReadingCatalog,
+  getCatalogTitleById,
+} from '../../src/features/catalog/catalogService';
 import {
   upsertLibraryItem,
   fetchUserLibrary,
@@ -67,6 +72,25 @@ describe('Live Catalog & API Integration Unit Tests', () => {
     expect(results[0].title).toBe('Inception');
     expect(results[0].media_type).toBe('movie');
   }, 10000);
+
+  it('strictly isolates Watch Catalog from Reading Catalog', async () => {
+    // Watch Catalog search must NEVER contain manga or manhwa
+    const watchResults = await searchWatchCatalog('Titan', 'all');
+    expect(watchResults.length).toBeGreaterThan(0);
+    const hasAnyReading = watchResults.some(
+      (item) => item.media_type === 'manga' || item.media_type === 'manhwa'
+    );
+    expect(hasAnyReading).toBe(false);
+    expect(watchResults.every((item) => item.media_type !== 'manga' && item.media_type !== 'manhwa')).toBe(true);
+
+    // Dedicated Reading Catalog search must strictly contain only manga or manhwa
+    const readingResults = await searchReadingCatalog('Titan', 'all');
+    expect(readingResults.length).toBeGreaterThan(0);
+    const hasOnlyReading = readingResults.every(
+      (item) => item.media_type === 'manga' || item.media_type === 'manhwa'
+    );
+    expect(hasOnlyReading).toBe(true);
+  }, 20000);
 
   it('persists live catalog items to user library without losing metadata', async () => {
     // 1. Search live anime

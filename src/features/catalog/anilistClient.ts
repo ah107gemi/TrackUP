@@ -235,6 +235,7 @@ export async function searchAniList(
   } else {
     variables = {
       search: query.trim() || undefined,
+      type: 'ANIME',
       page,
       perPage,
     };

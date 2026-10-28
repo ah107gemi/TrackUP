@@ -521,14 +521,30 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
   },
 ];
 
+export type SearchDomain = 'watch' | 'read';
+
 export async function searchCatalog(
   query: string,
-  mediaType: MediaType | 'all' = 'all'
+  mediaType: MediaType | 'all' = 'all',
+  domain?: SearchDomain
 ): Promise<NormalizedCatalogItem[]> {
   const normalizedQuery = query.trim().toLowerCase();
 
-  // 1. Local curated fixtures matching category & query
+  // Determine effective domain:
+  // If domain is explicitly passed, use it.
+  // Otherwise, if mediaType is manga or manhwa -> 'read'.
+  // Otherwise, default to 'watch' (strictly separating Reading from the main search).
+  const effectiveDomain: SearchDomain =
+    domain ||
+    (mediaType === 'manga' || mediaType === 'manhwa' ? 'read' : 'watch');
+
+  // 1. Local curated fixtures matching domain, category & query
   const localMatches = MOCK_CATALOG_FIXTURES.filter((item) => {
+    const isReadingItem = item.media_type === 'manga' || item.media_type === 'manhwa';
+
+    if (effectiveDomain === 'watch' && isReadingItem) return false;
+    if (effectiveDomain === 'read' && !isReadingItem) return false;
+
     const matchesType = mediaType === 'all' || item.media_type === mediaType;
     if (!matchesType) return false;
 
@@ -549,32 +565,36 @@ export async function searchCatalog(
     return results;
   }
 
-  // 2. Query Live Providers
+  // 2. Query Live Providers based on strictly isolated domain
   const promises: Promise<NormalizedCatalogItem[]>[] = [];
 
-  // A. AniList: covers anime_series, anime_film, manga, manhwa (Free, live, no API key needed)
-  const isAnimeOrReading =
-    mediaType === 'all' ||
-    mediaType === 'anime_series' ||
-    mediaType === 'anime_film' ||
-    mediaType === 'manga' ||
-    mediaType === 'manhwa';
+  if (effectiveDomain === 'read') {
+    // DEDICATED READING DOMAIN:
+    // Queries ONLY AniList type: MANGA. Never touches TMDB video.
+    const readingType: MediaType = mediaType === 'manhwa' ? 'manhwa' : 'manga';
+    promises.push(searchAniList(query, readingType));
+  } else {
+    // DEDICATED WATCH DOMAIN:
+    // Queries TMDB (Movies / TV) and AniList Anime (Anime series / films).
+    // NEVER queries AniList type: MANGA.
 
-  if (isAnimeOrReading) {
-    if (mediaType === 'all') {
-      // For global search, query AniList for general media AND type: MANGA so reading titles (manga/manhwa) are not crowded out by anime
-      promises.push(searchAniList(query, 'all'));
-      promises.push(searchAniList(query, 'manga'));
-    } else {
-      promises.push(searchAniList(query, mediaType));
+    // A. AniList Anime (Free, live, no API key needed)
+    const isAnime =
+      mediaType === 'all' ||
+      mediaType === 'anime_series' ||
+      mediaType === 'anime_film';
+
+    if (isAnime) {
+      const animeType = mediaType === 'anime_film' ? 'anime_film' : 'anime_series';
+      promises.push(searchAniList(query, animeType));
     }
-  }
 
-  // B. TMDB: covers movie and tv (if API key / token configured)
-  const isMovieOrTv = mediaType === 'all' || mediaType === 'movie' || mediaType === 'tv';
-  if (isMovieOrTv && isTmdbConfigured()) {
-    const tmdbType = mediaType === 'all' ? 'all' : mediaType;
-    promises.push(searchTmdb(query, tmdbType));
+    // B. TMDB: covers movie and tv (if API key / token configured)
+    const isMovieOrTv = mediaType === 'all' || mediaType === 'movie' || mediaType === 'tv';
+    if (isMovieOrTv && isTmdbConfigured()) {
+      const tmdbType = mediaType === 'all' ? 'all' : mediaType;
+      promises.push(searchTmdb(query, tmdbType));
+    }
   }
 
   if (promises.length > 0) {
@@ -585,12 +605,23 @@ export async function searchCatalog(
           for (const item of res.value) {
             if (!item || !item.id) continue;
 
-            // Strict category alignment: if a category was explicitly filtered (e.g. manhwa or manga),
-            // ensure the item retains or matches the filtered category so it is never dropped by callers
-            if (mediaType !== 'all') {
-              if (mediaType === 'manhwa' && item.media_type !== 'manhwa') {
+            const isReadingItem = item.media_type === 'manga' || item.media_type === 'manhwa';
+
+            // Ensure absolute domain isolation:
+            // Watch domain must NEVER contain reading items
+            if (effectiveDomain === 'watch' && isReadingItem) continue;
+            // Read domain must NEVER contain watch items
+            if (effectiveDomain === 'read' && !isReadingItem) continue;
+
+            // In reading domain, ensure items are strictly mapped to 'manga' or 'manhwa' badges
+            if (effectiveDomain === 'read') {
+              if (mediaType === 'manhwa') {
                 item.media_type = 'manhwa';
-              } else if (mediaType === 'manga' && item.media_type !== 'manga') {
+              } else if (mediaType === 'manga') {
+                item.media_type = 'manga';
+              } else if (item.origin_country === 'KR') {
+                item.media_type = 'manhwa';
+              } else {
                 item.media_type = 'manga';
               }
             }
@@ -627,6 +658,20 @@ export async function searchCatalog(
   }
 
   return results;
+}
+
+export async function searchWatchCatalog(
+  query: string,
+  category: 'all' | 'movie' | 'tv' | 'anime_series' | 'anime_film' = 'all'
+): Promise<NormalizedCatalogItem[]> {
+  return searchCatalog(query, category, 'watch');
+}
+
+export async function searchReadingCatalog(
+  query: string,
+  category: 'all' | 'manga' | 'manhwa' = 'all'
+): Promise<NormalizedCatalogItem[]> {
+  return searchCatalog(query, category, 'read');
 }
 
 export async function getCatalogTitleById(

@@ -29,13 +29,16 @@ test.describe('TrackUp UI Quality Audit & Mobile Polish', () => {
     const aotImg = aotCard.locator('img');
     await expect(aotImg).toHaveAttribute('src', /anilist\.co/);
 
-    // Verify Solo Leveling poster loads from AniList
+    // Switch to Reading Catalog to verify Solo Leveling poster loads from AniList
+    await page.locator('[data-testid="discover-mode-read"]').click();
     const soloCard = page.locator('[data-testid="poster-card-manhwa_solo_leveling_105398"]');
     await expect(soloCard).toBeVisible();
     const soloImg = soloCard.locator('img');
     await expect(soloImg).toHaveAttribute('src', /anilist\.co/);
 
-    // Navigate to detail page and verify backdrop + poster + fallback
+    // Switch back to Watch Catalog for Inception click
+    await page.locator('[data-testid="discover-mode-watch"]').click();
+    await expect(inceptionCard).toBeVisible();
     await inceptionCard.click();
     await expect(page.locator('[data-testid="title-detail-page"]')).toBeVisible();
 
@@ -111,6 +114,18 @@ test.describe('TrackUp UI Quality Audit & Mobile Polish', () => {
     ];
 
     for (const cat of categories) {
+      if (cat.id === 'manga' || cat.id === 'manhwa') {
+        const readToggle = page.locator('[data-testid="discover-mode-read"]');
+        if (await readToggle.isVisible()) {
+          await readToggle.click();
+        }
+      } else {
+        const watchToggle = page.locator('[data-testid="discover-mode-watch"]');
+        if (await watchToggle.isVisible()) {
+          await watchToggle.click();
+        }
+      }
+
       const pill = page.locator(`[data-testid="filter-category-${cat.id}"]`);
       await pill.scrollIntoViewIfNeeded();
       await expect(pill).toBeVisible();

@@ -100,8 +100,9 @@ test.describe('TrackUp Phase 2: Unified Search & Adaptive Title Detail Pages', (
   test('verifies Manga detail page renders Chapter/Volume Steppers & Linked Adaptations', async ({ page }) => {
     await page.goto('/');
 
-    // Open Omnisearch and search for Manga
+    // Open Omnisearch and search for Manga via dedicated Read mode
     await page.locator('[data-testid="omnisearch-trigger"]').click();
+    await page.locator('[data-testid="search-mode-read"]').click();
     const searchInput = page.locator('[data-testid="omnisearch-input"]');
     await searchInput.fill('Titan');
 
