@@ -284,7 +284,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
 
         // Upsert profile in Supabase
-        await (supabase.from('profiles') as any).upsert(newProfile);
+        await (supabase.from('profiles') as any).upsert({
+          ...newProfile,
+          full_name: cleanDisplayName,
+        });
         setProfile(newProfile);
 
         // Always sync to mock user cache so credentials can log in via username or email

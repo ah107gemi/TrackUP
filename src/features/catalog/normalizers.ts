@@ -148,8 +148,12 @@ export function normalizeAniListMedia(payload: AniListMediaPayload): NormalizedC
 
   if (payload.type === 'MANGA') {
     // STRICT BLUEPRINT RULE:
-    // countryOfOrigin: "KR" maps to manhwa, "JP" maps to manga
-    if (payload.countryOfOrigin === 'KR') {
+    // countryOfOrigin: "KR" maps to manhwa, "JP" maps to manga.
+    // Also detect Korean Hangul in titles as manhwa if countryOfOrigin is missing
+    const hasKoreanTitle = /[\uac00-\ud7af\u1100-\u11ff]/.test(
+      (payload.title.native || '') + (payload.title.romaji || '')
+    );
+    if (payload.countryOfOrigin === 'KR' || hasKoreanTitle) {
       mediaType = 'manhwa';
     } else {
       mediaType = 'manga';
@@ -163,7 +167,7 @@ export function normalizeAniListMedia(payload: AniListMediaPayload): NormalizedC
     }
   }
 
-  const title = payload.title.english || payload.title.romaji || 'Untitled';
+  const title = payload.title.english || payload.title.romaji || payload.title.native || 'Untitled';
   const originalTitle = payload.title.native || payload.title.romaji || null;
 
   const poster = sanitizeUrl(payload.coverImage?.large || payload.coverImage?.medium || payload.coverImage?.extraLarge);
@@ -178,6 +182,17 @@ export function normalizeAniListMedia(payload: AniListMediaPayload): NormalizedC
     ? `${payload.startDate.year}-${String(payload.startDate.month || 1).padStart(2, '0')}-${String(payload.startDate.day || 1).padStart(2, '0')}`
     : null;
 
+  let normalizedStatus = 'released';
+  if (payload.status) {
+    const s = payload.status.toUpperCase();
+    if (s === 'FINISHED') normalizedStatus = 'completed';
+    else if (s === 'RELEASING') normalizedStatus = 'releasing';
+    else if (s === 'NOT_YET_RELEASED') normalizedStatus = 'planned';
+    else if (s === 'CANCELLED') normalizedStatus = 'dropped';
+    else if (s === 'HIATUS') normalizedStatus = 'paused';
+    else normalizedStatus = payload.status.toLowerCase();
+  }
+
   return {
     id: `anilist_${payload.id}`,
     media_type: mediaType,
@@ -190,7 +205,7 @@ export function normalizeAniListMedia(payload: AniListMediaPayload): NormalizedC
     backdrop_url: backdrop,
     genres: payload.genres || [],
     origin_country: payload.countryOfOrigin || (mediaType === 'manhwa' ? 'KR' : 'JP'),
-    status: payload.status || 'released',
+    status: normalizedStatus,
     total_episodes: payload.episodes || null,
     total_chapters: payload.chapters || null,
     total_volumes: payload.volumes || null,

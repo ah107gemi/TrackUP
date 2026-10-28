@@ -149,12 +149,83 @@ export async function unfollowUser(followerId: string, targetUserId: string): Pr
 }
 
 export async function searchProfiles(query: string, currentUserId: string): Promise<SocialProfile[]> {
-  const cleanQ = query.trim().toLowerCase().replace(/^@/, '');
+  const cleanQ = query.trim().replace(/^@/, '');
   const follows = getStoredFollows();
-
-  // Aggregate curated mock profiles, dynamic registered profiles from localStorage, and Supabase profiles
   const allProfilesMap = new Map<string, SocialProfile>();
-  MOCK_COMMUNITY_PROFILES.forEach((p) => allProfilesMap.set(p.id, p));
+
+  // 1. Live Supabase query using .ilike() for case-insensitive, partial matching across devices
+  try {
+    let queryBuilder = supabase
+      .from('profiles')
+      .select('id, username, display_name, full_name, avatar_url, bio, library_visibility, activity_visibility, created_at, updated_at');
+
+    if (currentUserId) {
+      queryBuilder = queryBuilder.neq('id', currentUserId);
+    }
+
+    if (cleanQ) {
+      // Query case-insensitively using .ilike() on username, full_name, and display_name
+      queryBuilder = queryBuilder.or(`username.ilike.%${cleanQ}%,full_name.ilike.%${cleanQ}%,display_name.ilike.%${cleanQ}%`);
+    }
+
+    // Fast timeout fallback (300ms) so offline / mock local Supabase environments don't hang UI
+    const timeoutMs = 300;
+    const timeoutPromise = new Promise<{ data: null; error: any }>((resolve) =>
+      setTimeout(() => resolve({ data: null, error: new Error('Timeout') }), timeoutMs)
+    );
+
+    const supaRes = (await Promise.race([queryBuilder.limit(50), timeoutPromise])) as any;
+
+    if (supaRes?.data && Array.isArray(supaRes.data)) {
+      supaRes.data.forEach((sp: any) => {
+        allProfilesMap.set(sp.id, {
+          id: sp.id,
+          username: sp.username,
+          display_name: sp.full_name || sp.display_name || sp.username,
+          avatar_url: sp.avatar_url || null,
+          bio: sp.bio || null,
+          library_visibility: sp.library_visibility || 'public',
+          activity_visibility: sp.activity_visibility || 'public',
+          follower_count: sp.follower_count || 0,
+          following_count: sp.following_count || 0,
+        });
+      });
+    } else if (supaRes?.error && supaRes.error.message !== 'Timeout') {
+      // Fallback query without full_name in case remote schema has not applied the column yet
+      let fallbackBuilder = supabase.from('profiles').select('*');
+      if (currentUserId) {
+        fallbackBuilder = fallbackBuilder.neq('id', currentUserId);
+      }
+      if (cleanQ) {
+        fallbackBuilder = fallbackBuilder.or(`username.ilike.%${cleanQ}%,display_name.ilike.%${cleanQ}%`);
+      }
+      const fallbackRes = (await Promise.race([fallbackBuilder.limit(50), timeoutPromise])) as any;
+      if (fallbackRes?.data && Array.isArray(fallbackRes.data)) {
+        fallbackRes.data.forEach((sp: any) => {
+          allProfilesMap.set(sp.id, {
+            id: sp.id,
+            username: sp.username,
+            display_name: sp.display_name || sp.username,
+            avatar_url: sp.avatar_url || null,
+            bio: sp.bio || null,
+            library_visibility: sp.library_visibility || 'public',
+            activity_visibility: sp.activity_visibility || 'public',
+            follower_count: sp.follower_count || 0,
+            following_count: sp.following_count || 0,
+          });
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('[SocialSearch] Live Supabase profile search error:', err);
+  }
+
+  // 2. Curated community profiles and local mock dynamic seeds for offline/testing fallback
+  MOCK_COMMUNITY_PROFILES.forEach((p) => {
+    if (!allProfilesMap.has(p.id)) {
+      allProfilesMap.set(p.id, p);
+    }
+  });
 
   try {
     const dynamicProfiles: Record<string, any> = JSON.parse(
@@ -165,7 +236,7 @@ export async function searchProfiles(query: string, currentUserId: string): Prom
         allProfilesMap.set(p.id, {
           id: p.id,
           username: p.username,
-          display_name: p.display_name || p.username,
+          display_name: p.full_name || p.display_name || p.username,
           avatar_url: p.avatar_url || null,
           bio: p.bio || null,
           library_visibility: p.library_visibility || 'public',
@@ -179,55 +250,22 @@ export async function searchProfiles(query: string, currentUserId: string): Prom
     // ignore
   }
 
-  // Also query Supabase profiles if available (with fast timeout fallback when offline)
-  try {
-    const timeoutPromise = new Promise<{ data: null }>((resolve) =>
-      setTimeout(() => resolve({ data: null }), 300)
-    );
-    const supaPromise = supabase
-      .from('profiles')
-      .select('*')
-      .neq('id', currentUserId)
-      .limit(30);
-
-    const res = (await Promise.race([supaPromise, timeoutPromise])) as any;
-
-    if (res?.data) {
-      res.data.forEach((sp: any) => {
-        if (!allProfilesMap.has(sp.id)) {
-          allProfilesMap.set(sp.id, {
-            id: sp.id,
-            username: sp.username,
-            display_name: sp.display_name || sp.username,
-            avatar_url: sp.avatar_url || null,
-            bio: sp.bio || null,
-            library_visibility: sp.library_visibility || 'public',
-            activity_visibility: sp.activity_visibility || 'public',
-            follower_count: 0,
-            following_count: 0,
-          });
-        }
-      });
-    }
-  } catch {
-    // offline/mock fallback
-  }
-
+  const lowerQ = cleanQ.toLowerCase();
   const list = Array.from(allProfilesMap.values()).filter((p) => {
     if (p.id === currentUserId) return false;
-    if (!cleanQ) return true;
+    if (!lowerQ) return true;
     return (
-      p.username.toLowerCase() === cleanQ ||
-      p.username.toLowerCase().includes(cleanQ) ||
-      (p.display_name && p.display_name.toLowerCase().includes(cleanQ)) ||
-      (p.bio && p.bio.toLowerCase().includes(cleanQ))
+      p.username.toLowerCase() === lowerQ ||
+      p.username.toLowerCase().includes(lowerQ) ||
+      (p.display_name && p.display_name.toLowerCase().includes(lowerQ)) ||
+      (p.bio && p.bio.toLowerCase().includes(lowerQ))
     );
   });
 
   // Prioritize exact username matches
   list.sort((a, b) => {
-    const aExact = a.username.toLowerCase() === cleanQ ? 1 : 0;
-    const bExact = b.username.toLowerCase() === cleanQ ? 1 : 0;
+    const aExact = a.username.toLowerCase() === lowerQ ? 1 : 0;
+    const bExact = b.username.toLowerCase() === lowerQ ? 1 : 0;
     if (aExact !== bExact) return bExact - aExact;
     return (b.follower_count || 0) - (a.follower_count || 0);
   });

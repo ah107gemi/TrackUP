@@ -561,7 +561,13 @@ export async function searchCatalog(
     mediaType === 'manhwa';
 
   if (isAnimeOrReading) {
-    promises.push(searchAniList(query, mediaType));
+    if (mediaType === 'all') {
+      // For global search, query AniList for general media AND type: MANGA so reading titles (manga/manhwa) are not crowded out by anime
+      promises.push(searchAniList(query, 'all'));
+      promises.push(searchAniList(query, 'manga'));
+    } else {
+      promises.push(searchAniList(query, mediaType));
+    }
   }
 
   // B. TMDB: covers movie and tv (if API key / token configured)

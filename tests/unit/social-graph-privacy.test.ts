@@ -90,6 +90,11 @@ describe('Phase 6: Social Graph & Self-Follow Prevention', () => {
     const searchElenaAt = await searchProfiles('@elena_tracker', 'user_alice');
     expect(searchElenaAt.length).toBe(1);
     expect(searchElenaAt[0].username).toBe('elena_tracker');
+
+    // Case-insensitive partial matching on full_name / display_name
+    const searchPartialName = await searchProfiles('builder', 'user_alice');
+    expect(searchPartialName.length).toBe(1);
+    expect(searchPartialName[0].username).toBe('bob_builder');
   });
 });
 

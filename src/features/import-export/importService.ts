@@ -139,7 +139,7 @@ export async function resolveTitleFromApi(
 
   if (isReading) {
     try {
-      const aniResults = await searchAniList(row.rawTitle, 'manga');
+      const aniResults = await searchAniList(row.rawTitle, row.mediaType === 'manhwa' ? 'manhwa' : 'manga');
       if (aniResults && aniResults.length > 0) {
         const exact = aniResults.find((a) => normalizeTitleString(a.title) === normTarget);
         if (exact) return exact;

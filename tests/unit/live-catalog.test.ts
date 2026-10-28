@@ -44,7 +44,13 @@ describe('Live Catalog & API Integration Unit Tests', () => {
     const solo = results.find((item) => item.id.includes('105398'));
     expect(solo).toBeDefined();
     expect(solo?.origin_country).toBe('KR');
-  }, 20000);
+
+    // Verify Manhwa is also discoverable when searching under reading/manga category without JP restriction
+    const readingResults = await searchCatalog('Tower of God', 'manga');
+    expect(readingResults.length).toBeGreaterThan(0);
+    const tog = readingResults.find((item) => item.title.toLowerCase().includes('tower of god'));
+    expect(tog).toBeDefined();
+  }, 25000);
 
   it('hydrates full title detail and cast for an AniList title by ID', async () => {
     const detail = await getCatalogTitleById('anilist_16498');

@@ -56,6 +56,7 @@ export interface Database {
           id: string;
           username: string;
           display_name: string | null;
+          full_name?: string | null;
           avatar_url: string | null;
           bio: string | null;
           library_visibility: PrivacyLevel;
@@ -68,6 +69,7 @@ export interface Database {
           id: string;
           username: string;
           display_name?: string | null;
+          full_name?: string | null;
           avatar_url?: string | null;
           bio?: string | null;
           library_visibility?: PrivacyLevel;
@@ -80,6 +82,7 @@ export interface Database {
           id?: string;
           username?: string;
           display_name?: string | null;
+          full_name?: string | null;
           avatar_url?: string | null;
           bio?: string | null;
           library_visibility?: PrivacyLevel;
