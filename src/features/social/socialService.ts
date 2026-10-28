@@ -176,105 +176,116 @@ export async function searchProfiles(query: string, currentUserId: string): Prom
     return msg.toLowerCase().includes('timed out') || msg.toLowerCase().includes('fetch failed') || msg.toLowerCase().includes('network');
   };
 
-  const isPostgrestSchemaOrBadRequest = (err: any): boolean => {
-    if (!err) return false;
-    const code = String(err.code || err.statusCode || err.status || '');
-    const msg = String(err.message || err.details || err.hint || '').toLowerCase();
-    const status = Number(err.status || err.statusCode || 0);
-
-    return (
-      status === 400 ||
-      code === '400' ||
-      code.startsWith('PGRST') || // PGRST204 (column not found), PGRST200, etc.
-      code === '42703' || // PostgreSQL undefined_column
-      msg.includes('column') ||
-      msg.includes('schema') ||
-      msg.includes('bad request') ||
-      msg.includes('could not find') ||
-      msg.includes('full_name')
-    );
-  };
-
   let liveProfiles: any[] = [];
   const queryLogs: { tier: string; error?: any; count?: number }[] = [];
   let isNetworkDown = false;
 
-  // 1. Live Supabase query with strict 400 / PGRST schema error catch & username fallback
+  // 1. Live Supabase query with blanket try...catch & explicit column selection fallback
   if (cleanQ) {
-    let triggeredSafeFallback = false;
+    let queryFailed = false;
 
-    // Initial query attempt: Search across username and display_name
+    // Primary query attempt: Search across username and display_name with explicit columns
     try {
-      let qInitial = supabase.from('profiles').select('*');
-      if (currentUserId) qInitial = qInitial.neq('id', currentUserId);
-      qInitial = qInitial.or(`username.ilike.%${cleanQ}%,display_name.ilike.%${cleanQ}%`);
+      let qPrimary = supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url');
+      if (currentUserId) qPrimary = qPrimary.neq('id', currentUserId);
+      qPrimary = qPrimary.or(`username.ilike.%${cleanQ}%,display_name.ilike.%${cleanQ}%`);
 
-      const resInitial = (await executeWithTimeout(qInitial.limit(50), timeoutMs)) as any;
+      const resPrimary = (await executeWithTimeout(qPrimary.limit(50), timeoutMs)) as any;
 
-      if (!resInitial.error && resInitial.data && resInitial.data.length > 0) {
-        liveProfiles = resInitial.data;
-        queryLogs.push({ tier: 'Initial (username + display_name)', count: resInitial.data.length });
-      } else if (resInitial.error) {
-        queryLogs.push({ tier: 'Initial (username + display_name)', error: resInitial.error });
-        if (isPostgrestSchemaOrBadRequest(resInitial.error)) {
-          console.warn('[SocialSearch] Caught PostgREST 400/schema error on initial query. Triggering safe username-only fallback:', resInitial.error);
-          triggeredSafeFallback = true;
-        } else if (isNetworkOrTimeout(resInitial.error)) {
-          isNetworkDown = true;
-        } else {
-          triggeredSafeFallback = true;
-        }
+      if (!resPrimary.error && resPrimary.data && resPrimary.data.length > 0) {
+        liveProfiles = resPrimary.data;
+        queryLogs.push({ tier: 'Primary (username + display_name)', count: resPrimary.data.length });
       } else {
-        // 0 matches found via combined or() filter; also trigger safe username-only query to catch pure username matches
-        triggeredSafeFallback = true;
+        queryFailed = true;
+        queryLogs.push({
+          tier: 'Primary (username + display_name)',
+          error: resPrimary?.error || '0 rows returned',
+        });
+        if (isNetworkOrTimeout(resPrimary?.error)) {
+          isNetworkDown = true;
+        }
       }
     } catch (err: any) {
-      queryLogs.push({ tier: 'Initial (username + display_name)', error: err?.message || err });
-      if (isPostgrestSchemaOrBadRequest(err)) {
-        console.warn('[SocialSearch] Exception in initial query matched PostgREST 400/schema error. Triggering safe username-only fallback:', err);
-        triggeredSafeFallback = true;
-      } else if (isNetworkOrTimeout(err)) {
+      queryFailed = true;
+      queryLogs.push({ tier: 'Primary (username + display_name)', error: err?.message || err });
+      if (isNetworkOrTimeout(err)) {
         isNetworkDown = true;
-      } else {
-        triggeredSafeFallback = true;
       }
     }
 
-    // Strict Safe Fallback: Catch PostgREST 400/schema errors and query ONLY the username column
-    if (liveProfiles.length === 0 && !isNetworkDown && triggeredSafeFallback) {
+    // Bulletproof Fallback: If primary query fails or errors for ANY reason,
+    // immediately query ONLY explicit guaranteed columns: 'id, username, avatar_url'. NEVER use '*'!
+    if (liveProfiles.length === 0 && !isNetworkDown && queryFailed) {
       try {
-        let qSafe = supabase.from('profiles').select('*');
-        if (currentUserId) qSafe = qSafe.neq('id', currentUserId);
-        // ONLY searches the username column, completely ignoring full_name and display_name
-        qSafe = qSafe.ilike('username', `%${cleanQ}%`);
+        console.warn(
+          '[SocialSearch] Primary query failed or returned 0 rows. Triggering bulletproof explicit-column fallback (id, username, avatar_url).'
+        );
+        let qFallback = supabase
+          .from('profiles')
+          .select('id, username, avatar_url'); // EXPLICIT ONLY, NO '*'
+        if (currentUserId) qFallback = qFallback.neq('id', currentUserId);
+        qFallback = qFallback.ilike('username', `%${cleanQ}%`);
 
-        const resSafe = (await executeWithTimeout(qSafe.limit(50), timeoutMs)) as any;
-        if (!resSafe.error && resSafe.data && resSafe.data.length > 0) {
-          liveProfiles = resSafe.data;
-          queryLogs.push({ tier: 'Safe Fallback (username only)', count: resSafe.data.length });
-        } else if (resSafe.error) {
-          queryLogs.push({ tier: 'Safe Fallback (username only)', error: resSafe.error });
-          console.error('[SocialSearch] Safe username fallback error:', resSafe.error);
+        const resFallback = (await executeWithTimeout(qFallback.limit(50), timeoutMs)) as any;
+        if (!resFallback.error && resFallback.data && resFallback.data.length > 0) {
+          liveProfiles = resFallback.data;
+          queryLogs.push({
+            tier: 'Explicit Column Fallback (id, username, avatar_url)',
+            count: resFallback.data.length,
+          });
+        } else if (resFallback.error) {
+          queryLogs.push({
+            tier: 'Explicit Column Fallback (id, username, avatar_url)',
+            error: resFallback.error,
+          });
+          console.error('[SocialSearch] Explicit column fallback error:', resFallback.error);
         }
       } catch (err: any) {
-        queryLogs.push({ tier: 'Safe Fallback (username only)', error: err?.message || err });
-        console.error('[SocialSearch] Safe username fallback exception:', err);
+        queryLogs.push({
+          tier: 'Explicit Column Fallback (id, username, avatar_url)',
+          error: err?.message || err,
+        });
+        console.error('[SocialSearch] Explicit column fallback exception:', err);
       }
     }
   } else {
-    // Initial load without query: get recent profiles
+    // Initial load without query: get recent profiles with explicit columns and fallback
     try {
-      let qInitial = supabase.from('profiles').select('*');
+      let qInitial = supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url');
       if (currentUserId) qInitial = qInitial.neq('id', currentUserId);
       const resInit = (await executeWithTimeout(qInitial.limit(30), timeoutMs)) as any;
-      if (!resInit.error && resInit.data) {
+      if (!resInit.error && resInit.data && resInit.data.length > 0) {
         liveProfiles = resInit.data;
         queryLogs.push({ tier: 'Initial All Profiles', count: resInit.data.length });
       } else {
-        queryLogs.push({ tier: 'Initial All Profiles', error: resInit.error });
+        queryLogs.push({ tier: 'Initial All Profiles', error: resInit?.error });
+        let qFallback = supabase
+          .from('profiles')
+          .select('id, username, avatar_url');
+        if (currentUserId) qFallback = qFallback.neq('id', currentUserId);
+        const resFb = (await executeWithTimeout(qFallback.limit(30), timeoutMs)) as any;
+        if (!resFb.error && resFb.data) {
+          liveProfiles = resFb.data;
+        }
       }
     } catch (err: any) {
       queryLogs.push({ tier: 'Initial All Profiles', error: err?.message || err });
+      try {
+        let qFallback = supabase
+          .from('profiles')
+          .select('id, username, avatar_url');
+        if (currentUserId) qFallback = qFallback.neq('id', currentUserId);
+        const resFb = (await executeWithTimeout(qFallback.limit(30), timeoutMs)) as any;
+        if (!resFb.error && resFb.data) {
+          liveProfiles = resFb.data;
+        }
+      } catch {
+        // ignore
+      }
     }
   }
 

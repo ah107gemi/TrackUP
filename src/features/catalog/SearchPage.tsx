@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Compass, SlidersHorizontal, Info } from 'lucide-react';
+import { Search, Compass, SlidersHorizontal, Info, X } from 'lucide-react';
 import { searchCatalog } from './catalogService';
 import { isTmdbConfigured } from './tmdbClient';
 import type { NormalizedCatalogItem } from '../../lib/validators';
@@ -12,6 +12,7 @@ interface SearchPageProps {
 }
 
 export const SearchPage: React.FC<SearchPageProps> = ({ onSelectTitle }) => {
+  const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<MediaType | 'all'>('all');
   const [results, setResults] = useState<NormalizedCatalogItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -21,18 +22,18 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onSelectTitle }) => {
     setLoading(true);
 
     const timer = setTimeout(async () => {
-      const items = await searchCatalog('', activeCategory);
+      const items = await searchCatalog(query, activeCategory);
       if (mounted) {
         setResults(items);
         setLoading(false);
       }
-    }, 50);
+    }, 150);
 
     return () => {
       mounted = false;
       clearTimeout(timer);
     };
-  }, [activeCategory]);
+  }, [query, activeCategory]);
 
   const categories: { id: MediaType | 'all'; label: string }[] = [
     { id: 'all', label: 'All Categories' },
@@ -55,6 +56,28 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onSelectTitle }) => {
           <p className="text-xs md:text-sm text-text-secondary mt-1">
             Browse across movies, television series, anime, manga, and manhwa.
           </p>
+        </div>
+
+        {/* Live Search Bar */}
+        <div className="relative w-full md:w-80">
+          <Search className="w-4 h-4 text-accent absolute left-3.5 top-3" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search titles, anime, manga, manhwa..."
+            data-testid="discover-search-input"
+            className="w-full pl-10 pr-9 py-2 bg-surface border border-surface-elevated rounded-xl text-text-primary text-sm focus:border-accent focus:outline-none shadow-sm placeholder:text-text-muted"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery('')}
+              aria-label="Clear search query"
+              className="absolute right-3 top-2.5 p-0.5 text-text-muted hover:text-text-primary"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -122,8 +145,9 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onSelectTitle }) => {
           <Compass className="w-12 h-12 text-text-muted/40 mx-auto mb-3" />
           <h3 className="text-base font-bold text-text-primary">No titles found</h3>
           <p className="text-xs text-text-secondary mt-1">
-            No results in{' '}
-            {activeCategory === 'all' ? 'any category' : activeCategory}. Try selecting a different category filter.
+            {query
+              ? `No results matching "${query}" in ${activeCategory === 'all' ? 'any category' : activeCategory}. Try refining your search.`
+              : `No results in ${activeCategory === 'all' ? 'any category' : activeCategory}. Try selecting a different category filter.`}
           </p>
         </div>
       )}

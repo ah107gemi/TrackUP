@@ -144,43 +144,102 @@ export function normalizeTmdbTv(payload: TmdbTvPayload): NormalizedCatalogItem {
 }
 
 export function normalizeAniListMedia(
-  payload: AniListMediaPayload,
+  payload: AniListMediaPayload | any,
   preferredType?: MediaType
 ): NormalizedCatalogItem {
+  if (!payload || typeof payload !== 'object') {
+    return {
+      id: `anilist_fallback_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      media_type: preferredType || 'manga',
+      title: 'Untitled',
+      original_title: null,
+      release_year: null,
+      release_date: null,
+      synopsis: null,
+      poster_url: '/assets/trackup-logo.jpg',
+      backdrop_url: null,
+      genres: [],
+      origin_country: preferredType === 'manhwa' ? 'KR' : 'JP',
+      status: 'released',
+      anilist_id: null,
+      mal_id: null,
+      tmdb_id: null,
+      imdb_id: null,
+    };
+  }
+
   let mediaType: MediaType;
 
-  if (preferredType === 'manhwa' && payload.type === 'MANGA') {
+  // If caller specifically requested manhwa, manga, anime_series, anime_film
+  if (preferredType === 'manhwa') {
     mediaType = 'manhwa';
+  } else if (preferredType === 'manga') {
+    mediaType = 'manga';
+  } else if (preferredType === 'anime_series') {
+    mediaType = 'anime_series';
+  } else if (preferredType === 'anime_film') {
+    mediaType = 'anime_film';
   } else if (payload.type === 'MANGA') {
     // STRICT BLUEPRINT RULE:
     // countryOfOrigin: "KR" maps to manhwa, "JP" maps to manga.
     // Also detect Korean Hangul in titles as manhwa if countryOfOrigin is missing
-    const hasKoreanTitle = /[\uac00-\ud7af\u1100-\u11ff]/.test(
-      (payload.title.native || '') + (payload.title.romaji || '')
-    );
+    const rawTitle = payload.title || {};
+    const titleStrings = [
+      rawTitle.native,
+      rawTitle.romaji,
+      rawTitle.english,
+      ...(Array.isArray(payload.synonyms) ? payload.synonyms : []),
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    const hasKoreanTitle = /[\uac00-\ud7af\u1100-\u11ff]/.test(titleStrings);
     if (payload.countryOfOrigin === 'KR' || hasKoreanTitle) {
       mediaType = 'manhwa';
     } else {
       mediaType = 'manga';
     }
-  } else {
-    // ANIME
+  } else if (payload.type === 'ANIME') {
     if (payload.format === 'MOVIE') {
       mediaType = 'anime_film';
     } else {
       mediaType = 'anime_series';
     }
+  } else {
+    // Fallback if payload.type is indeterminate: default to preferredType or manhwa/manga
+    if (preferredType) {
+      mediaType = preferredType;
+    } else if (payload.countryOfOrigin === 'KR') {
+      mediaType = 'manhwa';
+    } else {
+      mediaType = 'manga';
+    }
   }
 
-  const title = payload.title.english || payload.title.romaji || payload.title.native || 'Untitled';
-  const originalTitle = payload.title.native || payload.title.romaji || null;
+  const rawTitle = payload.title || {};
+  const title =
+    (typeof rawTitle.english === 'string' && rawTitle.english.trim()) ||
+    (typeof rawTitle.romaji === 'string' && rawTitle.romaji.trim()) ||
+    (typeof rawTitle.native === 'string' && rawTitle.native.trim()) ||
+    (Array.isArray(payload.synonyms) && payload.synonyms[0]) ||
+    'Untitled';
 
-  const poster = sanitizeUrl(payload.coverImage?.large || payload.coverImage?.medium || payload.coverImage?.extraLarge);
+  const originalTitle =
+    (typeof rawTitle.native === 'string' && rawTitle.native.trim()) ||
+    (typeof rawTitle.romaji === 'string' && rawTitle.romaji.trim()) ||
+    null;
+
+  const rawCover =
+    payload.coverImage?.extraLarge ||
+    payload.coverImage?.large ||
+    payload.coverImage?.medium ||
+    null;
+  const poster = sanitizeUrl(rawCover) || '/assets/trackup-logo.jpg';
   const backdrop = sanitizeUrl(payload.bannerImage);
 
   // Clean HTML tags from AniList synopsis if present
   const cleanDescription = payload.description
-    ? payload.description.replace(/<[^>]*>/g, '').trim()
+    ? String(payload.description).replace(/<[^>]*>/g, '').trim()
     : null;
 
   const releaseDateStr = payload.startDate?.year
@@ -189,17 +248,19 @@ export function normalizeAniListMedia(
 
   let normalizedStatus = 'released';
   if (payload.status) {
-    const s = payload.status.toUpperCase();
+    const s = String(payload.status).toUpperCase();
     if (s === 'FINISHED') normalizedStatus = 'completed';
     else if (s === 'RELEASING') normalizedStatus = 'releasing';
     else if (s === 'NOT_YET_RELEASED') normalizedStatus = 'planned';
     else if (s === 'CANCELLED') normalizedStatus = 'dropped';
     else if (s === 'HIATUS') normalizedStatus = 'paused';
-    else normalizedStatus = payload.status.toLowerCase();
+    else normalizedStatus = String(payload.status).toLowerCase();
   }
 
+  const numericId = Number(payload.id) || Date.now();
+
   return {
-    id: `anilist_${payload.id}`,
+    id: `anilist_${numericId}`,
     media_type: mediaType,
     title,
     original_title: originalTitle,
@@ -208,13 +269,13 @@ export function normalizeAniListMedia(
     synopsis: cleanDescription,
     poster_url: poster,
     backdrop_url: backdrop,
-    genres: payload.genres || [],
+    genres: Array.isArray(payload.genres) ? payload.genres : [],
     origin_country: payload.countryOfOrigin || (mediaType === 'manhwa' ? 'KR' : 'JP'),
     status: normalizedStatus,
-    total_episodes: payload.episodes || null,
-    total_chapters: payload.chapters || null,
-    total_volumes: payload.volumes || null,
-    anilist_id: payload.id,
+    total_episodes: typeof payload.episodes === 'number' ? payload.episodes : null,
+    total_chapters: typeof payload.chapters === 'number' ? payload.chapters : null,
+    total_volumes: typeof payload.volumes === 'number' ? payload.volumes : null,
+    anilist_id: numericId,
     mal_id: payload.idMal || null,
     tmdb_id: null,
     imdb_id: null,

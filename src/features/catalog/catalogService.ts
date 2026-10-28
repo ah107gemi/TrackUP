@@ -581,8 +581,20 @@ export async function searchCatalog(
     try {
       const settled = await Promise.allSettled(promises);
       for (const res of settled) {
-        if (res.status === 'fulfilled') {
+        if (res.status === 'fulfilled' && Array.isArray(res.value)) {
           for (const item of res.value) {
+            if (!item || !item.id) continue;
+
+            // Strict category alignment: if a category was explicitly filtered (e.g. manhwa or manga),
+            // ensure the item retains or matches the filtered category so it is never dropped by callers
+            if (mediaType !== 'all') {
+              if (mediaType === 'manhwa' && item.media_type !== 'manhwa') {
+                item.media_type = 'manhwa';
+              } else if (mediaType === 'manga' && item.media_type !== 'manga') {
+                item.media_type = 'manga';
+              }
+            }
+
             // Deduplicate if already present from local fixtures
             if (!seenIds.has(item.id)) {
               seenIds.add(item.id);

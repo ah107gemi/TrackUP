@@ -161,5 +161,35 @@ describe('Security & Normalization Layer (Phase 2)', () => {
       expect(result.synopsis).not.toContain('<b>');
       expect(result.synopsis).not.toContain('<br>');
     });
+
+    it('forcefully normalizes incomplete AniList payloads and honors preferredType context', () => {
+      // Missing title and country with preferredType manhwa
+      const partialManhwa = {
+        id: 99999,
+        type: 'MANGA' as const,
+        title: {},
+      };
+      const resultManhwa = normalizeAniListMedia(partialManhwa as any, 'manhwa');
+      expect(resultManhwa).toBeDefined();
+      expect(resultManhwa.id).toBe('anilist_99999');
+      expect(resultManhwa.media_type).toBe('manhwa');
+      expect(resultManhwa.title).toBe('Untitled');
+      expect(resultManhwa.poster_url).toBe('/assets/trackup-logo.jpg');
+
+      // Indeterminate media with preferredType manga
+      const partialManga = {
+        id: 88888,
+        title: { romaji: 'Some Unknown Comic' },
+      };
+      const resultManga = normalizeAniListMedia(partialManga as any, 'manga');
+      expect(resultManga.media_type).toBe('manga');
+      expect(resultManga.title).toBe('Some Unknown Comic');
+
+      // Null or corrupted payload fallback
+      const corruptedResult = normalizeAniListMedia(null as any, 'manhwa');
+      expect(corruptedResult).toBeDefined();
+      expect(corruptedResult.media_type).toBe('manhwa');
+      expect(corruptedResult.title).toBe('Untitled');
+    });
   });
 });

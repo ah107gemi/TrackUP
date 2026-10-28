@@ -20,8 +20,11 @@ const categoryLabels: Record<MediaType, { label: string; color: string }> = {
 export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
 
-  const meta = categoryLabels[item.media_type] || {
-    label: item.media_type.toUpperCase(),
+  if (!item) return null;
+
+  const mediaType = item.media_type || 'manga';
+  const meta = categoryLabels[mediaType] || {
+    label: (mediaType || '').toUpperCase(),
     color: 'bg-surface-elevated text-text-secondary border-surface-elevated',
   };
 
@@ -102,24 +105,24 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
         </div>
 
         <div className="mt-1 flex items-center justify-between text-xs text-text-secondary">
-          {item.genres.length > 0 && (
+          {Array.isArray(item.genres) && item.genres.length > 0 && (
             <span className="text-[11px] text-text-muted truncate max-w-[120px]">
               {item.genres[0]}
             </span>
           )}
 
           {/* Type-specific progress unit */}
-          {(item.media_type === 'movie' || item.media_type === 'anime_film') && (
+          {(mediaType === 'movie' || mediaType === 'anime_film') && (
             <span className="font-mono text-[11px] text-text-muted">
               {formatRuntime(item.runtime_minutes) || 'Feature'}
             </span>
           )}
-          {(item.media_type === 'tv' || item.media_type === 'anime_series') && item.total_episodes && (
+          {(mediaType === 'tv' || mediaType === 'anime_series') && item.total_episodes && (
             <span className="font-mono text-[11px] text-accent">
               {item.total_episodes} eps
             </span>
           )}
-          {(item.media_type === 'manga' || item.media_type === 'manhwa') && item.total_chapters && (
+          {(mediaType === 'manga' || mediaType === 'manhwa') && item.total_chapters && (
             <span className="font-mono text-[11px] text-accent">
               {item.total_chapters} chs
             </span>

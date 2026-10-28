@@ -290,64 +290,80 @@ export async function searchAniList(
       })),
     });
 
-    // Franchise Grouping: filter out redundant sequels/subsequent seasons from primary search grid
-    const searchIds = new Set(mediaList.map((m) => m.id));
-    const sequelIds = new Set<number>();
+    // Franchise Grouping: filter out redundant sequels/subsequent seasons from primary search grid for ANIME only.
+    // For Manga & Manhwa (isReading), do NOT drop any items!
+    let filtered = mediaList;
+    if (!isReading) {
+      const searchIds = new Set(mediaList.map((m) => m.id));
+      const sequelIds = new Set<number>();
 
-    for (const m of mediaList) {
-      for (const edge of (m as any).relations?.edges || []) {
-        if (!edge.node?.id || !searchIds.has(edge.node.id)) continue;
+      for (const m of mediaList) {
+        for (const edge of (m as any).relations?.edges || []) {
+          if (!edge.node?.id || !searchIds.has(edge.node.id)) continue;
 
-        if (edge.relationType === 'SEQUEL') {
-          const target = mediaList.find((x) => x.id === edge.node.id);
-          if (target) {
-            const targetTitle = (target.title.english || target.title.romaji || '').toLowerCase();
-            const isExplicitSequel = /season|part\s*\d|final|2nd|3rd|4th|cour/i.test(targetTitle);
-            if (isExplicitSequel || (m.format === 'TV' && target.format === 'TV')) {
-              sequelIds.add(target.id);
+          if (edge.relationType === 'SEQUEL') {
+            const target = mediaList.find((x) => x.id === edge.node.id);
+            if (target) {
+              const targetTitle = (target.title?.english || target.title?.romaji || '').toLowerCase();
+              const isExplicitSequel = /season|part\s*\d|final|2nd|3rd|4th|cour/i.test(targetTitle);
+              if (isExplicitSequel || (m.format === 'TV' && target.format === 'TV')) {
+                sequelIds.add(target.id);
+              }
             }
           }
         }
       }
+      filtered = mediaList.filter((m) => !sequelIds.has(m.id));
     }
-
-    const filtered = mediaList.filter((m) => !sequelIds.has(m.id));
 
     // Sort by exact title match boost across romaji, english, native, and synonyms
     const cleanQ = query.trim().toLowerCase();
-    filtered.sort((a, b) => {
-      const aTitles = [
-        a.title.english,
-        a.title.romaji,
-        a.title.native,
-        ...(a.synonyms || []),
-      ]
-        .filter(Boolean)
-        .map((t) => t!.toLowerCase());
+    if (cleanQ) {
+      filtered.sort((a, b) => {
+        const aTitles = [
+          a.title?.english,
+          a.title?.romaji,
+          a.title?.native,
+          ...(Array.isArray(a.synonyms) ? a.synonyms : []),
+        ]
+          .filter((t): t is string => typeof t === 'string' && Boolean(t))
+          .map((t) => t.toLowerCase());
 
-      const bTitles = [
-        b.title.english,
-        b.title.romaji,
-        b.title.native,
-        ...(b.synonyms || []),
-      ]
-        .filter(Boolean)
-        .map((t) => t!.toLowerCase());
+        const bTitles = [
+          b.title?.english,
+          b.title?.romaji,
+          b.title?.native,
+          ...(Array.isArray(b.synonyms) ? b.synonyms : []),
+        ]
+          .filter((t): t is string => typeof t === 'string' && Boolean(t))
+          .map((t) => t.toLowerCase());
 
-      const aExact = aTitles.some((t) => t === cleanQ) ? 1 : 0;
-      const bExact = bTitles.some((t) => t === cleanQ) ? 1 : 0;
-      if (aExact !== bExact) return bExact - aExact;
+        const aExact = aTitles.some((t) => t === cleanQ) ? 1 : 0;
+        const bExact = bTitles.some((t) => t === cleanQ) ? 1 : 0;
+        if (aExact !== bExact) return bExact - aExact;
 
-      const aStarts = aTitles.some((t) => t.startsWith(cleanQ)) ? 1 : 0;
-      const bStarts = bTitles.some((t) => t.startsWith(cleanQ)) ? 1 : 0;
-      if (aStarts !== bStarts) return bStarts - aStarts;
+        const aStarts = aTitles.some((t) => t.startsWith(cleanQ)) ? 1 : 0;
+        const bStarts = bTitles.some((t) => t.startsWith(cleanQ)) ? 1 : 0;
+        if (aStarts !== bStarts) return bStarts - aStarts;
 
-      return 0;
-    });
+        return 0;
+      });
+    }
 
-    return filtered.map((item) =>
-      normalizeAniListMedia(item, mediaType === 'manhwa' ? 'manhwa' : undefined)
-    );
+    const preferredMediaType: MediaType | undefined =
+      mediaType === 'manhwa'
+        ? 'manhwa'
+        : mediaType === 'manga'
+        ? 'manga'
+        : mediaType === 'anime_series'
+        ? 'anime_series'
+        : mediaType === 'anime_film'
+        ? 'anime_film'
+        : undefined;
+
+    return filtered
+      .map((item) => normalizeAniListMedia(item, preferredMediaType))
+      .filter((item): item is NormalizedCatalogItem => item !== null && item !== undefined);
   } catch (err) {
     console.warn('Failed to query AniList API:', err);
     return [];
