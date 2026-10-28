@@ -104,25 +104,26 @@ export function formatRuntime(minutes: number | null | undefined): string | null
 }
 
 /**
- * Formats aggregated watch time into days, hours, and minutes for TV Time-style statistics.
- * e.g. 2940 minutes -> "2d 1h"
- * e.g. 150 minutes -> "2h 30m"
- * e.g. 45 minutes -> "45m"
+ * Formats aggregated watch time into Months and Days for TV Time-style statistics.
+ * Uses a standard 30-day month (months = Math.floor(totalDays / 30)).
+ * Example: "2 Months, 5 Days" (omits months if 0).
  */
 export function formatWatchTime(minutes: number | null | undefined): string {
-  if (!minutes || isNaN(minutes) || minutes <= 0) return '0m';
+  if (!minutes || isNaN(minutes) || minutes <= 0) return '0 Days';
   const totalMins = Math.round(minutes);
-  const days = Math.floor(totalMins / 1440);
-  const remainingHours = Math.floor((totalMins % 1440) / 60);
-  const remainingMins = totalMins % 60;
+  const totalDays = Math.floor(totalMins / 1440);
+  const months = Math.floor(totalDays / 30);
+  const days = totalDays % 30;
 
-  if (days > 0) {
-    if (remainingHours > 0) return `${days}d ${remainingHours}h`;
-    return `${days}d`;
+  if (months > 0) {
+    const monthPart = `${months} ${months === 1 ? 'Month' : 'Months'}`;
+    if (days > 0) {
+      return `${monthPart}, ${days} ${days === 1 ? 'Day' : 'Days'}`;
+    }
+    return monthPart;
   }
-  if (remainingHours > 0) {
-    if (remainingMins > 0) return `${remainingHours}h ${remainingMins}m`;
-    return `${remainingHours}h`;
-  }
-  return `${remainingMins}m`;
+
+  // Omit months if 0
+  const displayDays = totalDays === 0 && totalMins > 0 ? 1 : days;
+  return `${displayDays} ${displayDays === 1 ? 'Day' : 'Days'}`;
 }

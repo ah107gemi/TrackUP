@@ -3,6 +3,7 @@ import { sanitizeUrl } from '../../src/lib/validators';
 import {
   normalizeTmdbMovie,
   normalizeTmdbTv,
+  normalizeTMDBMedia,
   normalizeAniListMedia,
   type TmdbMoviePayload,
   type TmdbTvPayload,
@@ -97,6 +98,12 @@ describe('Security & Normalization Layer (Phase 2)', () => {
       expect(result.media_type).toBe('tv');
       expect(result.total_seasons).toBe(5);
       expect(result.total_episodes).toBe(62);
+      expect(result.episodes).toBe(62);
+
+      const genericResult = normalizeTMDBMedia(payload);
+      expect(genericResult.media_type).toBe('tv');
+      expect(genericResult.total_episodes).toBe(62);
+      expect(genericResult.episodes).toBe(62);
     });
   });
 
@@ -120,6 +127,7 @@ describe('Security & Normalization Layer (Phase 2)', () => {
       expect(result.media_type).toBe('manhwa');
       expect(result.title).toBe('Solo Leveling');
       expect(result.total_chapters).toBe(179);
+      expect(result.chapters).toBe(179);
       expect(result.origin_country).toBe('KR');
     });
 
@@ -160,6 +168,23 @@ describe('Security & Normalization Layer (Phase 2)', () => {
       expect(result.synopsis).toBe('Chihiro enters a mysterious world.She must escape.');
       expect(result.synopsis).not.toContain('<b>');
       expect(result.synopsis).not.toContain('<br>');
+    });
+
+    it('maps AniList anime series and maps episode counts correctly', () => {
+      const payload: AniListMediaPayload = {
+        id: 154587,
+        type: 'ANIME',
+        format: 'TV',
+        title: {
+          english: "Frieren: Beyond Journey's End",
+        },
+        episodes: 28,
+      };
+
+      const result = normalizeAniListMedia(payload);
+      expect(result.media_type).toBe('anime_series');
+      expect(result.total_episodes).toBe(28);
+      expect(result.episodes).toBe(28);
     });
 
     it('forcefully normalizes incomplete AniList payloads and honors preferredType context', () => {

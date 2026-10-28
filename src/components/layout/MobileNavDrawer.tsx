@@ -68,7 +68,7 @@ export const MobileNavDrawer: React.FC<MobileNavDrawerProps> = ({ isOpen, onClos
     { id: 'dashboard', label: 'Home / Dashboard', icon: LayoutDashboard },
     { id: 'discover', label: 'Discover Catalog', icon: Compass },
     { id: 'watch', label: 'Watch Library', icon: Film },
-    { id: 'read', label: 'Reading / Manga & Manhwa', icon: BookOpen },
+    { id: 'read', label: 'Manga and Manhwa', icon: BookOpen },
     { id: 'calendar', label: 'Release Calendar', icon: CalendarDays },
     { id: 'recommendations', label: 'For You', icon: Sparkles },
     { id: 'profile', label: 'My Profile', icon: UserIcon },

@@ -104,6 +104,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     status: 'ended',
     total_seasons: 5,
     total_episodes: 62,
+    episodes: 62,
     tmdb_id: 1396,
     imdb_id: 'tt0903747',
     cast: [
@@ -207,6 +208,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     status: 'returning series',
     total_seasons: 5,
     total_episodes: 53,
+    episodes: 53,
     tmdb_id: 73586,
     imdb_id: 'tt4236770',
     cast: [
@@ -249,6 +251,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     status: 'completed',
     total_seasons: 1,
     total_episodes: 28,
+    episodes: 28,
     anilist_id: 154587,
     mal_id: 52991,
     seasons: [
@@ -286,6 +289,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     status: 'completed',
     total_seasons: 4,
     total_episodes: 89,
+    episodes: 89,
     tmdb_id: 1429,
     anilist_id: 16498,
     mal_id: 16498,
@@ -466,6 +470,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     status: 'releasing',
     total_seasons: 2,
     total_episodes: 24,
+    episodes: 24,
     anilist_id: 151807,
     related_title_ids: [
       { targetId: 'manhwa_solo_leveling_105398', type: 'adaptation' },
@@ -623,6 +628,20 @@ export async function searchCatalog(
                 item.media_type = 'manhwa';
               } else {
                 item.media_type = 'manga';
+              }
+            }
+
+            // Ensure episodic total episode counts are preserved and never default to 0
+            if (item.media_type === 'tv' || item.media_type === 'anime_series') {
+              const epCount =
+                (typeof item.total_episodes === 'number' && item.total_episodes > 0)
+                  ? item.total_episodes
+                  : (typeof (item as any).episodes === 'number' && (item as any).episodes > 0)
+                  ? (item as any).episodes
+                  : null;
+              if (epCount) {
+                item.total_episodes = epCount;
+                item.episodes = epCount;
               }
             }
 

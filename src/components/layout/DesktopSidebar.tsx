@@ -28,7 +28,7 @@ const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'discover', label: 'Discover', icon: Compass },
   { id: 'watch', label: 'Watch Library', icon: Film },
-  { id: 'read', label: 'Reading / Manga & Manhwa', icon: BookOpen },
+  { id: 'read', label: 'Manga and Manhwa', icon: BookOpen },
   { id: 'calendar', label: 'Airing Calendar', icon: CalendarDays },
   { id: 'recommendations', label: 'Recommended', icon: Sparkles },
   { id: 'history', label: 'History & Stats', icon: BarChart3 },

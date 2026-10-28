@@ -31,6 +31,8 @@ export interface TmdbTvPayload {
   number_of_episodes?: number;
   number_of_seasons?: number;
   status?: string;
+  episodes?: number;
+  total_episodes?: number;
 }
 
 export interface AniListMediaPayload {
@@ -51,8 +53,12 @@ export interface AniListMediaPayload {
   bannerImage?: string | null;
   genres?: string[];
   episodes?: number | null;
+  number_of_episodes?: number | null;
+  total_episodes?: number | null;
   chapters?: number | null;
+  total_chapters?: number | null;
   volumes?: number | null;
+  total_volumes?: number | null;
   status?: string;
 }
 
@@ -121,6 +127,15 @@ export function normalizeTmdbTv(payload: TmdbTvPayload): NormalizedCatalogItem {
 
   const genres = payload.genres?.map((g) => g.name) || [];
 
+  const episodesCount =
+    typeof payload.number_of_episodes === 'number' && payload.number_of_episodes > 0
+      ? payload.number_of_episodes
+      : typeof (payload as any).episodes === 'number' && (payload as any).episodes > 0
+      ? (payload as any).episodes
+      : typeof (payload as any).total_episodes === 'number' && (payload as any).total_episodes > 0
+      ? (payload as any).total_episodes
+      : null;
+
   return {
     id: `tmdb_tv_${payload.id}`,
     media_type: mediaType,
@@ -134,7 +149,8 @@ export function normalizeTmdbTv(payload: TmdbTvPayload): NormalizedCatalogItem {
     genres,
     origin_country: payload.origin_country?.[0] || (isJapanese ? 'JP' : 'US'),
     status: payload.status || 'released',
-    total_episodes: payload.number_of_episodes || null,
+    total_episodes: episodesCount,
+    episodes: episodesCount,
     total_seasons: payload.number_of_seasons || null,
     tmdb_id: payload.id,
     imdb_id: null,
@@ -259,6 +275,29 @@ export function normalizeAniListMedia(
 
   const numericId = Number(payload.id) || Date.now();
 
+  const episodesCount =
+    typeof payload.episodes === 'number' && payload.episodes > 0
+      ? payload.episodes
+      : typeof (payload as any).total_episodes === 'number' && (payload as any).total_episodes > 0
+      ? (payload as any).total_episodes
+      : typeof (payload as any).number_of_episodes === 'number' && (payload as any).number_of_episodes > 0
+      ? (payload as any).number_of_episodes
+      : null;
+
+  const chaptersCount =
+    typeof payload.chapters === 'number' && payload.chapters > 0
+      ? payload.chapters
+      : typeof (payload as any).total_chapters === 'number' && (payload as any).total_chapters > 0
+      ? (payload as any).total_chapters
+      : null;
+
+  const volumesCount =
+    typeof payload.volumes === 'number' && payload.volumes > 0
+      ? payload.volumes
+      : typeof (payload as any).total_volumes === 'number' && (payload as any).total_volumes > 0
+      ? (payload as any).total_volumes
+      : null;
+
   return {
     id: `anilist_${numericId}`,
     media_type: mediaType,
@@ -272,12 +311,34 @@ export function normalizeAniListMedia(
     genres: Array.isArray(payload.genres) ? payload.genres : [],
     origin_country: payload.countryOfOrigin || (mediaType === 'manhwa' ? 'KR' : 'JP'),
     status: normalizedStatus,
-    total_episodes: typeof payload.episodes === 'number' ? payload.episodes : null,
-    total_chapters: typeof payload.chapters === 'number' ? payload.chapters : null,
-    total_volumes: typeof payload.volumes === 'number' ? payload.volumes : null,
+    total_episodes: episodesCount,
+    episodes: episodesCount,
+    total_chapters: chaptersCount,
+    chapters: chaptersCount,
+    total_volumes: volumesCount,
+    volumes: volumesCount,
     anilist_id: numericId,
     mal_id: payload.idMal || null,
     tmdb_id: null,
     imdb_id: null,
   };
 }
+
+export type MediaItem = NormalizedCatalogItem;
+
+export function normalizeTMDBMedia(payload: TmdbMoviePayload | TmdbTvPayload | any): NormalizedCatalogItem {
+  if (!payload || typeof payload !== 'object') {
+    return normalizeTmdbMovie(payload);
+  }
+  if (
+    payload.media_type === 'tv' ||
+    payload.number_of_episodes !== undefined ||
+    payload.number_of_seasons !== undefined ||
+    payload.name !== undefined
+  ) {
+    return normalizeTmdbTv(payload as TmdbTvPayload);
+  }
+  return normalizeTmdbMovie(payload as TmdbMoviePayload);
+}
+
+export const normalizeTmdbMedia = normalizeTMDBMedia;

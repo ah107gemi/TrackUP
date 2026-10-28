@@ -65,21 +65,29 @@ describe('Date Utilities & Air Date Countdowns', () => {
   });
 
   describe('formatWatchTime', () => {
-    it('formats minutes into days and hours when over 24 hours', () => {
-      expect(formatWatchTime(2940)).toBe('2d 1h');
-      expect(formatWatchTime(1440)).toBe('1d');
+    it('formats minutes into months and days (standard 30-day month)', () => {
+      // 65 days = 93,600 minutes -> 2 Months, 5 Days
+      expect(formatWatchTime(93600)).toBe('2 Months, 5 Days');
+      // 30 days = 43,200 minutes -> 1 Month
+      expect(formatWatchTime(43200)).toBe('1 Month');
+      // 31 days = 44,640 minutes -> 1 Month, 1 Day
+      expect(formatWatchTime(44640)).toBe('1 Month, 1 Day');
     });
 
-    it('formats minutes into hours and minutes when under 24 hours', () => {
-      expect(formatWatchTime(150)).toBe('2h 30m');
-      expect(formatWatchTime(120)).toBe('2h');
-      expect(formatWatchTime(45)).toBe('45m');
+    it('omits months if 0 and formats days correctly', () => {
+      // 5 days = 7,200 minutes -> 5 Days
+      expect(formatWatchTime(7200)).toBe('5 Days');
+      // 1 day = 1,440 minutes -> 1 Day
+      expect(formatWatchTime(1440)).toBe('1 Day');
+      // Under 24 hours but > 0 minutes -> 1 Day
+      expect(formatWatchTime(120)).toBe('1 Day');
+      expect(formatWatchTime(45)).toBe('1 Day');
     });
 
     it('handles zero and invalid inputs gracefully', () => {
-      expect(formatWatchTime(0)).toBe('0m');
-      expect(formatWatchTime(null)).toBe('0m');
-      expect(formatWatchTime(undefined)).toBe('0m');
+      expect(formatWatchTime(0)).toBe('0 Days');
+      expect(formatWatchTime(null)).toBe('0 Days');
+      expect(formatWatchTime(undefined)).toBe('0 Days');
     });
   });
 });

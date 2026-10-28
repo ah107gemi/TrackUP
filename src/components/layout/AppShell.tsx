@@ -150,7 +150,7 @@ export const AppShell: React.FC = () => {
 
                                 <div className="mt-2 flex items-center justify-between">
                                   <span className="font-mono text-xs font-semibold text-text-secondary">
-                                    {isEpisodic && (item.status === 'completed' ? `${item.title.total_episodes || item.episodes_watched.length} eps` : `${item.episodes_watched.length} eps watched`)}
+                                    {isEpisodic && (item.status === 'completed' ? `${item.title.total_episodes || (item.title as any).episodes || item.episodes_watched.length || 1} eps` : `${item.episodes_watched.length} eps watched`)}
                                     {isReading && `Ch. ${item.last_chapter_read}`}
                                     {!isEpisodic && !isReading && (formatRuntime(item.title.runtime_minutes) || item.status)}
                                   </span>
