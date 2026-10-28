@@ -176,80 +176,89 @@ export async function searchProfiles(query: string, currentUserId: string): Prom
     return msg.toLowerCase().includes('timed out') || msg.toLowerCase().includes('fetch failed') || msg.toLowerCase().includes('network');
   };
 
+  const isPostgrestSchemaOrBadRequest = (err: any): boolean => {
+    if (!err) return false;
+    const code = String(err.code || err.statusCode || err.status || '');
+    const msg = String(err.message || err.details || err.hint || '').toLowerCase();
+    const status = Number(err.status || err.statusCode || 0);
+
+    return (
+      status === 400 ||
+      code === '400' ||
+      code.startsWith('PGRST') || // PGRST204 (column not found), PGRST200, etc.
+      code === '42703' || // PostgreSQL undefined_column
+      msg.includes('column') ||
+      msg.includes('schema') ||
+      msg.includes('bad request') ||
+      msg.includes('could not find') ||
+      msg.includes('full_name')
+    );
+  };
+
   let liveProfiles: any[] = [];
   const queryLogs: { tier: string; error?: any; count?: number }[] = [];
   let isNetworkDown = false;
 
-  // 1. Live Supabase multi-tier query with graceful null-safety & column fallbacks
+  // 1. Live Supabase query with strict 400 / PGRST schema error catch & username fallback
   if (cleanQ) {
-    // Tier 1: Try full multi-column search (username + display_name + full_name)
-    try {
-      let q1 = supabase.from('profiles').select('*');
-      if (currentUserId) q1 = q1.neq('id', currentUserId);
-      q1 = q1.or(`username.ilike.%${cleanQ}%,display_name.ilike.%${cleanQ}%`);
+    let triggeredSafeFallback = false;
 
-      const res1 = (await executeWithTimeout(q1.limit(50), timeoutMs)) as any;
-      if (!res1.error && res1.data && res1.data.length > 0) {
-        liveProfiles = res1.data;
-        queryLogs.push({ tier: 'Tier 1 (username + display_name)', count: res1.data.length });
+    // Initial query attempt: Search across username and display_name
+    try {
+      let qInitial = supabase.from('profiles').select('*');
+      if (currentUserId) qInitial = qInitial.neq('id', currentUserId);
+      qInitial = qInitial.or(`username.ilike.%${cleanQ}%,display_name.ilike.%${cleanQ}%`);
+
+      const resInitial = (await executeWithTimeout(qInitial.limit(50), timeoutMs)) as any;
+
+      if (!resInitial.error && resInitial.data && resInitial.data.length > 0) {
+        liveProfiles = resInitial.data;
+        queryLogs.push({ tier: 'Initial (username + display_name)', count: resInitial.data.length });
+      } else if (resInitial.error) {
+        queryLogs.push({ tier: 'Initial (username + display_name)', error: resInitial.error });
+        if (isPostgrestSchemaOrBadRequest(resInitial.error)) {
+          console.warn('[SocialSearch] Caught PostgREST 400/schema error on initial query. Triggering safe username-only fallback:', resInitial.error);
+          triggeredSafeFallback = true;
+        } else if (isNetworkOrTimeout(resInitial.error)) {
+          isNetworkDown = true;
+        } else {
+          triggeredSafeFallback = true;
+        }
       } else {
-        if (isNetworkOrTimeout(res1.error)) isNetworkDown = true;
-        queryLogs.push({
-          tier: 'Tier 1 (username + display_name)',
-          error: res1.error,
-          count: res1.data?.length || 0,
-        });
+        // 0 matches found via combined or() filter; also trigger safe username-only query to catch pure username matches
+        triggeredSafeFallback = true;
       }
     } catch (err: any) {
-      if (isNetworkOrTimeout(err)) isNetworkDown = true;
-      queryLogs.push({ tier: 'Tier 1 (username + display_name)', error: err?.message || err });
-    }
-
-    // Tier 2: If Tier 1 returned 0 results or errored with a column issue (not network down), try with full_name
-    if (liveProfiles.length === 0 && !isNetworkDown) {
-      try {
-        let q2 = supabase.from('profiles').select('*');
-        if (currentUserId) q2 = q2.neq('id', currentUserId);
-        q2 = q2.or(`username.ilike.%${cleanQ}%,full_name.ilike.%${cleanQ}%,display_name.ilike.%${cleanQ}%`);
-
-        const res2 = (await executeWithTimeout(q2.limit(50), timeoutMs)) as any;
-        if (!res2.error && res2.data && res2.data.length > 0) {
-          liveProfiles = res2.data;
-          queryLogs.push({ tier: 'Tier 2 (username + full_name + display_name)', count: res2.data.length });
-        } else {
-          if (isNetworkOrTimeout(res2.error)) isNetworkDown = true;
-          queryLogs.push({
-            tier: 'Tier 2 (username + full_name + display_name)',
-            error: res2.error,
-            count: res2.data?.length || 0,
-          });
-        }
-      } catch (err: any) {
-        if (isNetworkOrTimeout(err)) isNetworkDown = true;
-        queryLogs.push({ tier: 'Tier 2 (username + full_name + display_name)', error: err?.message || err });
+      queryLogs.push({ tier: 'Initial (username + display_name)', error: err?.message || err });
+      if (isPostgrestSchemaOrBadRequest(err)) {
+        console.warn('[SocialSearch] Exception in initial query matched PostgREST 400/schema error. Triggering safe username-only fallback:', err);
+        triggeredSafeFallback = true;
+      } else if (isNetworkOrTimeout(err)) {
+        isNetworkDown = true;
+      } else {
+        triggeredSafeFallback = true;
       }
     }
 
-    // Tier 3: Bulletproof fallback: query JUST username (guaranteed non-null column on all profiles schemas)
-    if (liveProfiles.length === 0 && !isNetworkDown) {
+    // Strict Safe Fallback: Catch PostgREST 400/schema errors and query ONLY the username column
+    if (liveProfiles.length === 0 && !isNetworkDown && triggeredSafeFallback) {
       try {
-        let q3 = supabase.from('profiles').select('*');
-        if (currentUserId) q3 = q3.neq('id', currentUserId);
-        q3 = q3.ilike('username', `%${cleanQ}%`);
+        let qSafe = supabase.from('profiles').select('*');
+        if (currentUserId) qSafe = qSafe.neq('id', currentUserId);
+        // ONLY searches the username column, completely ignoring full_name and display_name
+        qSafe = qSafe.ilike('username', `%${cleanQ}%`);
 
-        const res3 = (await executeWithTimeout(q3.limit(50), timeoutMs)) as any;
-        if (!res3.error && res3.data && res3.data.length > 0) {
-          liveProfiles = res3.data;
-          queryLogs.push({ tier: 'Tier 3 (username only)', count: res3.data.length });
-        } else {
-          queryLogs.push({
-            tier: 'Tier 3 (username only)',
-            error: res3.error,
-            count: res3.data?.length || 0,
-          });
+        const resSafe = (await executeWithTimeout(qSafe.limit(50), timeoutMs)) as any;
+        if (!resSafe.error && resSafe.data && resSafe.data.length > 0) {
+          liveProfiles = resSafe.data;
+          queryLogs.push({ tier: 'Safe Fallback (username only)', count: resSafe.data.length });
+        } else if (resSafe.error) {
+          queryLogs.push({ tier: 'Safe Fallback (username only)', error: resSafe.error });
+          console.error('[SocialSearch] Safe username fallback error:', resSafe.error);
         }
       } catch (err: any) {
-        queryLogs.push({ tier: 'Tier 3 (username only)', error: err?.message || err });
+        queryLogs.push({ tier: 'Safe Fallback (username only)', error: err?.message || err });
+        console.error('[SocialSearch] Safe username fallback exception:', err);
       }
     }
   } else {

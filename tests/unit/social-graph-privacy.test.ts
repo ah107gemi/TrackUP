@@ -96,6 +96,23 @@ describe('Phase 6: Social Graph & Self-Follow Prevention', () => {
     expect(searchPartialName.length).toBe(1);
     expect(searchPartialName[0].username).toBe('bob_builder');
   });
+
+  it('safely catches PostgREST 400 schema errors and falls back to username search', async () => {
+    // Registered user with username
+    const dynamicProfiles = {
+      user_test400: {
+        id: 'user_test400',
+        username: 'charlie_400',
+        display_name: null,
+        full_name: null,
+      },
+    };
+    localStorage.setItem('trackup_mock_profiles', JSON.stringify(dynamicProfiles));
+
+    const result = await searchProfiles('charlie_400', 'user_alice');
+    expect(result.length).toBe(1);
+    expect(result[0].username).toBe('charlie_400');
+  });
 });
 
 describe('Phase 6: Activity Feed Privacy & Rating Comparison', () => {
