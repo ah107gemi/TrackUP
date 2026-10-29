@@ -15,11 +15,15 @@ import {
   X,
   Lock,
   ChevronRight,
+  Upload,
+  Image as ImageIcon,
+  Check,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useUIStore } from '../../stores/uiStore';
 import { useUserLibrary } from '../library/useLibrary';
 import { uploadAvatarImage } from '../../lib/avatarUpload';
+import { uploadBannerImage } from '../../lib/bannerUpload';
 import {
   fetchUserFavorites,
   filterFavoritesByCategory,
@@ -31,6 +35,25 @@ import { formatWatchTime } from '../../lib/dateUtils';
 import { supabase } from '../../lib/supabase';
 import { clearUserLibrary } from '../library/libraryService';
 import { ChangePasswordModal } from '../auth/ChangePasswordModal';
+
+function extractBackdropUrl(item: {
+  title?: {
+    backdrop_url?: string | null;
+    backdrop_path?: string | null;
+    poster_url?: string | null;
+    poster_path?: string | null;
+  };
+}): string | null {
+  if (!item || !item.title) return null;
+  const raw =
+    item.title.backdrop_url ||
+    item.title.backdrop_path ||
+    item.title.poster_url ||
+    item.title.poster_path;
+  if (!raw) return null;
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+  return `https://image.tmdb.org/t/p/w1280${raw.startsWith('/') ? '' : '/'}${raw}`;
+}
 
 interface ProfilePageProps {
   onSelectTitle?: (titleId: string) => void;
@@ -50,6 +73,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   const [editUsername, setEditUsername] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
+
+  // Background Banner state
+  const [editBannerUrl, setEditBannerUrl] = useState<string | null>(null);
+  const [bannerTab, setBannerTab] = useState<'upload' | 'library'>('upload');
+  const [bannerUploading, setBannerUploading] = useState(false);
+  const [bannerUploadError, setBannerUploadError] = useState<string | null>(null);
+  const bannerFileInputRef = useRef<HTMLInputElement>(null);
 
   // Change Password state
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
@@ -164,8 +194,43 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   const handleOpenEditProfile = () => {
     setEditName(profile?.display_name || profile?.full_name || user.username || '');
     setEditUsername(profile?.username || user.username || '');
+    setEditBannerUrl(profile?.banner_url || null);
+    setBannerTab('upload');
+    setBannerUploadError(null);
     setEditError(null);
     setIsEditingProfile(true);
+  };
+
+  const handleBannerFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setBannerUploading(true);
+    setBannerUploadError(null);
+
+    const { url, error } = await uploadBannerImage(file, user.id);
+    if (error || !url) {
+      setBannerUploadError(error || 'Failed to upload banner');
+      setBannerUploading(false);
+      return;
+    }
+
+    setEditBannerUrl(url);
+    await updateProfile({ banner_url: url });
+    setBannerUploading(false);
+  };
+
+  const handleSelectBackdrop = async (item: any) => {
+    const url = extractBackdropUrl(item);
+    if (url) {
+      setEditBannerUrl(url);
+      await updateProfile({ banner_url: url });
+    }
+  };
+
+  const handleRemoveBanner = async () => {
+    setEditBannerUrl(null);
+    await updateProfile({ banner_url: null });
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -198,6 +263,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
         display_name: cleanName,
         full_name: cleanName,
         username: cleanUsername,
+        banner_url: editBannerUrl,
       });
 
       if (res.error) {
@@ -296,8 +362,32 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   return (
     <div data-testid="profile-page" className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-200">
       {/* Profile Hero Header */}
-      <div className="relative rounded-3xl overflow-hidden bg-surface border border-surface-elevated p-6 sm:p-8 shadow-xl">
-        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+      <div
+        data-testid="profile-hero-header"
+        className="relative rounded-3xl overflow-hidden bg-surface border border-surface-elevated shadow-xl min-h-[16rem] sm:min-h-[18rem] flex flex-col justify-end"
+      >
+        {/* Full-bleed Banner Image or Sleek Gradient */}
+        <div className="absolute inset-0 w-full h-full pointer-events-none overflow-hidden">
+          {profile?.banner_url ? (
+            <img
+              src={profile.banner_url}
+              alt="Profile banner"
+              data-testid="profile-banner-image"
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div
+              data-testid="profile-banner-fallback"
+              className="w-full h-full bg-gradient-to-br from-surface via-surface-elevated/80 to-surface"
+            />
+          )}
+          {/* Dark gradient overlay for sharp text and stats contrast */}
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/85 to-transparent backdrop-blur-[0.5px]" />
+        </div>
+
+        {/* Hero Foreground Content */}
+        <div className="relative z-10 p-6 sm:p-8">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
           {/* Avatar with Custom Upload Trigger */}
           <div className="relative group shrink-0">
             <div
@@ -415,6 +505,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
             </div>
           </div>
         </div>
+      </div>
       </div>
 
       {/* TV Time-Style Tracking Sections Groundwork */}
@@ -771,7 +862,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
           onClick={() => setIsEditingProfile(false)}
         >
           <div
-            className="w-full max-w-md bg-surface border border-surface-elevated rounded-2xl shadow-2xl p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150"
+            className="w-full max-w-lg max-h-[92vh] overflow-y-auto bg-surface border border-surface-elevated rounded-2xl shadow-2xl p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 border-b border-surface-elevated">
@@ -781,14 +872,14 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-text-primary">Edit Profile</h2>
-                  <p className="text-xs text-text-muted">Update your public display name and handle</p>
+                  <p className="text-xs text-text-muted">Update your display name, username, and banner</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsEditingProfile(false)}
                 data-testid="edit-profile-close-btn"
-                className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors"
+                className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -836,6 +927,174 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                 <p className="text-[11px] text-text-muted mt-1">
                   Used by friends to search and follow your profile.
                 </p>
+              </div>
+
+              {/* Background Banner Section */}
+              <div data-testid="edit-banner-section" className="pt-2 border-t border-surface-elevated space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-text-secondary">
+                    Background Banner
+                  </label>
+                  {editBannerUrl && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveBanner}
+                      data-testid="remove-banner-btn"
+                      className="text-[11px] font-medium text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+                    >
+                      Reset to Default
+                    </button>
+                  )}
+                </div>
+
+                {/* Banner Preview */}
+                <div
+                  data-testid="edit-banner-preview"
+                  className="relative w-full h-24 rounded-xl overflow-hidden border border-surface-elevated bg-surface-elevated flex items-center justify-center"
+                >
+                  {editBannerUrl ? (
+                    <>
+                      <img
+                        src={editBannerUrl}
+                        alt="Banner Preview"
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-background/70 to-transparent" />
+                      <span className="absolute bottom-2 left-3 text-[10px] font-semibold text-text-primary px-2 py-0.5 rounded bg-background/70 backdrop-blur-sm">
+                        Active Banner
+                      </span>
+                    </>
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-surface via-surface-elevated to-surface text-text-muted text-xs">
+                      <ImageIcon className="w-5 h-5 mb-1 text-text-muted/60" />
+                      <span className="text-[11px]">Default Gradient Banner</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Dual Option Switcher Tabs */}
+                <div className="flex items-center p-1 rounded-xl bg-surface-elevated border border-surface-elevated text-xs font-medium">
+                  <button
+                    type="button"
+                    onClick={() => setBannerTab('upload')}
+                    data-testid="banner-tab-upload"
+                    className={`flex-1 py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      bannerTab === 'upload'
+                        ? 'bg-accent text-background font-bold shadow-sm'
+                        : 'text-text-muted hover:text-text-primary'
+                    }`}
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Upload Image</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBannerTab('library')}
+                    data-testid="banner-tab-library"
+                    className={`flex-1 py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      bannerTab === 'library'
+                        ? 'bg-accent text-background font-bold shadow-sm'
+                        : 'text-text-muted hover:text-text-primary'
+                    }`}
+                  >
+                    <Film className="w-3.5 h-3.5" />
+                    <span>Choose from Library</span>
+                  </button>
+                </div>
+
+                {/* Option A: Upload Image */}
+                {bannerTab === 'upload' && (
+                  <div className="space-y-2">
+                    <input
+                      ref={bannerFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      data-testid="banner-file-input"
+                      className="hidden"
+                      onChange={handleBannerFileChange}
+                    />
+
+                    <div
+                      onClick={() => bannerFileInputRef.current?.click()}
+                      data-testid="banner-upload-trigger"
+                      className="p-4 border border-dashed border-surface-elevated hover:border-accent rounded-xl bg-surface-elevated/40 hover:bg-surface-elevated/70 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors"
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent flex items-center justify-center">
+                        <Upload className="w-4 h-4" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs font-semibold text-text-primary">
+                          {bannerUploading ? 'Uploading Banner...' : 'Click to Upload Image'}
+                        </p>
+                        <p className="text-[11px] text-text-muted mt-0.5">
+                          PNG, JPG, WebP, or GIF up to 10MB
+                        </p>
+                      </div>
+                    </div>
+
+                    {bannerUploadError && (
+                      <p data-testid="banner-upload-error" className="text-xs text-rose-400 font-medium">
+                        {bannerUploadError}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Option B: Choose from Library */}
+                {bannerTab === 'library' && (
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-text-muted">
+                      Select a backdrop from your tracked shows, movies, or anime:
+                    </p>
+
+                    {library.length === 0 ? (
+                      <div className="p-4 rounded-xl bg-surface-elevated/40 text-center text-xs text-text-muted">
+                        No titles in your library yet. Add titles to pick their backdrops!
+                      </div>
+                    ) : (
+                      <div
+                        data-testid="library-backdrops-container"
+                        className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1"
+                      >
+                        {library.map((item) => {
+                          const backdrop = extractBackdropUrl(item);
+                          if (!backdrop) return null;
+                          const isSelected = editBannerUrl === backdrop;
+
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => handleSelectBackdrop(item)}
+                              data-testid={`library-backdrop-option-${item.title_id}`}
+                              className={`relative rounded-xl overflow-hidden group border text-left cursor-pointer transition-all aspect-[16/9] ${
+                                isSelected
+                                  ? 'border-accent ring-2 ring-accent'
+                                  : 'border-surface-elevated hover:border-accent/60'
+                              }`}
+                            >
+                              <img
+                                src={backdrop}
+                                alt={item.title.title}
+                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                loading="lazy"
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/40 to-transparent" />
+                              <span className="absolute bottom-1.5 left-1.5 right-1.5 text-[10px] font-medium text-text-primary truncate block">
+                                {item.title.title}
+                              </span>
+                              {isSelected && (
+                                <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-accent text-background flex items-center justify-center">
+                                  <Check className="w-2.5 h-2.5 stroke-[3]" />
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="pt-3 border-t border-surface-elevated flex items-center justify-end gap-2.5">

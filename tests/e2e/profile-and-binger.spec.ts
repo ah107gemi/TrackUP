@@ -76,15 +76,24 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     await page.locator('[data-testid="favorites-back-btn"]').click();
     await expect(page.locator('[data-testid="profile-page"]')).toBeVisible();
 
-    // Test Edit Profile Modal: update display name and username
+    // Test Edit Profile Modal: update display name, username, and banner options
     await page.locator('[data-testid="edit-profile-btn"]').click();
     await expect(page.locator('[data-testid="edit-profile-modal"]')).toBeVisible();
+    await expect(page.locator('[data-testid="edit-banner-section"]')).toBeVisible();
+    await expect(page.locator('[data-testid="banner-tab-upload"]')).toBeVisible();
+    await expect(page.locator('[data-testid="banner-tab-library"]')).toBeVisible();
+
+    // Verify switching to Choose from Library tab in Edit Profile Modal
+    await page.locator('[data-testid="banner-tab-library"]').click();
+    await page.locator('[data-testid="banner-tab-upload"]').click();
+
     await page.locator('[data-testid="edit-profile-name-input"]').fill('Binger Master');
     await page.locator('[data-testid="edit-profile-username-input"]').fill(`new_binger_${timestamp}`);
     await page.locator('[data-testid="edit-profile-submit-btn"]').click();
     await expect(page.locator('[data-testid="edit-profile-modal"]')).toBeHidden();
 
-    // Verify updated name and username on Profile page
+    // Verify updated name, username, and hero banner header on Profile page
+    await expect(page.locator('[data-testid="profile-hero-header"]')).toBeVisible();
     await expect(page.locator('[data-testid="profile-page"]')).toContainText('Binger Master');
     await expect(page.locator('[data-testid="profile-page"]')).toContainText(`@new_binger_${timestamp}`);
 

@@ -58,6 +58,7 @@ export interface Database {
           display_name: string | null;
           full_name?: string | null;
           avatar_url: string | null;
+          banner_url?: string | null;
           bio: string | null;
           library_visibility: PrivacyLevel;
           activity_visibility: PrivacyLevel;
@@ -71,6 +72,7 @@ export interface Database {
           display_name?: string | null;
           full_name?: string | null;
           avatar_url?: string | null;
+          banner_url?: string | null;
           bio?: string | null;
           library_visibility?: PrivacyLevel;
           activity_visibility?: PrivacyLevel;
@@ -84,6 +86,7 @@ export interface Database {
           display_name?: string | null;
           full_name?: string | null;
           avatar_url?: string | null;
+          banner_url?: string | null;
           bio?: string | null;
           library_visibility?: PrivacyLevel;
           activity_visibility?: PrivacyLevel;

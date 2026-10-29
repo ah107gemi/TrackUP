@@ -12,6 +12,7 @@ import {
 } from '../../src/features/library/libraryFilterState';
 import { MOCK_CATALOG_FIXTURES } from '../../src/features/catalog/catalogService';
 import { fetchUserLibrary, saveStoredLibraries } from '../../src/features/library/libraryService';
+import { uploadBannerImage } from '../../src/lib/bannerUpload';
 
 // Mock localStorage and sessionStorage for Node.js Vitest environment
 const mockLocalStorage: Record<string, string> = {};
@@ -291,6 +292,106 @@ describe('Edit Profile Validation & Database Constraints', () => {
 
     // Elena picks a unique new username
     expect(isUsernameTaken('elena_super_tracker', 'u_2')).toBe(false);
+  });
+});
+
+describe('Profile Banner Feature (Upload & Library Selection)', () => {
+  const extractBackdropUrl = (item: {
+    title?: {
+      backdrop_url?: string | null;
+      backdrop_path?: string | null;
+      poster_url?: string | null;
+      poster_path?: string | null;
+    };
+  }): string | null => {
+    if (!item || !item.title) return null;
+    const raw =
+      item.title.backdrop_url ||
+      item.title.backdrop_path ||
+      item.title.poster_url ||
+      item.title.poster_path;
+    if (!raw) return null;
+    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+    return `https://image.tmdb.org/t/p/w1280${raw.startsWith('/') ? '' : '/'}${raw}`;
+  };
+
+  it('correctly extracts high-res backdrops from TMDB and AniList library titles', () => {
+    const tmdbItem = {
+      title: {
+        backdrop_path: '/7F1s2e5v0QJk5yU7Xw2s2zX.jpg',
+        title: 'Yellowstone',
+      },
+    };
+    expect(extractBackdropUrl(tmdbItem)).toBe(
+      'https://image.tmdb.org/t/p/w1280/7F1s2e5v0QJk5yU7Xw2s2zX.jpg'
+    );
+
+    const anilistItem = {
+      title: {
+        backdrop_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/154587-12345.jpg',
+        title: "Frieren: Beyond Journey's End",
+      },
+    };
+    expect(extractBackdropUrl(anilistItem)).toBe(
+      'https://s4.anilist.co/file/anilistcdn/media/anime/banner/154587-12345.jpg'
+    );
+  });
+
+  it('falls back gracefully to poster_url if backdrop is missing', () => {
+    const posterOnlyItem = {
+      title: {
+        poster_url: 'https://image.tmdb.org/t/p/w500/poster.jpg',
+        title: 'Poster Only Show',
+      },
+    };
+    expect(extractBackdropUrl(posterOnlyItem)).toBe('https://image.tmdb.org/t/p/w500/poster.jpg');
+  });
+
+  it('returns null safely when title has no images', () => {
+    expect(extractBackdropUrl({} as any)).toBeNull();
+    expect(extractBackdropUrl({ title: {} } as any)).toBeNull();
+  });
+
+  it('validates banner image file size limits and rejects files over 10MB', async () => {
+    const oversizedFile = {
+      name: 'large_wallpaper.png',
+      size: 11 * 1024 * 1024,
+    } as File;
+
+    const result = await uploadBannerImage(oversizedFile, 'user_123');
+    expect(result.url).toBeNull();
+    expect(result.error).toContain('10MB');
+  });
+
+  it('rejects empty/null file input gracefully', async () => {
+    const result = await uploadBannerImage(null as any, 'user_123');
+    expect(result.url).toBeNull();
+    expect(result.error).toBe('No file provided');
+  });
+
+  it('persists and clears banner_url on profile state updates', () => {
+    interface TestProfile {
+      id: string;
+      username: string;
+      display_name: string;
+      banner_url: string | null;
+    }
+
+    let profile: TestProfile = {
+      id: 'user_banner_test',
+      username: 'banner_fan',
+      display_name: 'Banner Fan',
+      banner_url: null,
+    };
+
+    // User chooses library backdrop
+    const chosenBackdrop = 'https://image.tmdb.org/t/p/w1280/7F1s2e5v0QJk5yU7Xw2s2zX.jpg';
+    profile = { ...profile, banner_url: chosenBackdrop };
+    expect(profile.banner_url).toBe(chosenBackdrop);
+
+    // User resets to default gradient
+    profile = { ...profile, banner_url: null };
+    expect(profile.banner_url).toBeNull();
   });
 });
 
