@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import {
   type LibraryFilterState,
+  DEFAULT_LIBRARY_FILTERS,
   getInitialLibraryFilters,
   persistLibraryFilters,
+  sanitizeFilterState,
 } from '../features/library/libraryFilterState';
 
 export type NavigationTab =
@@ -67,21 +69,31 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   watchLibraryFilters: getInitialLibraryFilters('watch'),
   setWatchLibraryFilters: (filters) => {
-    const updated: LibraryFilterState = {
-      ...get().watchLibraryFilters,
-      ...filters,
-    };
-    persistLibraryFilters(updated, 'watch');
-    set({ watchLibraryFilters: updated });
+    try {
+      const current = get().watchLibraryFilters || DEFAULT_LIBRARY_FILTERS;
+      const updated = sanitizeFilterState({
+        ...current,
+        ...filters,
+      });
+      persistLibraryFilters(updated, 'watch');
+      set({ watchLibraryFilters: updated });
+    } catch {
+      set({ watchLibraryFilters: { ...DEFAULT_LIBRARY_FILTERS } });
+    }
   },
 
   readLibraryFilters: getInitialLibraryFilters('read'),
   setReadLibraryFilters: (filters) => {
-    const updated: LibraryFilterState = {
-      ...get().readLibraryFilters,
-      ...filters,
-    };
-    persistLibraryFilters(updated, 'read');
-    set({ readLibraryFilters: updated });
+    try {
+      const current = get().readLibraryFilters || DEFAULT_LIBRARY_FILTERS;
+      const updated = sanitizeFilterState({
+        ...current,
+        ...filters,
+      });
+      persistLibraryFilters(updated, 'read');
+      set({ readLibraryFilters: updated });
+    } catch {
+      set({ readLibraryFilters: { ...DEFAULT_LIBRARY_FILTERS } });
+    }
   },
 }));

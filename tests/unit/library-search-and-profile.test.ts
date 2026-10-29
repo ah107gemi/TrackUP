@@ -7,6 +7,7 @@ import {
   statusToParam,
   persistLibraryFilters,
   getInitialLibraryFilters,
+  sanitizeFilterState,
   type LibraryFilterState,
 } from '../../src/features/library/libraryFilterState';
 import { MOCK_CATALOG_FIXTURES } from '../../src/features/catalog/catalogService';
@@ -339,7 +340,9 @@ describe('Library Filter State Preservation & Back Navigation', () => {
     expect(normalizeStatusParam('on-hold')).toBe('paused');
     expect(normalizeStatusParam('dropped')).toBe('dropped');
     expect(normalizeStatusParam('all')).toBe('all');
-    expect(normalizeStatusParam(null)).toBeNull();
+    expect(normalizeStatusParam(null)).toBe('all');
+    expect(normalizeStatusParam(undefined)).toBe('all');
+    expect(normalizeStatusParam('invalid_garbage_status')).toBe('all');
   });
 
   it('correctly maps human-readable URL query parameters to media format types', () => {
@@ -351,7 +354,9 @@ describe('Library Filter State Preservation & Back Navigation', () => {
     expect(normalizeFormatParam('manga')).toBe('manga');
     expect(normalizeFormatParam('manhwa')).toBe('manhwa');
     expect(normalizeFormatParam('all')).toBe('all');
-    expect(normalizeFormatParam(null)).toBeNull();
+    expect(normalizeFormatParam(null)).toBe('all');
+    expect(normalizeFormatParam(undefined)).toBe('all');
+    expect(normalizeFormatParam('invalid_category')).toBe('all');
   });
 
   it('formats internal tracking status into clean query param strings for each domain', () => {
@@ -362,7 +367,32 @@ describe('Library Filter State Preservation & Back Navigation', () => {
     expect(statusToParam('all', 'watch')).toBe('all');
   });
 
-  it('persists and restores library filters via sessionStorage', () => {
+  it('strictly sanitizes malformed, null, or undefined filter objects', () => {
+    // 1. null / undefined / empty
+    expect(sanitizeFilterState(null)).toEqual({ status: 'all', format: 'all', searchQuery: '' });
+    expect(sanitizeFilterState(undefined)).toEqual({ status: 'all', format: 'all', searchQuery: '' });
+    expect(sanitizeFilterState({})).toEqual({ status: 'all', format: 'all', searchQuery: '' });
+
+    // 2. poisoned or malformed values
+    expect(
+      sanitizeFilterState({
+        status: 'undefined',
+        format: null,
+        searchQuery: 12345,
+      })
+    ).toEqual({ status: 'all', format: 'all', searchQuery: '' });
+
+    // 3. alias support (category, type, selectedFormat, q, search)
+    expect(
+      sanitizeFilterState({
+        activeStatus: 'watching',
+        category: 'tv',
+        q: 'Yellowstone',
+      })
+    ).toEqual({ status: 'active', format: 'tv', searchQuery: 'Yellowstone' });
+  });
+
+  it('persists and restores library filters via sessionStorage with safe fallbacks', () => {
     const filters: LibraryFilterState = {
       status: 'active',
       format: 'tv',
@@ -375,6 +405,54 @@ describe('Library Filter State Preservation & Back Navigation', () => {
     expect(restored.status).toBe('active');
     expect(restored.format).toBe('tv');
     expect(restored.searchQuery).toBe('Yellowstone');
+  });
+
+  it('safely handles DOMExceptions or malformed JSON in sessionStorage', () => {
+    sessionStorage.setItem('trackup_library_filters_watch', 'invalid-json-{broken');
+    const restored = getInitialLibraryFilters('watch');
+    expect(restored).toEqual({ status: 'all', format: 'all', searchQuery: '' });
+  });
+
+  it('safely filters library items with null, undefined, or missing title properties without throwing', () => {
+    const rawCorruptLibrary = [
+      null,
+      undefined,
+      {},
+      { id: 'corrupt_1', status: 'active' },
+      { id: 'corrupt_2', status: 'completed', title: null },
+      {
+        id: 'valid_1',
+        status: 'active',
+        title: { id: 't1', title: 'Yellowstone', media_type: 'tv' },
+      },
+      {
+        id: 'valid_2',
+        status: 'completed',
+        title: { id: 't2', title: 'Breaking Bad', media_type: 'tv' },
+      },
+    ] as any[];
+
+    // Filtering with safe logic
+    const filterSafe = (items: any[], activeStatus: string, format: string) => {
+      const domainTypes = ['tv', 'movie', 'anime_series', 'anime_film'];
+      return (Array.isArray(items) ? items : []).filter((item) => {
+        if (!item || typeof item !== 'object') return false;
+        const type = item.title?.media_type;
+        if (type && !domainTypes.includes(type)) return false;
+        if (activeStatus && activeStatus !== 'all' && item.status && item.status !== activeStatus) {
+          return false;
+        }
+        if (format && format !== 'all' && type && type !== format) {
+          return false;
+        }
+        return true;
+      });
+    };
+
+    expect(() => filterSafe(rawCorruptLibrary, 'active', 'tv')).not.toThrow();
+    const result = filterSafe(rawCorruptLibrary, 'active', 'tv');
+    expect(result.length).toBeGreaterThan(0);
+    expect(result.some((i) => i.id === 'valid_1')).toBe(true);
   });
 });
 

@@ -29,6 +29,9 @@ import { formatRuntime } from '../../lib/dateUtils';
 import {
   readFiltersFromUrl,
   persistLibraryFilters,
+  sanitizeFilterState,
+  VALID_STATUSES,
+  VALID_FORMATS,
 } from './libraryFilterState';
 
 interface LibraryViewProps {
@@ -56,13 +59,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
   const currentFilters = domain === 'watch' ? watchLibraryFilters : readLibraryFilters;
   const setFilters = domain === 'watch' ? setWatchLibraryFilters : setReadLibraryFilters;
 
-  const activeStatus = currentFilters.status;
-  const selectedFormat = currentFilters.format;
-  const localSearchQuery = currentFilters.searchQuery;
+  const safeFilters = sanitizeFilterState(currentFilters);
+  const activeStatus = safeFilters.status || 'all';
+  const selectedFormat = safeFilters.format || 'all';
+  const localSearchQuery = safeFilters.searchQuery || '';
 
-  const setActiveStatus = (status: TrackingStatus | 'all') => setFilters({ status });
-  const setSelectedFormat = (format: MediaType | 'all') => setFilters({ format });
-  const setLocalSearchQuery = (searchQuery: string) => setFilters({ searchQuery });
+  const setActiveStatus = (status: TrackingStatus | 'all') => setFilters({ status: status || 'all' });
+  const setSelectedFormat = (format: MediaType | 'all') => setFilters({ format: format || 'all' });
+  const setLocalSearchQuery = (searchQuery: string) => setFilters({ searchQuery: searchQuery || '' });
 
   // Listen to popstate for back/forward browser navigation affecting query params
   useEffect(() => {
@@ -78,7 +82,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
 
   // Ensure current filters are reflected in URL for active domain
   useEffect(() => {
-    persistLibraryFilters(currentFilters, domain);
+    persistLibraryFilters(safeFilters, domain);
   }, [domain]);
 
   // Dedicated Reading Search & Quick-Add state (Manga/Manhwa only)
@@ -88,18 +92,21 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
   const [addedItemIds, setAddedItemIds] = useState<Set<string>>(new Set());
 
   const getEpProgressDisplay = (item: UserLibraryItem) => {
+    if (!item || typeof item !== 'object') return '';
+    const titleObj = item.title || ({} as any);
     const total =
-      item.title.total_episodes ||
-      (item.title as any).episodes ||
-      (item.title as any).number_of_episodes ||
+      titleObj.total_episodes ||
+      titleObj.episodes ||
+      (titleObj as any).number_of_episodes ||
       (item as any).total_episodes ||
       (item as any).episodes ||
-      ((item.title as any).seasons ? (item.title as any).seasons.reduce((acc: number, s: any) => acc + (s.episode_count || s.episodes?.length || 0), 0) : null);
+      (titleObj.seasons ? titleObj.seasons.reduce((acc: number, s: any) => acc + (s.episode_count || s.episodes?.length || 0), 0) : null);
 
+    const watchedLen = Array.isArray(item.episodes_watched) ? item.episodes_watched.length : 0;
     if (item.status === 'completed') {
-      return `${(total && total > 0 ? total : null) || (item.episodes_watched.length > 0 ? item.episodes_watched.length : null) || 12} eps`;
+      return `${(total && total > 0 ? total : null) || (watchedLen > 0 ? watchedLen : null) || 12} eps`;
     }
-    return `${item.episodes_watched.length}${total && total > 0 ? ` / ${total}` : ''} eps`;
+    return `${watchedLen}${total && total > 0 ? ` / ${total}` : ''} eps`;
   };
 
   useEffect(() => {
@@ -131,25 +138,80 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
       ? ['movie', 'tv', 'anime_series', 'anime_film']
       : ['manga', 'manhwa'];
 
-  // Filter items by domain, status, sub-format, and local library search
-  const filtered = library.filter((item) => {
-    if (!domainMediaTypes.includes(item.title.media_type)) return false;
-    if (activeStatus !== 'all' && item.status !== activeStatus) return false;
-    if (selectedFormat !== 'all' && item.title.media_type !== selectedFormat) return false;
+  // Bulletproof filtering: guard null/undefined items, invalid filter states, and handle missing metadata safely
+  const filtered = (Array.isArray(library) ? library : []).filter((item) => {
+    if (!item || typeof item !== 'object') return false;
 
-    if (localSearchQuery.trim()) {
-      const q = localSearchQuery.trim().toLowerCase();
-      const titleMatches = item.title.title.toLowerCase().includes(q);
-      const originalTitleMatches = item.title.original_title
-        ? item.title.original_title.toLowerCase().includes(q)
-        : false;
-      if (!titleMatches && !originalTitleMatches) return false;
+    const itemMediaType = item.title?.media_type;
+    if (itemMediaType && !domainMediaTypes.includes(itemMediaType)) {
+      return false;
+    }
+
+    // Status filter: only filter if activeStatus is valid and not 'all'
+    if (activeStatus && activeStatus !== 'all' && VALID_STATUSES.has(activeStatus)) {
+      const itemStatus = item.status;
+      if (itemStatus && itemStatus !== activeStatus) {
+        return false;
+      }
+    }
+
+    // Sub-format / Category filter: only filter if selectedFormat is valid and not 'all'
+    if (selectedFormat && selectedFormat !== 'all' && VALID_FORMATS.has(selectedFormat)) {
+      if (itemMediaType && itemMediaType !== selectedFormat) {
+        return false;
+      }
+    }
+
+    // Local library search
+    const q = (localSearchQuery || '').trim().toLowerCase();
+    if (q) {
+      const title = (item.title?.title || '').toLowerCase();
+      const originalTitle = (item.title?.original_title || '').toLowerCase();
+      if (!title.includes(q) && !originalTitle.includes(q)) {
+        return false;
+      }
     }
 
     return true;
   });
 
-  const domainTotalCount = library.filter((item) => domainMediaTypes.includes(item.title.media_type)).length;
+  const domainTotalCount = (Array.isArray(library) ? library : []).filter((item) => {
+    if (!item || typeof item !== 'object') return false;
+    const type = item.title?.media_type;
+    return type ? domainMediaTypes.includes(type) : true;
+  }).length;
+
+  // Auto-heal stuck/poisoned filter states:
+  // If the raw database array has items for this domain, but the filtered result is 0
+  // and filters are active or poisoned, forcefully reset filters to 'all'.
+  useEffect(() => {
+    if (isLoading) return;
+    const rawCount = (Array.isArray(library) ? library : []).filter((item) => {
+      if (!item || typeof item !== 'object') return false;
+      const type = item.title?.media_type;
+      return type ? domainMediaTypes.includes(type) : true;
+    }).length;
+
+    if (rawCount > 0 && filtered.length === 0) {
+      const isPoisoned =
+        !activeStatus ||
+        !VALID_STATUSES.has(activeStatus) ||
+        !selectedFormat ||
+        !VALID_FORMATS.has(selectedFormat) ||
+        typeof localSearchQuery !== 'string';
+
+      const hasActiveFilters =
+        activeStatus !== 'all' ||
+        selectedFormat !== 'all' ||
+        Boolean(localSearchQuery && localSearchQuery.trim());
+
+      if (isPoisoned || hasActiveFilters) {
+        const safeDefaults = { status: 'all' as const, format: 'all' as const, searchQuery: '' };
+        setFilters(safeDefaults);
+        persistLibraryFilters(safeDefaults, domain);
+      }
+    }
+  }, [library?.length, domainTotalCount, filtered.length, isLoading, domain]);
 
   const statuses: { id: TrackingStatus | 'all'; label: string }[] = [
     { id: 'all', label: 'All Statuses' },
@@ -558,35 +620,35 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
                 >
                   <div className="relative aspect-[2/3] w-full bg-[#16161D] overflow-hidden">
                     <img
-                      src={item.title.poster_url || '/assets/trackup-logo.jpg'}
-                      alt={item.title.title}
+                      src={item.title?.poster_url || (item.title as any)?.poster_path || '/assets/trackup-logo.jpg'}
+                      alt={item.title?.title || 'Unknown Title'}
                       loading="lazy"
                       decoding="async"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     <div className="absolute top-2 left-2">
                       <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-background/80 text-accent border border-accent/20 backdrop-blur-md">
-                        {item.status}
+                        {item.status || 'planned'}
                       </span>
                     </div>
                   </div>
                   <div className="p-3">
                     <h3 className="font-semibold text-xs text-text-primary truncate group-hover:text-accent transition-colors">
-                      {item.title.title}
+                      {item.title?.title || 'Unknown Title'}
                     </h3>
                     <div className="flex items-center justify-between mt-2 text-[11px] text-text-muted">
-                      {item.title.media_type === 'tv' || item.title.media_type === 'anime_series' ? (
+                      {item.title?.media_type === 'tv' || item.title?.media_type === 'anime_series' ? (
                         <span className="font-mono text-accent">
                           {getEpProgressDisplay(item)}
                         </span>
-                      ) : item.title.media_type === 'movie' || item.title.media_type === 'anime_film' ? (
+                      ) : item.title?.media_type === 'movie' || item.title?.media_type === 'anime_film' ? (
                         <span className="font-mono text-text-muted">
-                          {formatRuntime(item.title.runtime_minutes) || 'Feature'}
+                          {formatRuntime(item.title?.runtime_minutes) || 'Feature'}
                         </span>
                       ) : (
                         <span className="font-mono text-accent">
-                          Ch. {item.last_chapter_read}
-                          {item.title.total_chapters ? ` / ${item.title.total_chapters}` : ''}
+                          Ch. {item.last_chapter_read || 0}
+                          {item.title?.total_chapters ? ` / ${item.title.total_chapters}` : ''}
                         </span>
                       )}
                       {item.rating && (
@@ -616,26 +678,26 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
                   className="flex items-center gap-3 p-2.5 bg-surface rounded-xl border border-surface-elevated hover:border-accent/40 transition-all cursor-pointer group"
                 >
                   <img
-                    src={item.title.poster_url || '/assets/trackup-logo.jpg'}
-                    alt={item.title.title}
+                    src={item.title?.poster_url || (item.title as any)?.poster_path || '/assets/trackup-logo.jpg'}
+                    alt={item.title?.title || 'Unknown Title'}
                     loading="lazy"
                     decoding="async"
                     className="w-12 h-16 rounded-lg object-cover shrink-0 bg-[#16161D]"
                   />
                   <div className="flex-1 min-w-0">
                     <h4 className="text-xs font-bold text-text-primary truncate group-hover:text-accent">
-                      {item.title.title}
+                      {item.title?.title || 'Unknown Title'}
                     </h4>
-                    <p className="text-[10px] text-text-muted capitalize mt-0.5">{item.status}</p>
+                    <p className="text-[10px] text-text-muted capitalize mt-0.5">{item.status || 'planned'}</p>
                     <div className="mt-1 flex items-center justify-between">
                       <span className="font-mono text-[11px] text-accent">
-                        {item.title.media_type === 'tv' || item.title.media_type === 'anime_series'
+                        {item.title?.media_type === 'tv' || item.title?.media_type === 'anime_series'
                           ? getEpProgressDisplay(item)
-                          : item.title.media_type === 'movie' || item.title.media_type === 'anime_film'
-                          ? (formatRuntime(item.title.runtime_minutes) || 'Feature')
-                          : `Ch. ${item.last_chapter_read}`}
+                          : item.title?.media_type === 'movie' || item.title?.media_type === 'anime_film'
+                          ? (formatRuntime(item.title?.runtime_minutes) || 'Feature')
+                          : `Ch. ${item.last_chapter_read || 0}`}
                       </span>
-                      {item.title.media_type !== 'movie' && item.title.media_type !== 'anime_film' && item.status !== 'completed' && (
+                      {item.title?.media_type !== 'movie' && item.title?.media_type !== 'anime_film' && item.status !== 'completed' && (
                         <button
                           onClick={(e) => handleQuickProgress(e, item)}
                           data-testid={`quick-increment-${item.id}`}
@@ -678,42 +740,42 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
                     >
                       <td className="py-3 px-4 flex items-center gap-3">
                         <img
-                          src={item.title.poster_url || '/assets/trackup-logo.jpg'}
-                          alt={item.title.title}
+                          src={item.title?.poster_url || (item.title as any)?.poster_path || '/assets/trackup-logo.jpg'}
+                          alt={item.title?.title || 'Unknown Title'}
                           loading="lazy"
                           decoding="async"
                           className="w-8 h-12 rounded object-cover shrink-0 bg-[#16161D]"
                         />
                         <div className="min-w-0">
                           <p className="font-bold text-text-primary group-hover:text-accent truncate">
-                            {item.title.title}
+                            {item.title?.title || 'Unknown Title'}
                           </p>
                           <p className="text-[10px] text-text-muted">
-                            {item.title.release_year || ''}
+                            {item.title?.release_year || ''}
                           </p>
                         </div>
                       </td>
                       <td className="py-3 px-3">
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-surface-elevated text-accent border border-accent/20">
-                          {item.title.media_type.replace('_', ' ')}
+                          {(item.title?.media_type || '').replace('_', ' ')}
                         </span>
                       </td>
                       <td className="py-3 px-3">
                         <span className="capitalize font-medium text-text-secondary">
-                          {item.status}
+                          {item.status || 'planned'}
                         </span>
                       </td>
                       <td className="py-3 px-3 font-mono font-semibold text-text-primary">
-                        {item.title.media_type === 'tv' || item.title.media_type === 'anime_series' ? (
+                        {item.title?.media_type === 'tv' || item.title?.media_type === 'anime_series' ? (
                           <span className="text-accent">
                             {getEpProgressDisplay(item)}
                           </span>
-                        ) : item.title.media_type === 'movie' || item.title.media_type === 'anime_film' ? (
-                          <span className="text-text-muted">{formatRuntime(item.title.runtime_minutes) || 'Feature'}</span>
+                        ) : item.title?.media_type === 'movie' || item.title?.media_type === 'anime_film' ? (
+                          <span className="text-text-muted">{formatRuntime(item.title?.runtime_minutes) || 'Feature'}</span>
                         ) : (
                           <span className="text-accent">
-                            Ch. {item.last_chapter_read}
-                            {item.title.total_chapters ? ` / ${item.title.total_chapters}` : ''}
+                            Ch. {item.last_chapter_read || 0}
+                            {item.title?.total_chapters ? ` / ${item.title.total_chapters}` : ''}
                           </span>
                         )}
                       </td>
