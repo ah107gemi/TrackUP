@@ -77,6 +77,15 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     await expect(page.locator('[data-testid="profile-page"]')).toContainText('Binger Master');
     await expect(page.locator('[data-testid="profile-page"]')).toContainText(`@new_binger_${timestamp}`);
 
+    // Test Change Password Modal
+    await page.locator('[data-testid="change-password-btn"]').click();
+    await expect(page.locator('[data-testid="change-password-modal"]')).toBeVisible();
+    await page.locator('[data-testid="new-password-input"]').fill('NewSuperSecret123!');
+    await page.locator('[data-testid="confirm-password-input"]').fill('NewSuperSecret123!');
+    await page.locator('[data-testid="change-password-submit-btn"]').click();
+    await expect(page.locator('[data-testid="change-password-success"]')).toBeVisible();
+    await expect(page.locator('[data-testid="change-password-modal"]')).toBeHidden({ timeout: 5000 });
+
     // 4. Test Friends & Social Search Panel with @username query
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-social"]').click();

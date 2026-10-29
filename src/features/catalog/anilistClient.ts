@@ -31,6 +31,7 @@ query ($search: String, $type: MediaType, $format_in: [MediaFormat], $format: Me
       }
       description(asHtml: false)
       coverImage {
+        extraLarge
         large
         medium
       }
@@ -89,6 +90,7 @@ query ($search: String, $type: MediaType, $page: Int, $perPage: Int) {
       }
       description(asHtml: false)
       coverImage {
+        extraLarge
         large
         medium
       }
@@ -138,6 +140,7 @@ query ($id: Int) {
     }
     description(asHtml: false)
     coverImage {
+      extraLarge
       large
       medium
     }
@@ -470,7 +473,12 @@ export async function fetchAniListMediaById(
     let seasons: CatalogSeasonDetail[] | undefined = undefined;
     if (normalized.media_type === 'anime_series') {
       const seasonList: CatalogSeasonDetail[] = [];
-      const s1EpCount = normalized.total_episodes || 12;
+      const mainEpisodes =
+        typeof media.episodes === 'number' && media.episodes > 0
+          ? media.episodes
+          : normalized.total_episodes || null;
+
+      const s1EpCount = mainEpisodes || 12;
 
       // Primary Series / Season 1
       seasonList.push({
@@ -517,13 +525,31 @@ export async function fetchAniListMediaById(
             edge.node?.id
           ) {
             const seq = edge.node;
-            const seqTitle = seq.title?.english || seq.title?.romaji || `Season ${seasonNum}`;
-            const seqEpisodes = seq.episodes || 12;
+            // Filter out MUSIC, SPECIAL, and promo clips so they never overwrite or pollute main series metadata
+            if (seq.format === 'MUSIC' || seq.format === 'SPECIAL') continue;
+
+            const seqTitle = seq.title?.english || seq.title?.romaji || '';
+            const lowerTitle = seqTitle.toLowerCase();
+            const isPromoOrMv =
+              lowerTitle.includes('(music video)') ||
+              lowerTitle.includes('[music video]') ||
+              lowerTitle.includes('(mv)') ||
+              lowerTitle.includes('[mv]') ||
+              lowerTitle.includes('promo video') ||
+              lowerTitle.includes('promo clip') ||
+              lowerTitle.includes('teaser') ||
+              lowerTitle.includes('commercial');
+            if (isPromoOrMv) continue;
+
+            const seqEpisodes =
+              typeof seq.episodes === 'number' && seq.episodes > 0
+                ? seq.episodes
+                : 12;
 
             seasonList.push({
               id: `anilist_${seq.id}_s${seasonNum}`,
               season_number: seasonNum,
-              name: `Season ${seasonNum}: ${seqTitle}`,
+              name: `Season ${seasonNum}: ${seqTitle || `Season ${seasonNum}`}`,
               overview: seq.description || null,
               episode_count: seqEpisodes,
               episodes: Array.from({ length: seqEpisodes }, (_, i) => {
@@ -559,6 +585,19 @@ export async function fetchAniListMediaById(
       }
 
       seasons = seasonList;
+      normalized.total_seasons = seasonList.length;
+
+      // Preserve main series episode count without promo overwrite
+      if (mainEpisodes) {
+        if (seasonList.length === 1) {
+          normalized.total_episodes = mainEpisodes;
+          normalized.episodes = mainEpisodes;
+        } else {
+          const totalFranchiseEps = seasonList.reduce((acc, s) => acc + s.episode_count, 0);
+          normalized.total_episodes = totalFranchiseEps;
+          normalized.episodes = totalFranchiseEps;
+        }
+      }
     }
 
     return {

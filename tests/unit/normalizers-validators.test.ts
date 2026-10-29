@@ -65,7 +65,7 @@ describe('Security & Normalization Layer (Phase 2)', () => {
       expect(result.title).toBe('Inception');
       expect(result.release_year).toBe(2010);
       expect(result.runtime_minutes).toBe(148);
-      expect(result.poster_url).toContain('https://image.tmdb.org/t/p/w342/');
+      expect(result.poster_url).toContain('https://image.tmdb.org/t/p/w500/');
     });
 
     it('classifies Japanese animation film as anime_film', () => {
@@ -104,6 +104,46 @@ describe('Security & Normalization Layer (Phase 2)', () => {
       expect(genericResult.media_type).toBe('tv');
       expect(genericResult.total_episodes).toBe(62);
       expect(genericResult.episodes).toBe(62);
+    });
+
+    it('prepends TMDB poster_path with https://image.tmdb.org/t/p/w500 and handles relative paths for Yellowstone', () => {
+      const payload: TmdbTvPayload = {
+        id: 73586,
+        name: 'Yellowstone',
+        poster_path: '/peNC0eyc3TQJa6x4TdKIIIRizUT.jpg',
+        backdrop_path: '/7F1s2e5v0QJk5yU7Xw2s2zX.jpg',
+        number_of_episodes: 53,
+        number_of_seasons: 5,
+      };
+
+      const result = normalizeTmdbTv(payload);
+      expect(result.poster_url).toBe('https://image.tmdb.org/t/p/w500/peNC0eyc3TQJa6x4TdKIIIRizUT.jpg');
+      expect(result.backdrop_url).toBe('https://image.tmdb.org/t/p/w1280/7F1s2e5v0QJk5yU7Xw2s2zX.jpg');
+    });
+
+    it('accurately maps TMDB multi-season array and total episode counts for shows like Yellowstone', () => {
+      const payload: TmdbTvPayload = {
+        id: 73586,
+        name: 'Yellowstone',
+        number_of_episodes: 53,
+        number_of_seasons: 5,
+        seasons: [
+          { season_number: 1, episode_count: 9, name: 'Season 1' },
+          { season_number: 2, episode_count: 10, name: 'Season 2' },
+          { season_number: 3, episode_count: 10, name: 'Season 3' },
+          { season_number: 4, episode_count: 10, name: 'Season 4' },
+          { season_number: 5, episode_count: 14, name: 'Season 5' },
+        ],
+      };
+
+      const result = normalizeTmdbTv(payload);
+      expect(result.total_episodes).toBe(53);
+      expect(result.episodes).toBe(53);
+      expect(result.total_seasons).toBe(5);
+      expect((result as any).seasons).toBeDefined();
+      expect((result as any).seasons.length).toBe(5);
+      expect((result as any).seasons[0].episode_count).toBe(9);
+      expect((result as any).seasons[4].episode_count).toBe(14);
     });
   });
 
@@ -215,6 +255,47 @@ describe('Security & Normalization Layer (Phase 2)', () => {
       expect(corruptedResult).toBeDefined();
       expect(corruptedResult.media_type).toBe('manhwa');
       expect(corruptedResult.title).toBe('Untitled');
+    });
+
+    it('drills down into coverImage.extraLarge or coverImage.large returning the raw URL string for Frieren', () => {
+      const payload: AniListMediaPayload = {
+        id: 154587,
+        type: 'ANIME',
+        format: 'TV',
+        title: {
+          english: "Frieren: Beyond Journey's End",
+          romaji: 'Sousou no Frieren',
+        },
+        coverImage: {
+          extraLarge: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx154587-qQTzQnEJJ3oB.jpg',
+          large: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx154587-qQTzQnEJJ3oB.jpg',
+          medium: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/small/bx154587-qQTzQnEJJ3oB.jpg',
+        },
+        episodes: 28,
+      };
+
+      const result = normalizeAniListMedia(payload);
+      expect(result.poster_url).toBe(
+        'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx154587-qQTzQnEJJ3oB.jpg'
+      );
+      expect(result.total_episodes).toBe(28);
+      expect(result.episodes).toBe(28);
+
+      // Falls back to coverImage.large if extraLarge is absent
+      const payloadLarge: AniListMediaPayload = {
+        id: 154587,
+        type: 'ANIME',
+        format: 'TV',
+        title: { english: 'Frieren' },
+        coverImage: {
+          large: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx154587-qQTzQnEJJ3oB.jpg',
+          medium: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/small/bx154587-qQTzQnEJJ3oB.jpg',
+        },
+      };
+      const resultLarge = normalizeAniListMedia(payloadLarge);
+      expect(resultLarge.poster_url).toBe(
+        'https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx154587-qQTzQnEJJ3oB.jpg'
+      );
     });
   });
 });

@@ -202,8 +202,8 @@ export async function fetchTmdbMediaById(
       })
     );
 
-    let seasons: CatalogSeasonDetail[] | undefined = undefined;
-    if (type === 'tv' && data.seasons) {
+    let seasons: CatalogSeasonDetail[] | undefined = (normalized as any).seasons;
+    if (type === 'tv' && data.seasons && (!seasons || seasons.length === 0)) {
       seasons = (data.seasons as {
         id: number;
         season_number: number;
@@ -214,13 +214,14 @@ export async function fetchTmdbMediaById(
         .filter((s) => s.season_number > 0)
         .map((s) => {
           const baseDate = data.first_air_date ? new Date(data.first_air_date) : null;
+          const count = s.episode_count || 0;
           return {
             id: `tmdb_season_${s.id}`,
             season_number: s.season_number,
             name: s.name || `Season ${s.season_number}`,
             overview: s.overview || null,
-            episode_count: s.episode_count || 0,
-            episodes: Array.from({ length: Math.min(s.episode_count || 0, 24) }, (_, idx) => {
+            episode_count: count,
+            episodes: Array.from({ length: count }, (_, idx) => {
               let epAirDate: string | null = null;
               if (baseDate && !isNaN(baseDate.getTime())) {
                 const epD = new Date(baseDate.getTime() + (s.season_number - 1) * 365 * 86400000 + idx * 7 * 86400000);
@@ -239,10 +240,23 @@ export async function fetchTmdbMediaById(
         });
     }
 
+    const totalEps =
+      typeof data.number_of_episodes === 'number' && data.number_of_episodes > 0
+        ? data.number_of_episodes
+        : normalized.total_episodes;
+
+    const totalSeas =
+      typeof data.number_of_seasons === 'number' && data.number_of_seasons > 0
+        ? data.number_of_seasons
+        : seasons?.length || normalized.total_seasons;
+
     return {
       ...normalized,
+      total_episodes: totalEps,
+      episodes: totalEps,
+      total_seasons: totalSeas,
       cast,
-      seasons,
+      seasons: seasons || (normalized as any).seasons,
     };
   } catch (err) {
     console.warn(`Failed to fetch TMDB details for ${type} ID ${id}:`, err);

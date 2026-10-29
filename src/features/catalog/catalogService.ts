@@ -201,7 +201,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     release_date: '2018-06-20',
     synopsis:
       'Follow the violent world of the Dutton family, who controls the largest contiguous ranch in the United States. Led by their patriarch John Dutton, the family defends their land against constant attack by land developers, an Indian reservation, and America\'s first National Park.',
-    poster_url: 'https://image.tmdb.org/t/p/w342/peNC0eyc3TQJa6x4TdKIIIRizUT.jpg',
+    poster_url: 'https://image.tmdb.org/t/p/w500/peNC0eyc3TQJa6x4TdKIIIRizUT.jpg',
     backdrop_url: 'https://image.tmdb.org/t/p/w1280/7F1s2e5v0QJk5yU7Xw2s2zX.jpg',
     genres: ['Western', 'Drama'],
     origin_country: 'US',
@@ -232,6 +232,66 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
           air_date: new Date(Date.UTC(2018, 5, 20 + i * 7)).toISOString().split('T')[0],
         })),
       },
+      {
+        id: 'ys_s2',
+        season_number: 2,
+        name: 'Season 2',
+        overview: 'The Duttons face enemies from all sides with alliances challenged.',
+        episode_count: 10,
+        episodes: Array.from({ length: 10 }, (_, i) => ({
+          id: `ys_e2_${i + 1}`,
+          episode_number: i + 1,
+          name: `Episode ${i + 1}`,
+          overview: 'The battle for the Dutton land intensifies.',
+          runtime_minutes: 50,
+          air_date: new Date(Date.UTC(2019, 5, 19 + i * 7)).toISOString().split('T')[0],
+        })),
+      },
+      {
+        id: 'ys_s3',
+        season_number: 3,
+        name: 'Season 3',
+        overview: 'Market Equities seeks to buy the Dutton ranch for an airport.',
+        episode_count: 10,
+        episodes: Array.from({ length: 10 }, (_, i) => ({
+          id: `ys_e3_${i + 1}`,
+          episode_number: i + 1,
+          name: `Episode ${i + 1}`,
+          overview: 'New adversaries push the family to the brink of survival.',
+          runtime_minutes: 50,
+          air_date: new Date(Date.UTC(2020, 5, 21 + i * 7)).toISOString().split('T')[0],
+        })),
+      },
+      {
+        id: 'ys_s4',
+        season_number: 4,
+        name: 'Season 4',
+        overview: 'The Duttons coordinate retribution against those responsible for coordinated attacks.',
+        episode_count: 10,
+        episodes: Array.from({ length: 10 }, (_, i) => ({
+          id: `ys_e4_${i + 1}`,
+          episode_number: i + 1,
+          name: `Episode ${i + 1}`,
+          overview: 'Vengeance and family loyalty dominate Montana.',
+          runtime_minutes: 50,
+          air_date: new Date(Date.UTC(2021, 10, 7 + i * 7)).toISOString().split('T')[0],
+        })),
+      },
+      {
+        id: 'ys_s5',
+        season_number: 5,
+        name: 'Season 5',
+        overview: 'John Dutton takes office as Governor of Montana to defend the ranch.',
+        episode_count: 14,
+        episodes: Array.from({ length: 14 }, (_, i) => ({
+          id: `ys_e5_${i + 1}`,
+          episode_number: i + 1,
+          name: `Episode ${i + 1}`,
+          overview: 'The political and ranch battles reach their climax.',
+          runtime_minutes: 50,
+          air_date: new Date(Date.UTC(2022, 10, 13 + i * 7)).toISOString().split('T')[0],
+        })),
+      },
     ],
   },
 
@@ -244,7 +304,7 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     release_year: 2023,
     release_date: '2023-09-29',
     synopsis: 'The adventure is over but life goes on for an elf mage just beginning to learn what living is all about.',
-    poster_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx154587-n2bGQtrackup.jpg',
+    poster_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx154587-qQTzQnEJJ3oB.jpg',
     backdrop_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/154587-eJv5WJ8y.jpg',
     genres: ['Adventure', 'Drama', 'Fantasy'],
     origin_country: 'JP',
@@ -736,13 +796,25 @@ export async function getCatalogTitleById(
     })
   | null
 > {
-  // 1. Check curated fixtures first
-  const localMatch = MOCK_CATALOG_FIXTURES.find((f) => f.id === id);
-  if (localMatch) {
-    return localMatch;
+  // 1. Live TMDB TV hydration: Always call full detail endpoint (/tv/{id}) for full seasons & episodes when configured
+  if (id.startsWith('tmdb_tv_') || id.startsWith('tv_')) {
+    const numId = parseInt(id.replace(/^(tmdb_tv_|tv_)/, ''), 10);
+    if (!isNaN(numId) && isTmdbConfigured()) {
+      const liveTv = await fetchTmdbMediaById(numId, 'tv');
+      if (liveTv) return liveTv;
+    }
   }
 
-  // 2. AniList live hydration
+  // 2. Live TMDB Movie hydration
+  if (id.startsWith('tmdb_movie_') || id.startsWith('movie_')) {
+    const numId = parseInt(id.replace(/^(tmdb_movie_|movie_)/, ''), 10);
+    if (!isNaN(numId) && isTmdbConfigured()) {
+      const liveMovie = await fetchTmdbMediaById(numId, 'movie');
+      if (liveMovie) return liveMovie;
+    }
+  }
+
+  // 3. Live AniList hydration
   if (id.startsWith('anilist_')) {
     const numId = parseInt(id.replace('anilist_', ''), 10);
     if (!isNaN(numId)) {
@@ -751,21 +823,10 @@ export async function getCatalogTitleById(
     }
   }
 
-  // 3. TMDB live hydration
-  if (id.startsWith('tmdb_movie_')) {
-    const numId = parseInt(id.replace('tmdb_movie_', ''), 10);
-    if (!isNaN(numId)) {
-      const liveMovie = await fetchTmdbMediaById(numId, 'movie');
-      if (liveMovie) return liveMovie;
-    }
-  }
-
-  if (id.startsWith('tmdb_tv_')) {
-    const numId = parseInt(id.replace('tmdb_tv_', ''), 10);
-    if (!isNaN(numId)) {
-      const liveTv = await fetchTmdbMediaById(numId, 'tv');
-      if (liveTv) return liveTv;
-    }
+  // 4. Check curated fixtures fallback
+  const localMatch = MOCK_CATALOG_FIXTURES.find((f) => f.id === id);
+  if (localMatch) {
+    return localMatch;
   }
 
   return null;

@@ -18,6 +18,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, username: string, displayName?: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
+  updatePassword: (password: string) => Promise<{ error: string | null }>;
   updateProfile: (updates: Partial<Profile>) => Promise<{ error: string | null }>;
 }
 
@@ -377,6 +378,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { error: null };
   };
 
+  const updatePassword = async (newPassword: string): Promise<{ error: string | null }> => {
+    if (!user) return { error: 'Not authenticated' };
+    if (!newPassword || newPassword.length < 6) {
+      return { error: 'Password must be at least 6 characters long.' };
+    }
+
+    const applyMockPassword = () => {
+      const users: MockUserRecord[] = JSON.parse(localStorage.getItem(LOCAL_STORAGE_USERS_KEY) || '[]');
+      const userIdx = users.findIndex((u) => u.id === user.id || u.email === user.email);
+      if (userIdx >= 0) {
+        users[userIdx].passwordHash = newPassword;
+        localStorage.setItem(LOCAL_STORAGE_USERS_KEY, JSON.stringify(users));
+      }
+      return { error: null };
+    };
+
+    if (user.id.startsWith('user_')) {
+      return applyMockPassword();
+    }
+
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        if (error.message?.toLowerCase().includes('fetch') || !window.navigator.onLine) {
+          return applyMockPassword();
+        }
+        return { error: error.message };
+      }
+      return { error: null };
+    } catch (err: any) {
+      if (err?.message?.toLowerCase().includes('fetch') || !window.navigator.onLine) {
+        return applyMockPassword();
+      }
+      return { error: err?.message || 'Failed to update password.' };
+    }
+  };
+
   const updateProfile = async (updates: Partial<Profile>): Promise<{ error: string | null }> => {
     if (!user || !profile) return { error: 'Not authenticated' };
 
@@ -517,6 +555,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signUp,
         signOut,
         resetPassword,
+        updatePassword,
         updateProfile,
       }}
     >

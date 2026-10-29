@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { X, User, Shield, Star, LogOut, Check, Heart, Settings, Trash2 } from 'lucide-react';
+import { X, User, Shield, Star, LogOut, Check, Heart, Settings, Trash2, Lock } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from './AuthContext';
 import type { PrivacyLevel } from '../../types/database.types';
 import { FavoritesShowcase } from '../favorites/FavoritesShowcase';
 import { supabase } from '../../lib/supabase';
 import { clearUserLibrary } from '../library/libraryService';
+import { ChangePasswordModal } from './ChangePasswordModal';
 
 interface ProfileModalProps {
   onSelectTitle?: (titleId: string) => void;
@@ -28,6 +29,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onSelectTitle }) => 
   );
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   if (!profileModalOpen || !user) return null;
 
@@ -282,7 +284,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onSelectTitle }) => 
 
             {/* Actions */}
             <div className="pt-4 border-t border-surface-elevated flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsChangePasswordOpen(true)}
+                  data-testid="modal-change-password-btn"
+                  className="px-3 py-2 rounded-xl text-xs font-semibold text-text-secondary hover:text-text-primary bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Lock className="w-3.5 h-3.5 text-accent" />
+                  <span>Change Password</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -337,6 +348,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onSelectTitle }) => 
           </div>
         )}
       </div>
+
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
     </div>
   );
 };

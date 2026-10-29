@@ -1,6 +1,21 @@
 import { sanitizeUrl, type NormalizedCatalogItem } from '../../lib/validators';
 import type { MediaType } from '../../types/database.types';
 
+/**
+ * Bulletproofs TMDB image URLs by ensuring path is prepended with https://image.tmdb.org/t/p/{size}.
+ * If the path is already a full URL, it returns the sanitized URL directly.
+ */
+export function buildTmdbImageUrl(path: string | null | undefined, size: string = 'w500'): string | null {
+  if (!path || typeof path !== 'string') return null;
+  const trimmed = path.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return sanitizeUrl(trimmed);
+  }
+  const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return sanitizeUrl(`https://image.tmdb.org/t/p/${size}${cleanPath}`);
+}
+
 export interface TmdbMoviePayload {
   id: number;
   title: string;
@@ -14,6 +29,24 @@ export interface TmdbMoviePayload {
   original_language?: string;
   runtime?: number | null;
   origin_country?: string[];
+}
+
+export interface TmdbSeasonPayload {
+  id?: number | string;
+  season_number: number;
+  name?: string;
+  overview?: string | null;
+  episode_count?: number;
+  air_date?: string | null;
+  poster_path?: string | null;
+  episodes?: {
+    id?: number | string;
+    episode_number?: number;
+    name?: string;
+    overview?: string | null;
+    runtime?: number | null;
+    air_date?: string | null;
+  }[];
 }
 
 export interface TmdbTvPayload {
@@ -33,6 +66,7 @@ export interface TmdbTvPayload {
   status?: string;
   episodes?: number;
   total_episodes?: number;
+  seasons?: TmdbSeasonPayload[];
 }
 
 export interface AniListMediaPayload {
@@ -75,12 +109,11 @@ export function normalizeTmdbMovie(payload: TmdbMoviePayload): NormalizedCatalog
     ? parseInt(payload.release_date.split('-')[0], 10)
     : null;
 
-  const poster = payload.poster_path
-    ? sanitizeUrl(`https://image.tmdb.org/t/p/w342${payload.poster_path}`)
-    : null;
-  const backdrop = payload.backdrop_path
-    ? sanitizeUrl(`https://image.tmdb.org/t/p/w1280${payload.backdrop_path}`)
-    : null;
+  const rawPoster = payload.poster_path || (payload as any).poster_url || (payload as any).poster;
+  const rawBackdrop = payload.backdrop_path || (payload as any).backdrop_url || (payload as any).backdrop;
+
+  const poster = buildTmdbImageUrl(rawPoster, 'w500');
+  const backdrop = buildTmdbImageUrl(rawBackdrop, 'w1280');
 
   const genres = payload.genres?.map((g) => g.name) || [];
 
@@ -118,22 +151,71 @@ export function normalizeTmdbTv(payload: TmdbTvPayload): NormalizedCatalogItem {
     ? parseInt(payload.first_air_date.split('-')[0], 10)
     : null;
 
-  const poster = payload.poster_path
-    ? sanitizeUrl(`https://image.tmdb.org/t/p/w342${payload.poster_path}`)
-    : null;
-  const backdrop = payload.backdrop_path
-    ? sanitizeUrl(`https://image.tmdb.org/t/p/w1280${payload.backdrop_path}`)
-    : null;
+  const rawPoster = payload.poster_path || (payload as any).poster_url || (payload as any).poster;
+  const rawBackdrop = payload.backdrop_path || (payload as any).backdrop_url || (payload as any).backdrop;
+
+  const poster = buildTmdbImageUrl(rawPoster, 'w500');
+  const backdrop = buildTmdbImageUrl(rawBackdrop, 'w1280');
 
   const genres = payload.genres?.map((g) => g.name) || [];
+
+  // Map seasons array (filter out season 0 / specials)
+  const rawSeasons = Array.isArray(payload.seasons) ? payload.seasons : [];
+  const validSeasons = rawSeasons.filter((s) => typeof s.season_number === 'number' && s.season_number > 0);
+
+  const mappedSeasons = validSeasons.map((s) => {
+    const epCount =
+      typeof s.episode_count === 'number' && s.episode_count > 0
+        ? s.episode_count
+        : Array.isArray(s.episodes)
+        ? s.episodes.length
+        : 0;
+
+    return {
+      id: `tmdb_season_${payload.id}_${s.season_number}`,
+      season_number: s.season_number,
+      name: s.name || `Season ${s.season_number}`,
+      overview: s.overview || null,
+      episode_count: epCount,
+      episodes:
+        Array.isArray(s.episodes) && s.episodes.length > 0
+          ? s.episodes.map((ep, idx) => ({
+              id: `tmdb_ep_${payload.id}_${s.season_number}_${ep.episode_number || idx + 1}`,
+              episode_number: ep.episode_number || idx + 1,
+              name: ep.name || `Episode ${ep.episode_number || idx + 1}`,
+              overview: ep.overview || null,
+              runtime_minutes: ep.runtime || 45,
+              air_date: ep.air_date || null,
+            }))
+          : Array.from({ length: epCount }, (_, idx) => ({
+              id: `tmdb_ep_${payload.id}_${s.season_number}_${idx + 1}`,
+              episode_number: idx + 1,
+              name: `Episode ${idx + 1}`,
+              overview: null,
+              runtime_minutes: 45,
+              air_date: s.air_date || null,
+            })),
+    };
+  });
+
+  const sumSeasonEpisodes = mappedSeasons.reduce((acc, s) => acc + s.episode_count, 0);
 
   const episodesCount =
     typeof payload.number_of_episodes === 'number' && payload.number_of_episodes > 0
       ? payload.number_of_episodes
+      : sumSeasonEpisodes > 0
+      ? sumSeasonEpisodes
       : typeof (payload as any).episodes === 'number' && (payload as any).episodes > 0
       ? (payload as any).episodes
       : typeof (payload as any).total_episodes === 'number' && (payload as any).total_episodes > 0
       ? (payload as any).total_episodes
+      : null;
+
+  const totalSeasons =
+    typeof payload.number_of_seasons === 'number' && payload.number_of_seasons > 0
+      ? payload.number_of_seasons
+      : mappedSeasons.length > 0
+      ? mappedSeasons.length
       : null;
 
   return {
@@ -151,7 +233,8 @@ export function normalizeTmdbTv(payload: TmdbTvPayload): NormalizedCatalogItem {
     status: payload.status || 'released',
     total_episodes: episodesCount,
     episodes: episodesCount,
-    total_seasons: payload.number_of_seasons || null,
+    total_seasons: totalSeasons,
+    seasons: mappedSeasons.length > 0 ? mappedSeasons : undefined,
     tmdb_id: payload.id,
     imdb_id: null,
     anilist_id: null,
@@ -246,11 +329,24 @@ export function normalizeAniListMedia(
     null;
 
   const rawCover =
+    (typeof payload.coverImage === 'string' && payload.coverImage.trim()) ||
     payload.coverImage?.extraLarge ||
     payload.coverImage?.large ||
     payload.coverImage?.medium ||
+    (typeof payload.cover_image === 'string' && payload.cover_image.trim()) ||
+    payload.cover_image?.extraLarge ||
+    payload.cover_image?.large ||
+    payload.cover_image?.medium ||
+    payload.poster_url ||
+    payload.poster ||
     null;
-  const poster = sanitizeUrl(rawCover) || '/assets/trackup-logo.jpg';
+
+  const sanitizedCover = sanitizeUrl(rawCover);
+  const poster =
+    sanitizedCover ||
+    (typeof rawCover === 'string' && (rawCover.startsWith('http://') || rawCover.startsWith('https://'))
+      ? rawCover.trim()
+      : '/assets/trackup-logo.jpg');
   const backdrop = sanitizeUrl(payload.bannerImage);
 
   // Clean HTML tags from AniList synopsis if present

@@ -13,6 +13,7 @@ import {
   Trash2,
   AlertTriangle,
   X,
+  Lock,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useUIStore } from '../../stores/uiStore';
@@ -22,6 +23,7 @@ import { FavoritesShowcase } from '../favorites/FavoritesShowcase';
 import { formatWatchTime } from '../../lib/dateUtils';
 import { supabase } from '../../lib/supabase';
 import { clearUserLibrary } from '../library/libraryService';
+import { ChangePasswordModal } from '../auth/ChangePasswordModal';
 
 interface ProfilePageProps {
   onSelectTitle?: (titleId: string) => void;
@@ -41,6 +43,9 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   const [editUsername, setEditUsername] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
+
+  // Change Password state
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   const { data: library = [] } = useUserLibrary(user?.id);
 
@@ -280,15 +285,25 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                 <p className="text-sm font-mono text-accent mt-0.5">@{user.username}</p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={handleOpenEditProfile}
                   data-testid="edit-profile-btn"
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs transition-all shadow-md cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs transition-all shadow-md cursor-pointer"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
                   <span>Edit Profile</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsChangePasswordOpen(true)}
+                  data-testid="change-password-btn"
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-xs font-semibold text-text-secondary hover:text-text-primary transition-all shadow-sm cursor-pointer"
+                  title="Change Password"
+                >
+                  <Lock className="w-3.5 h-3.5 text-accent" />
+                  <span>Change Password</span>
                 </button>
                 <button
                   type="button"
@@ -654,6 +669,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
           </div>
         </div>
       )}
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
     </div>
   );
 };

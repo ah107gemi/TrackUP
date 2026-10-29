@@ -46,6 +46,24 @@ export const MediaTypeEnum = z.enum([
   'manhwa',
 ]);
 
+export const CatalogEpisodeSchema = z.object({
+  id: z.string(),
+  episode_number: z.number().int(),
+  name: z.string(),
+  overview: z.string().nullable().optional(),
+  runtime_minutes: z.number().int().nullable().optional(),
+  air_date: z.string().nullable().optional(),
+});
+
+export const CatalogSeasonSchema = z.object({
+  id: z.string(),
+  season_number: z.number().int(),
+  name: z.string(),
+  overview: z.string().nullable().optional(),
+  episode_count: z.number().int(),
+  episodes: z.array(CatalogEpisodeSchema),
+});
+
 export const NormalizedCatalogItemSchema = z.object({
   id: z.string(),
   media_type: MediaTypeEnum,
@@ -62,6 +80,7 @@ export const NormalizedCatalogItemSchema = z.object({
   total_episodes: z.number().int().nullable().optional(),
   episodes: z.number().int().nullable().optional(),
   total_seasons: z.number().int().nullable().optional(),
+  seasons: z.array(CatalogSeasonSchema).optional(),
   total_chapters: z.number().nullable().optional(),
   chapters: z.number().nullable().optional(),
   total_volumes: z.number().int().nullable().optional(),

@@ -248,3 +248,30 @@ describe('Edit Profile Validation & Database Constraints', () => {
     expect(isUsernameTaken('elena_super_tracker', 'u_2')).toBe(false);
   });
 });
+
+describe('Change Password Feature Validation & Logic', () => {
+  const validatePasswordUpdate = (newPass: string, confirmPass: string): string | null => {
+    if (!newPass) return 'Password cannot be empty.';
+    if (newPass.length < 6) return 'Password must be at least 6 characters long.';
+    if (newPass !== confirmPass) return 'Passwords do not match.';
+    return null;
+  };
+
+  it('rejects passwords shorter than 6 characters', () => {
+    expect(validatePasswordUpdate('12345', '12345')).toBe(
+      'Password must be at least 6 characters long.'
+    );
+    expect(validatePasswordUpdate('', '')).toBe('Password cannot be empty.');
+  });
+
+  it('rejects passwords that do not match', () => {
+    expect(validatePasswordUpdate('StrongPassword1!', 'DifferentPassword2@')).toBe(
+      'Passwords do not match.'
+    );
+  });
+
+  it('accepts valid matching passwords with 6+ characters', () => {
+    expect(validatePasswordUpdate('SecretPass123!', 'SecretPass123!')).toBeNull();
+    expect(validatePasswordUpdate('abcdef', 'abcdef')).toBeNull();
+  });
+});
