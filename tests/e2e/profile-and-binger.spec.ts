@@ -65,6 +65,17 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     // Verify Danger Zone Delete Account button exists
     await expect(page.locator('[data-testid="delete-account-btn"]')).toBeVisible();
 
+    // Verify Favorite Category Tiles exist and test navigation to dedicated favorites view
+    await expect(page.locator('[data-testid="favorite-category-tv"]')).toBeVisible();
+    await expect(page.locator('[data-testid="favorite-category-movie"]')).toBeVisible();
+    await expect(page.locator('[data-testid="favorite-category-anime"]')).toBeVisible();
+    await expect(page.locator('[data-testid="favorite-category-reading"]')).toBeVisible();
+
+    await page.locator('[data-testid="favorite-category-tv"]').click();
+    await expect(page.locator('[data-testid="dedicated-favorites-view"]')).toBeVisible();
+    await page.locator('[data-testid="favorites-back-btn"]').click();
+    await expect(page.locator('[data-testid="profile-page"]')).toBeVisible();
+
     // Test Edit Profile Modal: update display name and username
     await page.locator('[data-testid="edit-profile-btn"]').click();
     await expect(page.locator('[data-testid="edit-profile-modal"]')).toBeVisible();

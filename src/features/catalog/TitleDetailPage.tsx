@@ -238,7 +238,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   };
 
   const handleToggleFavorite = async () => {
-    const next = await toggleFavorite(activeUserId, title.id);
+    const next = await toggleFavorite(activeUserId, title.id, title);
     setIsFavorited(next);
   };
 

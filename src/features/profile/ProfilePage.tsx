@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   User,
   Camera,
@@ -14,12 +14,19 @@ import {
   AlertTriangle,
   X,
   Lock,
+  ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useUIStore } from '../../stores/uiStore';
 import { useUserLibrary } from '../library/useLibrary';
 import { uploadAvatarImage } from '../../lib/avatarUpload';
-import { FavoritesShowcase } from '../favorites/FavoritesShowcase';
+import {
+  fetchUserFavorites,
+  filterFavoritesByCategory,
+  type FavoriteItem,
+  type FavoriteCategory,
+} from '../favorites/favoritesService';
+import { CategoryFavoritesView } from '../favorites/CategoryFavoritesView';
 import { formatWatchTime } from '../../lib/dateUtils';
 import { supabase } from '../../lib/supabase';
 import { clearUserLibrary } from '../library/libraryService';
@@ -47,9 +54,65 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   // Change Password state
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
+  // Dedicated Favorites Category State & URL Route Synchronization
+  const [selectedFavoriteCategory, setSelectedFavoriteCategory] = useState<FavoriteCategory | null>(null);
+  const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchUserFavorites(user.id).then(setFavorites);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    const parseUrlCategory = () => {
+      const hash = window.location.hash || '';
+      const pathname = window.location.pathname || '';
+      const target = hash.startsWith('#') ? hash.slice(1) : pathname;
+      const match = target.match(/\/profile\/favorites\/(tv|movie|anime|reading)/i);
+      if (match && match[1]) {
+        setSelectedFavoriteCategory(match[1].toLowerCase() as FavoriteCategory);
+      } else if (target.includes('/profile') && !target.includes('/favorites/')) {
+        setSelectedFavoriteCategory(null);
+      }
+    };
+
+    parseUrlCategory();
+    window.addEventListener('popstate', parseUrlCategory);
+    window.addEventListener('hashchange', parseUrlCategory);
+    return () => {
+      window.removeEventListener('popstate', parseUrlCategory);
+      window.removeEventListener('hashchange', parseUrlCategory);
+    };
+  }, []);
+
+  const handleSelectCategory = (cat: FavoriteCategory) => {
+    setSelectedFavoriteCategory(cat);
+    window.history.pushState({}, '', `#/profile/favorites/${cat}`);
+  };
+
+  const handleBackFromFavorites = () => {
+    setSelectedFavoriteCategory(null);
+    window.history.pushState({}, '', '#/profile');
+    if (user?.id) {
+      fetchUserFavorites(user.id).then(setFavorites);
+    }
+  };
+
   const { data: library = [] } = useUserLibrary(user?.id);
 
   if (!user) return null;
+
+  if (selectedFavoriteCategory) {
+    return (
+      <CategoryFavoritesView
+        userId={user.id}
+        category={selectedFavoriteCategory}
+        onBack={handleBackFromFavorites}
+        onSelectTitle={onSelectTitle}
+      />
+    );
+  }
 
   const handleDeleteAccount = async () => {
     const confirmed = window.confirm(
@@ -538,12 +601,140 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
         </div>
       </div>
 
-      {/* Favorites Showcase */}
+      {/* Category Favorites Section */}
       <div className="space-y-4">
-        <h2 className="text-xl font-bold text-text-primary tracking-tight">
-          Featured Favorites
-        </h2>
-        <FavoritesShowcase userId={user.id} onSelectTitle={onSelectTitle} />
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-text-primary tracking-tight">
+              Favorite Collections
+            </h2>
+            <p className="text-xs text-text-muted mt-0.5">
+              Explore your top pinned titles across specialized media categories
+            </p>
+          </div>
+          <span className="text-xs font-mono text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-lg">
+            {favorites.length} Pinned Total
+          </span>
+        </div>
+
+        {/* 4 Clickable Category Tiles */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 1. TV Shows */}
+          <button
+            type="button"
+            onClick={() => handleSelectCategory('tv')}
+            data-testid="favorite-category-tv"
+            className="group relative p-5 rounded-2xl bg-surface border border-surface-elevated hover:border-purple-500/50 hover:bg-surface-elevated/70 text-left transition-all duration-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between"
+          >
+            <div className="flex items-start justify-between">
+              <div className="p-3 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-400 group-hover:scale-110 transition-transform">
+                <Tv className="w-5 h-5" />
+              </div>
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                {filterFavoritesByCategory(favorites, 'tv').length}
+              </span>
+            </div>
+            <div className="mt-4">
+              <h3 className="text-sm font-bold text-text-primary group-hover:text-purple-400 transition-colors">
+                Favorite TV Shows
+              </h3>
+              <p className="text-xs text-text-muted mt-1 line-clamp-1">
+                Top television series & shows
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-surface-elevated flex items-center justify-between text-xs text-purple-400 font-semibold">
+              <span>View Collection</span>
+              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </button>
+
+          {/* 2. Movies */}
+          <button
+            type="button"
+            onClick={() => handleSelectCategory('movie')}
+            data-testid="favorite-category-movie"
+            className="group relative p-5 rounded-2xl bg-surface border border-surface-elevated hover:border-blue-500/50 hover:bg-surface-elevated/70 text-left transition-all duration-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between"
+          >
+            <div className="flex items-start justify-between">
+              <div className="p-3 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400 group-hover:scale-110 transition-transform">
+                <Film className="w-5 h-5" />
+              </div>
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                {filterFavoritesByCategory(favorites, 'movie').length}
+              </span>
+            </div>
+            <div className="mt-4">
+              <h3 className="text-sm font-bold text-text-primary group-hover:text-blue-400 transition-colors">
+                Favorite Movies
+              </h3>
+              <p className="text-xs text-text-muted mt-1 line-clamp-1">
+                Top cinema & feature films
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-surface-elevated flex items-center justify-between text-xs text-blue-400 font-semibold">
+              <span>View Collection</span>
+              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </button>
+
+          {/* 3. Anime */}
+          <button
+            type="button"
+            onClick={() => handleSelectCategory('anime')}
+            data-testid="favorite-category-anime"
+            className="group relative p-5 rounded-2xl bg-surface border border-surface-elevated hover:border-accent/50 hover:bg-surface-elevated/70 text-left transition-all duration-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between"
+          >
+            <div className="flex items-start justify-between">
+              <div className="p-3 rounded-xl bg-accent/15 border border-accent/30 text-accent group-hover:scale-110 transition-transform">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-accent/20 text-accent border border-accent/30">
+                {filterFavoritesByCategory(favorites, 'anime').length}
+              </span>
+            </div>
+            <div className="mt-4">
+              <h3 className="text-sm font-bold text-text-primary group-hover:text-accent transition-colors">
+                Favorite Anime
+              </h3>
+              <p className="text-xs text-text-muted mt-1 line-clamp-1">
+                Top anime series & movies
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-surface-elevated flex items-center justify-between text-xs text-accent font-semibold">
+              <span>View Collection</span>
+              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </button>
+
+          {/* 4. Manga & Manhwa */}
+          <button
+            type="button"
+            onClick={() => handleSelectCategory('reading')}
+            data-testid="favorite-category-reading"
+            className="group relative p-5 rounded-2xl bg-surface border border-surface-elevated hover:border-cyan-500/50 hover:bg-surface-elevated/70 text-left transition-all duration-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between"
+          >
+            <div className="flex items-start justify-between">
+              <div className="p-3 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 group-hover:scale-110 transition-transform">
+                <BookOpen className="w-5 h-5" />
+              </div>
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                {filterFavoritesByCategory(favorites, 'reading').length}
+              </span>
+            </div>
+            <div className="mt-4">
+              <h3 className="text-sm font-bold text-text-primary group-hover:text-cyan-400 transition-colors">
+                Favorite Manga & Manhwa
+              </h3>
+              <p className="text-xs text-text-muted mt-1 line-clamp-1">
+                Top Japanese Manga & Korean Manhwa
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-surface-elevated flex items-center justify-between text-xs text-cyan-400 font-semibold">
+              <span>View Collection</span>
+              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </button>
+        </div>
       </div>
 
       {/* Account Settings & Danger Zone */}
