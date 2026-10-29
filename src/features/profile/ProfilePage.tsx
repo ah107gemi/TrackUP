@@ -12,6 +12,7 @@ import {
   Clock,
   Trash2,
   AlertTriangle,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useUIStore } from '../../stores/uiStore';
@@ -33,6 +34,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Dedicated Edit Profile state
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
 
   const { data: library = [] } = useUserLibrary(user?.id);
 
@@ -83,6 +91,58 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
 
     await updateProfile({ avatar_url: url });
     setUploading(false);
+  };
+
+  const handleOpenEditProfile = () => {
+    setEditName(profile?.display_name || profile?.full_name || user.username || '');
+    setEditUsername(profile?.username || user.username || '');
+    setEditError(null);
+    setIsEditingProfile(true);
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditError(null);
+
+    const cleanName = editName.trim();
+    const cleanUsername = editUsername.trim().toLowerCase();
+
+    if (!cleanName) {
+      setEditError('Name cannot be empty.');
+      return;
+    }
+    if (!cleanUsername) {
+      setEditError('Username cannot be empty.');
+      return;
+    }
+    if (cleanUsername.length < 3) {
+      setEditError('Username must be at least 3 characters.');
+      return;
+    }
+    if (!/^[a-zA-Z0-9_.-]+$/.test(cleanUsername)) {
+      setEditError('Username can only contain letters, numbers, underscores, periods, and hyphens.');
+      return;
+    }
+
+    setSavingProfile(true);
+    try {
+      const res = await updateProfile({
+        display_name: cleanName,
+        full_name: cleanName,
+        username: cleanUsername,
+      });
+
+      if (res.error) {
+        setEditError(res.error);
+        return;
+      }
+
+      setIsEditingProfile(false);
+    } catch (err: any) {
+      setEditError(err?.message || 'Failed to update profile.');
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   // Category segregation
@@ -220,14 +280,26 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                 <p className="text-sm font-mono text-accent mt-0.5">@{user.username}</p>
               </div>
 
-              <button
-                onClick={() => setProfileModalOpen(true)}
-                data-testid="edit-profile-btn"
-                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-surface-elevated hover:bg-accent hover:text-background border border-surface-elevated text-xs font-semibold text-text-primary transition-all shadow-sm"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>Edit Profile & Settings</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleOpenEditProfile}
+                  data-testid="edit-profile-btn"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs transition-all shadow-md cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Edit Profile</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProfileModalOpen(true)}
+                  data-testid="open-settings-btn"
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-xs font-semibold text-text-secondary hover:text-text-primary transition-all shadow-sm cursor-pointer"
+                  title="Preferences & Settings"
+                >
+                  <span>Settings</span>
+                </button>
+              </div>
             </div>
 
             {profile?.bio && (
@@ -484,6 +556,104 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
           </button>
         </div>
       </div>
+
+      {/* Edit Profile Modal (Name & Username) */}
+      {isEditingProfile && (
+        <div
+          data-testid="edit-profile-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setIsEditingProfile(false)}
+        >
+          <div
+            className="w-full max-w-md bg-surface border border-surface-elevated rounded-2xl shadow-2xl p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-surface-elevated">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent flex items-center justify-center">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-text-primary">Edit Profile</h2>
+                  <p className="text-xs text-text-muted">Update your public display name and handle</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditingProfile(false)}
+                data-testid="edit-profile-close-btn"
+                className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+              {editError && (
+                <div
+                  data-testid="edit-profile-error"
+                  className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium"
+                >
+                  {editError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary mb-1">
+                  Full Name / Display Name
+                </label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="e.g. Elena Tracker"
+                  data-testid="edit-profile-name-input"
+                  className="w-full px-3.5 py-2.5 bg-surface-elevated border border-surface-elevated focus:border-accent rounded-xl text-text-primary text-sm focus:outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary mb-1">
+                  Username (@handle)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted text-sm font-mono">@</span>
+                  <input
+                    type="text"
+                    value={editUsername}
+                    onChange={(e) => setEditUsername(e.target.value)}
+                    placeholder="username"
+                    data-testid="edit-profile-username-input"
+                    className="w-full pl-8 pr-3.5 py-2.5 bg-surface-elevated border border-surface-elevated focus:border-accent rounded-xl text-text-primary text-sm font-mono focus:outline-none transition-colors"
+                  />
+                </div>
+                <p className="text-[11px] text-text-muted mt-1">
+                  Used by friends to search and follow your profile.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-surface-elevated flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingProfile(false)}
+                  data-testid="edit-profile-cancel-btn"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-surface-elevated transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingProfile}
+                  data-testid="edit-profile-submit-btn"
+                  className="px-5 py-2 rounded-xl bg-accent hover:bg-accent-hover disabled:opacity-50 text-background font-bold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                >
+                  {savingProfile ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

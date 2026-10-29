@@ -4,6 +4,7 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
   test('navigates to Profile page, views TV Time-style showcases, and imports Binger CSV', async ({
     page,
   }) => {
+    test.setTimeout(60000);
     await page.goto('/');
 
     const timestamp = Date.now();
@@ -63,6 +64,18 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
 
     // Verify Danger Zone Delete Account button exists
     await expect(page.locator('[data-testid="delete-account-btn"]')).toBeVisible();
+
+    // Test Edit Profile Modal: update display name and username
+    await page.locator('[data-testid="edit-profile-btn"]').click();
+    await expect(page.locator('[data-testid="edit-profile-modal"]')).toBeVisible();
+    await page.locator('[data-testid="edit-profile-name-input"]').fill('Binger Master');
+    await page.locator('[data-testid="edit-profile-username-input"]').fill(`new_binger_${timestamp}`);
+    await page.locator('[data-testid="edit-profile-submit-btn"]').click();
+    await expect(page.locator('[data-testid="edit-profile-modal"]')).toBeHidden();
+
+    // Verify updated name and username on Profile page
+    await expect(page.locator('[data-testid="profile-page"]')).toContainText('Binger Master');
+    await expect(page.locator('[data-testid="profile-page"]')).toContainText(`@new_binger_${timestamp}`);
 
     // 4. Test Friends & Social Search Panel with @username query
     if (!isMobile) {

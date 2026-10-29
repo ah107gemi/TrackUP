@@ -16,7 +16,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onSelectTitle }) => 
   const { user, profile, updateProfile, signOut } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'settings' | 'favorites'>('settings');
-  const [displayName, setDisplayName] = useState(profile?.display_name || '');
+  const [displayName, setDisplayName] = useState(profile?.display_name || profile?.full_name || user?.username || '');
+  const [username, setUsername] = useState(profile?.username || user?.username || '');
+  const [modalError, setModalError] = useState<string | null>(null);
   const [bio, setBio] = useState(profile?.bio || '');
   const [libraryVisibility, setLibraryVisibility] = useState<PrivacyLevel>(
     profile?.library_visibility || 'public'
@@ -59,14 +61,44 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onSelectTitle }) => 
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setModalError(null);
+
+    const cleanName = displayName.trim();
+    const cleanUsername = username.trim().toLowerCase();
+
+    if (!cleanName) {
+      setModalError('Display name cannot be empty.');
+      return;
+    }
+    if (!cleanUsername) {
+      setModalError('Username cannot be empty.');
+      return;
+    }
+    if (cleanUsername.length < 3) {
+      setModalError('Username must be at least 3 characters.');
+      return;
+    }
+    if (!/^[a-zA-Z0-9_.-]+$/.test(cleanUsername)) {
+      setModalError('Username can only contain letters, numbers, underscores, periods, and hyphens.');
+      return;
+    }
+
     setLoading(true);
-    await updateProfile({
-      display_name: displayName,
+    const res = await updateProfile({
+      display_name: cleanName,
+      full_name: cleanName,
+      username: cleanUsername,
       bio,
       library_visibility: libraryVisibility,
       rating_display_preference: ratingPref,
     });
     setLoading(false);
+
+    if (res.error) {
+      setModalError(res.error);
+      return;
+    }
+
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -135,9 +167,18 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onSelectTitle }) => 
         {/* Tab 1: Settings Form */}
         {activeTab === 'settings' ? (
           <form onSubmit={handleSave} className="mt-5 space-y-4">
+            {modalError && (
+              <div
+                data-testid="profile-modal-error"
+                className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium"
+              >
+                {modalError}
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-medium text-text-secondary mb-1">
-                Display Name
+                Display Name / Full Name
               </label>
               <input
                 type="text"
@@ -146,6 +187,20 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onSelectTitle }) => 
                 placeholder="Your full name"
                 data-testid="profile-displayname-input"
                 className="w-full px-3 py-2 bg-surface-elevated border border-surface-elevated rounded-xl text-text-primary text-sm focus:border-accent focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">
+                Username (@handle)
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Unique username"
+                data-testid="profile-username-input"
+                className="w-full px-3 py-2 bg-surface-elevated border border-surface-elevated rounded-xl text-text-primary text-sm font-mono focus:border-accent focus:outline-none"
               />
             </div>
 

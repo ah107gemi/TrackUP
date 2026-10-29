@@ -11,6 +11,7 @@ import {
   Search,
   X,
   Check,
+  ChevronDown,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../auth/AuthContext';
@@ -42,6 +43,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
 
   const [activeStatus, setActiveStatus] = useState<TrackingStatus | 'all'>('all');
   const [selectedFormat, setSelectedFormat] = useState<MediaType | 'all'>('all');
+  const [localSearchQuery, setLocalSearchQuery] = useState('');
 
   // Dedicated Reading Search & Quick-Add state (Manga/Manhwa only)
   const [readingSearchQuery, setReadingSearchQuery] = useState('');
@@ -93,16 +95,28 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
       ? ['movie', 'tv', 'anime_series', 'anime_film']
       : ['manga', 'manhwa'];
 
-  // Filter items by domain, status, and sub-format
+  // Filter items by domain, status, sub-format, and local library search
   const filtered = library.filter((item) => {
     if (!domainMediaTypes.includes(item.title.media_type)) return false;
     if (activeStatus !== 'all' && item.status !== activeStatus) return false;
     if (selectedFormat !== 'all' && item.title.media_type !== selectedFormat) return false;
+
+    if (localSearchQuery.trim()) {
+      const q = localSearchQuery.trim().toLowerCase();
+      const titleMatches = item.title.title.toLowerCase().includes(q);
+      const originalTitleMatches = item.title.original_title
+        ? item.title.original_title.toLowerCase().includes(q)
+        : false;
+      if (!titleMatches && !originalTitleMatches) return false;
+    }
+
     return true;
   });
 
+  const domainTotalCount = library.filter((item) => domainMediaTypes.includes(item.title.media_type)).length;
+
   const statuses: { id: TrackingStatus | 'all'; label: string }[] = [
-    { id: 'all', label: 'All' },
+    { id: 'all', label: 'All Statuses' },
     { id: 'active', label: domain === 'watch' ? 'Watching' : 'Reading' },
     { id: 'planned', label: 'Planned' },
     { id: 'completed', label: 'Completed' },
@@ -354,32 +368,62 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
         </div>
       )}
 
-      {/* Filter Row: Status Segment Controller + Sub-format filter */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-surface-elevated pb-3">
-        {/* Status segment controller */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto">
-          {statuses.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setActiveStatus(s.id)}
-              data-testid={`status-tab-${s.id}`}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all ${
-                activeStatus === s.id
-                  ? 'bg-accent text-background shadow-md'
-                  : 'bg-surface border border-surface-elevated text-text-secondary hover:text-text-primary'
-              }`}
+      {/* Filter Row: Local Library Search Bar + Status Select Dropdown + Sub-format filter */}
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 border-b border-surface-elevated pb-3">
+        {/* Left: Local Search Input + Status Dropdown */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 max-w-xl">
+          {/* Local Library Search Bar */}
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-accent absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={localSearchQuery}
+              onChange={(e) => setLocalSearchQuery(e.target.value)}
+              placeholder={domain === 'watch' ? 'Search your watch library...' : 'Search your reading library...'}
+              data-testid="library-search-input"
+              className="w-full pl-9 pr-8 py-2 bg-surface border border-surface-elevated rounded-xl text-text-primary text-xs focus:border-accent focus:outline-none placeholder:text-text-muted transition-colors shadow-sm"
+            />
+            {localSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setLocalSearchQuery('')}
+                aria-label="Clear local search"
+                data-testid="library-search-clear-btn"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-text-muted hover:text-text-primary cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Status Dropdown Filter */}
+          <div className="relative shrink-0">
+            <select
+              value={activeStatus}
+              onChange={(e) => setActiveStatus(e.target.value as TrackingStatus | 'all')}
+              data-testid="library-status-select"
+              aria-label="Filter by tracking status"
+              className="w-full sm:w-auto appearance-none pl-3.5 pr-9 py-2 bg-surface hover:bg-surface-elevated border border-surface-elevated hover:border-accent/40 rounded-xl text-text-primary text-xs font-semibold focus:border-accent focus:outline-none transition-colors shadow-sm cursor-pointer"
             >
-              {s.label}
-            </button>
-          ))}
+              {statuses.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 text-text-muted absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
         </div>
 
-        {/* Sub-format filter */}
-        <div className="flex items-center gap-1.5">
+        {/* Right: Sub-format filter */}
+        <div className="flex items-center gap-1.5 self-start sm:self-auto overflow-x-auto no-scrollbar">
           <button
             onClick={() => setSelectedFormat('all')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium ${
-              selectedFormat === 'all' ? 'text-accent font-bold' : 'text-text-muted hover:text-text-secondary'
+            data-testid="format-filter-all"
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+              selectedFormat === 'all'
+                ? 'text-accent font-bold bg-accent/15 border border-accent/30'
+                : 'text-text-muted hover:text-text-secondary bg-surface border border-surface-elevated'
             }`}
           >
             All
@@ -388,8 +432,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
             <button
               key={t}
               onClick={() => setSelectedFormat(t)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium capitalize ${
-                selectedFormat === t ? 'text-accent font-bold' : 'text-text-muted hover:text-text-secondary'
+              data-testid={`format-filter-${t}`}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium capitalize transition-colors ${
+                selectedFormat === t
+                  ? 'text-accent font-bold bg-accent/15 border border-accent/30'
+                  : 'text-text-muted hover:text-text-secondary bg-surface border border-surface-elevated'
               }`}
             >
               {t.replace('_', ' ')}
@@ -408,7 +455,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
             />
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : domainTotalCount === 0 ? (
         <div
           data-testid="empty-library-callout"
           className="text-center py-16 px-4 bg-surface rounded-2xl border border-surface-elevated max-w-lg mx-auto"
@@ -431,6 +478,31 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
           >
             <Compass className="w-4 h-4" />
             <span>Discover Titles</span>
+          </button>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div
+          data-testid="no-library-matches"
+          className="text-center py-12 px-4 bg-surface rounded-2xl border border-surface-elevated max-w-lg mx-auto space-y-3"
+        >
+          <Search className="w-10 h-10 text-text-muted/40 mx-auto" />
+          <h3 className="text-sm font-bold text-text-primary">No matching titles in your library</h3>
+          <p className="text-xs text-text-muted">
+            No tracked items match your search
+            {localSearchQuery ? ` for "${localSearchQuery}"` : ''}
+            {activeStatus !== 'all' ? ` with status "${activeStatus}"` : ''}.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setLocalSearchQuery('');
+              setActiveStatus('all');
+              setSelectedFormat('all');
+            }}
+            data-testid="reset-library-filters-btn"
+            className="px-4 py-2 rounded-xl bg-surface-elevated hover:bg-accent hover:text-background text-xs font-semibold text-text-secondary hover:text-background transition-colors cursor-pointer"
+          >
+            Reset Library Filters
           </button>
         </div>
       ) : (

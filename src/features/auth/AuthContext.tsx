@@ -380,28 +380,131 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateProfile = async (updates: Partial<Profile>): Promise<{ error: string | null }> => {
     if (!user || !profile) return { error: 'Not authenticated' };
 
+    const formattedUpdates: Partial<Profile> = { ...updates };
+    if (formattedUpdates.username) {
+      formattedUpdates.username = formattedUpdates.username.trim().toLowerCase();
+    }
+
+    // Helper to persist updates locally in mock storage
+    const applyMockUpdate = (): { error: string | null } => {
+      const mockUsers: MockUserRecord[] = JSON.parse(localStorage.getItem(LOCAL_STORAGE_USERS_KEY) || '[]');
+      const mockProfiles: Record<string, Profile> = JSON.parse(localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY) || '{}');
+
+      if (formattedUpdates.username && formattedUpdates.username !== user.username) {
+        const isTakenInUsers = mockUsers.some(
+          (u) => u.id !== user.id && u.username.toLowerCase() === formattedUpdates.username!.toLowerCase()
+        );
+        const isTakenInProfiles = Object.values(mockProfiles).some(
+          (p) => p.id !== user.id && p.username?.toLowerCase() === formattedUpdates.username!.toLowerCase()
+        );
+
+        if (isTakenInUsers || isTakenInProfiles) {
+          return { error: 'Username is already taken. Please choose another.' };
+        }
+      }
+
+      const updated: Profile = { ...profile, ...formattedUpdates, updated_at: new Date().toISOString() };
+      mockProfiles[user.id] = updated;
+      localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(mockProfiles));
+      setProfile(updated);
+
+      if (formattedUpdates.username && formattedUpdates.username !== user.username) {
+        const updatedUser: UserSession = { ...user, username: formattedUpdates.username };
+        setUser(updatedUser);
+        localStorage.setItem(LOCAL_STORAGE_SESSION_KEY, JSON.stringify(updatedUser));
+
+        const userIdx = mockUsers.findIndex((u) => u.id === user.id);
+        if (userIdx >= 0) {
+          mockUsers[userIdx].username = formattedUpdates.username;
+          if (formattedUpdates.display_name) mockUsers[userIdx].displayName = formattedUpdates.display_name;
+          localStorage.setItem(LOCAL_STORAGE_USERS_KEY, JSON.stringify(mockUsers));
+        }
+      }
+
+      return { error: null };
+    };
+
+    // If session is an offline mock user, bypass Supabase entirely
+    if (user.id.startsWith('user_')) {
+      return applyMockUpdate();
+    }
+
     try {
+      const dbPayload: Record<string, any> = {
+        ...formattedUpdates,
+        updated_at: new Date().toISOString(),
+      };
+
       const { error } = await supabase
         .from('profiles')
         // @ts-expect-error dynamic typing
-        .update({ ...updates, updated_at: new Date().toISOString() })
+        .update(dbPayload)
         .eq('id', user.id);
 
       if (!error) {
-        setProfile({ ...profile, ...updates, updated_at: new Date().toISOString() });
+        setProfile({ ...profile, ...formattedUpdates, updated_at: new Date().toISOString() });
+        if (formattedUpdates.username && formattedUpdates.username !== user.username) {
+          const updatedUser: UserSession = { ...user, username: formattedUpdates.username };
+          setUser(updatedUser);
+          localStorage.setItem(LOCAL_STORAGE_SESSION_KEY, JSON.stringify(updatedUser));
+        }
         return { error: null };
       }
-    } catch {
-      // ignore
-    }
 
-    // Mock update
-    const updated: Profile = { ...profile, ...updates, updated_at: new Date().toISOString() };
-    const profiles: Record<string, Profile> = JSON.parse(localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY) || '{}');
-    profiles[user.id] = updated;
-    localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(profiles));
-    setProfile(updated);
-    return { error: null };
+      const errCode = (error as any)?.code;
+      const errMsg = ((error as any)?.message || '').toLowerCase();
+      if (
+        errCode === '23505' ||
+        errMsg.includes('unique') ||
+        errMsg.includes('duplicate') ||
+        errMsg.includes('already exists') ||
+        errMsg.includes('profiles_username_key')
+      ) {
+        return { error: 'Username is already taken. Please choose another.' };
+      }
+
+      // If error was due to unrecognized column, retry without full_name
+      if (errCode === 'PGRST204' || errMsg.includes('column') || (error as any)?.status === 400) {
+        if ('full_name' in dbPayload) {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { full_name, ...safePayload } = dbPayload;
+          const retryRes = await supabase
+            .from('profiles')
+            // @ts-expect-error dynamic typing
+            .update(safePayload)
+            .eq('id', user.id);
+
+          if (!retryRes.error) {
+            setProfile({ ...profile, ...formattedUpdates, updated_at: new Date().toISOString() });
+            if (formattedUpdates.username && formattedUpdates.username !== user.username) {
+              const updatedUser: UserSession = { ...user, username: formattedUpdates.username };
+              setUser(updatedUser);
+              localStorage.setItem(LOCAL_STORAGE_SESSION_KEY, JSON.stringify(updatedUser));
+            }
+            return { error: null };
+          }
+          if (
+            (retryRes.error as any)?.code === '23505' ||
+            ((retryRes.error as any)?.message || '').toLowerCase().includes('unique')
+          ) {
+            return { error: 'Username is already taken. Please choose another.' };
+          }
+        }
+      }
+
+      // If network / fetch failed or offline, fall back to mock update
+      if (errMsg.includes('failed to fetch') || errMsg.includes('network') || !window.navigator.onLine) {
+        return applyMockUpdate();
+      }
+
+      return { error: (error as any)?.message || 'Failed to update profile.' };
+    } catch (err: any) {
+      const msg = (err?.message || '').toLowerCase();
+      if (err?.code === '23505' || msg.includes('unique') || msg.includes('duplicate')) {
+        return { error: 'Username is already taken. Please choose another.' };
+      }
+      return applyMockUpdate();
+    }
   };
 
   return (

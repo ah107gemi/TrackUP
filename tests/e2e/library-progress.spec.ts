@@ -4,6 +4,7 @@ test.describe('TrackUp Phase 3: Watch & Read Libraries, 3 View Modes & Granular 
   test('adds TV show, marks episode watched, adds Manhwa, increments chapter to 12.5, and tests 3 view modes', async ({
     page,
   }) => {
+    test.setTimeout(60000);
     await page.goto('/');
 
     // 1. Authenticate user
@@ -32,7 +33,7 @@ test.describe('TrackUp Phase 3: Watch & Read Libraries, 3 View Modes & Granular 
     await page.locator('[data-testid="omnisearch-trigger"]').click();
     await page.locator('[data-testid="omnisearch-input"]').fill('Breaking Bad');
     const tvResult = page.locator('[data-testid="omnisearch-result-tv_breaking_bad_1396"]');
-    await expect(tvResult).toBeVisible();
+    await expect(tvResult).toBeVisible({ timeout: 15000 });
     await tvResult.click();
 
     await expect(page.locator('[data-testid="title-detail-page"]')).toBeVisible();
@@ -50,7 +51,7 @@ test.describe('TrackUp Phase 3: Watch & Read Libraries, 3 View Modes & Granular 
     await page.locator('[data-testid="search-mode-read"]').click();
     await page.locator('[data-testid="omnisearch-input"]').fill('Solo Leveling');
     const manhwaResult = page.locator('[data-testid="omnisearch-result-manhwa_solo_leveling_105398"]');
-    await expect(manhwaResult).toBeVisible();
+    await expect(manhwaResult).toBeVisible({ timeout: 15000 });
     await manhwaResult.click();
 
     await expect(page.locator('[data-testid="title-detail-page"]')).toBeVisible();
@@ -78,6 +79,31 @@ test.describe('TrackUp Phase 3: Watch & Read Libraries, 3 View Modes & Granular 
     }
 
     await expect(page.locator('[data-testid="watch-library-view"]')).toBeVisible();
+    await expect(page.locator('text=Breaking Bad')).toBeVisible();
+
+    // Test Local Library Search & Status Dropdown Filter
+    const searchInput = page.locator('[data-testid="library-search-input"]');
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill('Breaking');
+    await expect(page.locator('text=Breaking Bad')).toBeVisible();
+
+    // Search for non-matching query
+    await searchInput.fill('NonExistentTitle12345');
+    await expect(page.locator('[data-testid="no-library-matches"]')).toBeVisible();
+
+    // Clear search using clear button
+    await page.locator('[data-testid="library-search-clear-btn"]').click();
+    await expect(page.locator('text=Breaking Bad')).toBeVisible();
+
+    // Filter by Status Dropdown
+    const statusSelect = page.locator('[data-testid="library-status-select"]');
+    await expect(statusSelect).toBeVisible();
+    await statusSelect.selectOption('active');
+    await expect(page.locator('text=Breaking Bad')).toBeVisible();
+    await statusSelect.selectOption('completed');
+    await expect(page.locator('[data-testid="no-library-matches"]')).toBeVisible();
+    // Reset back to all
+    await statusSelect.selectOption('all');
     await expect(page.locator('text=Breaking Bad')).toBeVisible();
 
     // Default: Poster Grid mode
