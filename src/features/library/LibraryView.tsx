@@ -26,6 +26,10 @@ import { searchReadingCatalog } from '../catalog/catalogService';
 import type { NormalizedCatalogItem } from '../../lib/validators';
 import type { TrackingStatus, MediaType } from '../../types/database.types';
 import { formatRuntime } from '../../lib/dateUtils';
+import {
+  readFiltersFromUrl,
+  persistLibraryFilters,
+} from './libraryFilterState';
 
 interface LibraryViewProps {
   domain: 'watch' | 'read';
@@ -33,7 +37,15 @@ interface LibraryViewProps {
 }
 
 export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle }) => {
-  const { libraryViewMode, setLibraryViewMode, setActiveTab } = useUIStore();
+  const {
+    libraryViewMode,
+    setLibraryViewMode,
+    setActiveTab,
+    watchLibraryFilters,
+    setWatchLibraryFilters,
+    readLibraryFilters,
+    setReadLibraryFilters,
+  } = useUIStore();
   const { user } = useAuth();
   const { data: library = [], isLoading } = useUserLibrary(user?.id);
 
@@ -41,9 +53,33 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
   const incrementChapter = useIncrementChapter();
   const upsertMutation = useUpsertLibrary();
 
-  const [activeStatus, setActiveStatus] = useState<TrackingStatus | 'all'>('all');
-  const [selectedFormat, setSelectedFormat] = useState<MediaType | 'all'>('all');
-  const [localSearchQuery, setLocalSearchQuery] = useState('');
+  const currentFilters = domain === 'watch' ? watchLibraryFilters : readLibraryFilters;
+  const setFilters = domain === 'watch' ? setWatchLibraryFilters : setReadLibraryFilters;
+
+  const activeStatus = currentFilters.status;
+  const selectedFormat = currentFilters.format;
+  const localSearchQuery = currentFilters.searchQuery;
+
+  const setActiveStatus = (status: TrackingStatus | 'all') => setFilters({ status });
+  const setSelectedFormat = (format: MediaType | 'all') => setFilters({ format });
+  const setLocalSearchQuery = (searchQuery: string) => setFilters({ searchQuery });
+
+  // Listen to popstate for back/forward browser navigation affecting query params
+  useEffect(() => {
+    const handlePopState = () => {
+      const fromUrl = readFiltersFromUrl();
+      if (fromUrl.status || fromUrl.format || fromUrl.searchQuery !== undefined) {
+        setFilters(fromUrl);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [setFilters]);
+
+  // Ensure current filters are reflected in URL for active domain
+  useEffect(() => {
+    persistLibraryFilters(currentFilters, domain);
+  }, [domain]);
 
   // Dedicated Reading Search & Quick-Add state (Manga/Manhwa only)
   const [readingSearchQuery, setReadingSearchQuery] = useState('');

@@ -172,6 +172,29 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     await expect(page.locator('[data-testid="library-compact-grid"]')).toBeVisible();
     await expect(page.locator('text=2h 28m')).toBeVisible();
 
+    // Verify Filter State Preservation and Yellowstone Poster
+    await page.locator('[data-testid="library-status-select"]').selectOption('active');
+    await page.locator('[data-testid="library-search-input"]').fill('Yellowstone');
+    await expect(page.locator('text=Yellowstone')).toBeVisible();
+
+    // Verify Yellowstone poster contains the valid TMDB URL
+    const yellowstonePoster = page.locator('img[src*="a743b67R5AARn4yq1y9wD6oE1hQ.jpg"]');
+    await expect(yellowstonePoster).toBeVisible();
+
+    // Click into Yellowstone to view details
+    await page.locator('text=Yellowstone').first().click();
+    await expect(page.locator('[data-testid="title-detail-page"]')).toBeVisible();
+
+    // Click Back and verify filter state is preserved
+    await page.locator('[data-testid="detail-back-button"]').click();
+    await expect(page.locator('[data-testid="watch-library-view"]')).toBeVisible();
+    await expect(page.locator('[data-testid="library-status-select"]')).toHaveValue('active');
+    await expect(page.locator('[data-testid="library-search-input"]')).toHaveValue('Yellowstone');
+
+    // Reset filters for subsequent tests
+    await page.locator('[data-testid="library-search-clear-btn"]').click();
+    await page.locator('[data-testid="library-status-select"]').selectOption('all');
+
     // 7. Navigate back to Profile page to verify category-specific watch time updates
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-profile"]').click();

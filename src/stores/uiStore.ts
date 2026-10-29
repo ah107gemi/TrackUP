@@ -1,4 +1,9 @@
 import { create } from 'zustand';
+import {
+  type LibraryFilterState,
+  getInitialLibraryFilters,
+  persistLibraryFilters,
+} from '../features/library/libraryFilterState';
 
 export type NavigationTab =
   | 'dashboard'
@@ -33,9 +38,14 @@ interface UIState {
   setLibraryViewMode: (mode: LibraryViewMode) => void;
   scrolledHeaderTitle: string | null;
   setScrolledHeaderTitle: (title: string | null) => void;
+  // Preserved Library Filter State
+  watchLibraryFilters: LibraryFilterState;
+  setWatchLibraryFilters: (filters: Partial<LibraryFilterState>) => void;
+  readLibraryFilters: LibraryFilterState;
+  setReadLibraryFilters: (filters: Partial<LibraryFilterState>) => void;
 }
 
-export const useUIStore = create<UIState>((set) => ({
+export const useUIStore = create<UIState>((set, get) => ({
   sidebarCollapsed: false,
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
   mobileDrawerOpen: false,
@@ -54,4 +64,24 @@ export const useUIStore = create<UIState>((set) => ({
   setLibraryViewMode: (mode) => set({ libraryViewMode: mode }),
   scrolledHeaderTitle: null,
   setScrolledHeaderTitle: (title) => set({ scrolledHeaderTitle: title }),
+
+  watchLibraryFilters: getInitialLibraryFilters('watch'),
+  setWatchLibraryFilters: (filters) => {
+    const updated: LibraryFilterState = {
+      ...get().watchLibraryFilters,
+      ...filters,
+    };
+    persistLibraryFilters(updated, 'watch');
+    set({ watchLibraryFilters: updated });
+  },
+
+  readLibraryFilters: getInitialLibraryFilters('read'),
+  setReadLibraryFilters: (filters) => {
+    const updated: LibraryFilterState = {
+      ...get().readLibraryFilters,
+      ...filters,
+    };
+    persistLibraryFilters(updated, 'read');
+    set({ readLibraryFilters: updated });
+  },
 }));

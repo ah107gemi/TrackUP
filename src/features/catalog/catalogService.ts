@@ -201,8 +201,10 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     release_date: '2018-06-20',
     synopsis:
       'Follow the violent world of the Dutton family, who controls the largest contiguous ranch in the United States. Led by their patriarch John Dutton, the family defends their land against constant attack by land developers, an Indian reservation, and America\'s first National Park.',
-    poster_url: 'https://image.tmdb.org/t/p/w500/peNC0eyc3TQJa6x4TdKIIIRizUT.jpg',
+    poster_url: 'https://image.tmdb.org/t/p/w500/a743b67R5AARn4yq1y9wD6oE1hQ.jpg',
+    poster_path: 'https://image.tmdb.org/t/p/w500/a743b67R5AARn4yq1y9wD6oE1hQ.jpg',
     backdrop_url: 'https://image.tmdb.org/t/p/w1280/7F1s2e5v0QJk5yU7Xw2s2zX.jpg',
+    backdrop_path: 'https://image.tmdb.org/t/p/w1280/7F1s2e5v0QJk5yU7Xw2s2zX.jpg',
     genres: ['Western', 'Drama'],
     origin_country: 'US',
     status: 'returning series',

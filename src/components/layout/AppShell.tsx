@@ -40,12 +40,28 @@ export const AppShell: React.FC = () => {
   const incrementChapter = useIncrementChapter();
 
   const handleSelectTitle = (id: string) => {
+    if (typeof window !== 'undefined' && window.history) {
+      window.history.pushState({ titleId: id }, '', window.location.href);
+    }
     setSelectedTitleId(id);
   };
 
   const handleBackFromDetail = () => {
     setSelectedTitleId(null);
+    if (typeof window !== 'undefined' && window.history?.state?.titleId) {
+      window.history.back();
+    }
   };
+
+  React.useEffect(() => {
+    const handlePopState = () => {
+      if (selectedTitleId) {
+        setSelectedTitleId(null);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [selectedTitleId, setSelectedTitleId]);
 
   // Continue Watching / Currently Reading: Active media or where progress > 0
   const continueItems = userLibrary.filter((item) => {

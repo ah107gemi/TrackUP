@@ -533,9 +533,9 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       {/* Cinematic Backdrop Hero */}
       <div className="relative rounded-3xl overflow-hidden bg-surface border border-surface-elevated shadow-2xl">
         <div className="relative w-full h-[260px] md:h-[420px] bg-surface-elevated">
-          {title.backdrop_url ? (
+          {title.backdrop_url || (title as any).backdrop_path ? (
             <img
-              src={title.backdrop_url}
+              src={title.backdrop_url || (title as any).backdrop_path}
               alt={title.title}
               className="w-full h-full object-cover"
               onError={(e) => {
@@ -553,7 +553,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
           {/* Poster Card */}
           <div ref={heroRef} className="w-36 md:w-56 shrink-0 rounded-2xl overflow-hidden border-2 border-surface-elevated shadow-2xl bg-surface">
             <img
-              src={title.poster_url || '/assets/trackup-logo.jpg'}
+              src={title.poster_url || (title as any).poster_path || '/assets/trackup-logo.jpg'}
               alt={title.title}
               className="w-full aspect-[2/3] object-cover"
               onError={(e) => {

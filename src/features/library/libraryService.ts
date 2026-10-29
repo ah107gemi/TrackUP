@@ -65,6 +65,30 @@ export function getStoredHistory(): HistoryRecord[] {
 
 export async function fetchUserLibrary(userId: string): Promise<UserLibraryItem[]> {
   const all = getStoredLibraries();
+  let modified = false;
+
+  for (const item of all) {
+    if (
+      item.title_id === 'tmdb_tv_73586' ||
+      item.title?.title === 'Yellowstone' ||
+      item.title?.id === 'tmdb_tv_73586'
+    ) {
+      if (
+        !item.title.poster_url ||
+        item.title.poster_url.includes('peNC0') ||
+        item.title.poster_url === '/assets/trackup-logo.jpg'
+      ) {
+        item.title.poster_url = 'https://image.tmdb.org/t/p/w500/a743b67R5AARn4yq1y9wD6oE1hQ.jpg';
+        (item.title as any).poster_path = 'https://image.tmdb.org/t/p/w500/a743b67R5AARn4yq1y9wD6oE1hQ.jpg';
+        modified = true;
+      }
+    }
+  }
+
+  if (modified) {
+    saveStoredLibraries(all);
+  }
+
   return all.filter((item) => item.user_id === userId);
 }
 

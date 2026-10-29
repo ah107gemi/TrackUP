@@ -39,6 +39,13 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
     (item as any).chapters ||
     (item as any).number_of_chapters;
 
+  const rawPoster = item.poster_url || (item as any).poster_path;
+  const posterUrl = rawPoster
+    ? rawPoster.startsWith('http')
+      ? rawPoster
+      : `https://image.tmdb.org/t/p/w500${rawPoster.startsWith('/') ? '' : '/'}${rawPoster}`
+    : null;
+
   return (
     <div
       onClick={onClick}
@@ -48,7 +55,7 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
       {/* Poster Image Container: Fixed 2:3 aspect ratio with #16161D dark skeleton */}
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-[#16161D]">
         {/* Dark Skeleton Loader */}
-        {!imageLoaded && item.poster_url && (
+        {!imageLoaded && posterUrl && (
           <div
             data-testid="poster-skeleton"
             className="absolute inset-0 bg-[#16161D] animate-pulse flex items-center justify-center z-0"
@@ -57,9 +64,9 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
           </div>
         )}
 
-        {item.poster_url ? (
+        {posterUrl ? (
           <img
-            src={item.poster_url}
+            src={posterUrl}
             alt={item.title}
             className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-300 relative z-10 ${
               imageLoaded ? 'opacity-100' : 'opacity-0'

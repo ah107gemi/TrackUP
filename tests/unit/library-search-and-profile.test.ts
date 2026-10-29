@@ -1,6 +1,50 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import type { UserLibraryItem } from '../../src/features/library/libraryService';
 import type { TrackingStatus } from '../../src/types/database.types';
+import {
+  normalizeStatusParam,
+  normalizeFormatParam,
+  statusToParam,
+  persistLibraryFilters,
+  getInitialLibraryFilters,
+  type LibraryFilterState,
+} from '../../src/features/library/libraryFilterState';
+import { MOCK_CATALOG_FIXTURES } from '../../src/features/catalog/catalogService';
+import { fetchUserLibrary, saveStoredLibraries } from '../../src/features/library/libraryService';
+
+// Mock localStorage and sessionStorage for Node.js Vitest environment
+const mockLocalStorage: Record<string, string> = {};
+const mockSessionStorage: Record<string, string> = {};
+
+globalThis.localStorage = {
+  getItem: (key: string) => mockLocalStorage[key] || null,
+  setItem: (key: string, val: string) => {
+    mockLocalStorage[key] = String(val);
+  },
+  removeItem: (key: string) => {
+    delete mockLocalStorage[key];
+  },
+  clear: () => {
+    Object.keys(mockLocalStorage).forEach((k) => delete mockLocalStorage[k]);
+  },
+  key: (i: number) => Object.keys(mockLocalStorage)[i] || null,
+  length: 0,
+} as Storage;
+
+globalThis.sessionStorage = {
+  getItem: (key: string) => mockSessionStorage[key] || null,
+  setItem: (key: string, val: string) => {
+    mockSessionStorage[key] = String(val);
+  },
+  removeItem: (key: string) => {
+    delete mockSessionStorage[key];
+  },
+  clear: () => {
+    Object.keys(mockSessionStorage).forEach((k) => delete mockSessionStorage[k]);
+  },
+  key: (i: number) => Object.keys(mockSessionStorage)[i] || null,
+  length: 0,
+} as Storage;
 
 describe('Library Local Search and Status Filtering', () => {
   const mockLibrary: UserLibraryItem[] = [
@@ -273,5 +317,106 @@ describe('Change Password Feature Validation & Logic', () => {
   it('accepts valid matching passwords with 6+ characters', () => {
     expect(validatePasswordUpdate('SecretPass123!', 'SecretPass123!')).toBeNull();
     expect(validatePasswordUpdate('abcdef', 'abcdef')).toBeNull();
+  });
+});
+
+describe('Library Filter State Preservation & Back Navigation', () => {
+  beforeEach(() => {
+    try {
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
+  });
+
+  it('correctly maps human-readable URL query parameters to internal status types', () => {
+    expect(normalizeStatusParam('watching')).toBe('active');
+    expect(normalizeStatusParam('reading')).toBe('active');
+    expect(normalizeStatusParam('active')).toBe('active');
+    expect(normalizeStatusParam('completed')).toBe('completed');
+    expect(normalizeStatusParam('planned')).toBe('planned');
+    expect(normalizeStatusParam('on_hold')).toBe('paused');
+    expect(normalizeStatusParam('on-hold')).toBe('paused');
+    expect(normalizeStatusParam('dropped')).toBe('dropped');
+    expect(normalizeStatusParam('all')).toBe('all');
+    expect(normalizeStatusParam(null)).toBeNull();
+  });
+
+  it('correctly maps human-readable URL query parameters to media format types', () => {
+    expect(normalizeFormatParam('tv')).toBe('tv');
+    expect(normalizeFormatParam('movie')).toBe('movie');
+    expect(normalizeFormatParam('anime')).toBe('anime_series');
+    expect(normalizeFormatParam('anime_series')).toBe('anime_series');
+    expect(normalizeFormatParam('anime_film')).toBe('anime_film');
+    expect(normalizeFormatParam('manga')).toBe('manga');
+    expect(normalizeFormatParam('manhwa')).toBe('manhwa');
+    expect(normalizeFormatParam('all')).toBe('all');
+    expect(normalizeFormatParam(null)).toBeNull();
+  });
+
+  it('formats internal tracking status into clean query param strings for each domain', () => {
+    expect(statusToParam('active', 'watch')).toBe('watching');
+    expect(statusToParam('active', 'read')).toBe('reading');
+    expect(statusToParam('completed', 'watch')).toBe('completed');
+    expect(statusToParam('planned', 'read')).toBe('planned');
+    expect(statusToParam('all', 'watch')).toBe('all');
+  });
+
+  it('persists and restores library filters via sessionStorage', () => {
+    const filters: LibraryFilterState = {
+      status: 'active',
+      format: 'tv',
+      searchQuery: 'Yellowstone',
+    };
+
+    persistLibraryFilters(filters, 'watch');
+    const restored = getInitialLibraryFilters('watch');
+
+    expect(restored.status).toBe('active');
+    expect(restored.format).toBe('tv');
+    expect(restored.searchQuery).toBe('Yellowstone');
+  });
+});
+
+describe('Yellowstone Hardcoded Fixture & Poster Hydration', () => {
+  it('has valid fully qualified TMDB poster_url and poster_path in MOCK_CATALOG_FIXTURES', () => {
+    const yellowstone = MOCK_CATALOG_FIXTURES.find((item) => item.id === 'tmdb_tv_73586');
+    expect(yellowstone).toBeDefined();
+    expect(yellowstone?.title).toBe('Yellowstone');
+    expect(yellowstone?.poster_url).toBe('https://image.tmdb.org/t/p/w500/a743b67R5AARn4yq1y9wD6oE1hQ.jpg');
+    expect(yellowstone?.poster_path).toBe('https://image.tmdb.org/t/p/w500/a743b67R5AARn4yq1y9wD6oE1hQ.jpg');
+    expect(yellowstone?.backdrop_url).toBe('https://image.tmdb.org/t/p/w1280/7F1s2e5v0QJk5yU7Xw2s2zX.jpg');
+    expect(yellowstone?.backdrop_path).toBe('https://image.tmdb.org/t/p/w1280/7F1s2e5v0QJk5yU7Xw2s2zX.jpg');
+  });
+
+  it('auto-heals legacy Yellowstone library items with broken or placeholder posters', async () => {
+    const brokenYellowstone: UserLibraryItem = {
+      id: 'lib_ys_broken',
+      user_id: 'user_tester',
+      title_id: 'tmdb_tv_73586',
+      status: 'active',
+      rating: 9,
+      is_private: false,
+      personal_notes: null,
+      started_at: null,
+      completed_at: null,
+      last_progressed_at: new Date().toISOString(),
+      episodes_watched: ['ep_1', 'ep_2'],
+      last_chapter_read: 0,
+      last_volume_read: 0,
+      title: {
+        id: 'tmdb_tv_73586',
+        media_type: 'tv',
+        title: 'Yellowstone',
+        poster_url: 'https://image.tmdb.org/t/p/w500/peNC0eyc3TQJa6x4TdKIIIRizUT.jpg', // broken URL
+        genres: ['Western'],
+      },
+    };
+
+    saveStoredLibraries([brokenYellowstone]);
+
+    const library = await fetchUserLibrary('user_tester');
+    expect(library.length).toBe(1);
+    expect(library[0].title.poster_url).toBe('https://image.tmdb.org/t/p/w500/a743b67R5AARn4yq1y9wD6oE1hQ.jpg');
   });
 });
