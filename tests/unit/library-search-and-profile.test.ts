@@ -16,6 +16,11 @@ import {
   saveStoredLibraries,
   upsertLibraryItem,
   updateItemStatus,
+  logEpisodeProgress,
+  logBatchEpisodeProgress,
+  calculateTotalEpisodes,
+  calculateWatchedEpisodesCount,
+  inferWatchedTrackingStatus,
 } from '../../src/features/library/libraryService';
 import { commitImportBatch } from '../../src/features/import-export/importService';
 import { matchPublicProfileRoute } from '../../src/App';
@@ -969,6 +974,213 @@ describe('Episode & Progress Reset on Status Downgrade ("Planned")', () => {
     expect(importedEntry).toBeDefined();
     expect(importedEntry.status).toBe('planned');
     expect(importedEntry.episodes_watched).toEqual([]);
+  });
+});
+
+describe('Automatic Status Inference on Episode & Season Progress', () => {
+  beforeEach(() => {
+    mockLocalStorage['trackup_user_libraries'] = JSON.stringify([]);
+  });
+
+  it('correctly calculates total episodes from title fields or seasons', () => {
+    expect(calculateTotalEpisodes({ id: 't1', media_type: 'tv', title: 'T1', total_episodes: 10 } as any)).toBe(10);
+    expect(calculateTotalEpisodes({ id: 't2', media_type: 'tv', title: 'T2', episodes: 24 } as any)).toBe(24);
+    expect(calculateTotalEpisodes({
+      id: 't3',
+      media_type: 'tv',
+      title: 'T3',
+      seasons: [
+        { id: 's1', season_number: 1, name: 'S1', episode_count: 5, episodes: [] },
+        { id: 's2', season_number: 2, name: 'S2', episode_count: 7, episodes: [] },
+      ],
+    } as any)).toBe(12);
+  });
+
+  it('correctly calculates watched episode count across season IDs', () => {
+    const title = {
+      id: 'show_1',
+      media_type: 'tv' as const,
+      title: 'Show 1',
+      total_episodes: 3,
+      genres: ['Drama'],
+      seasons: [
+        {
+          id: 's1',
+          season_number: 1,
+          name: 'S1',
+          episode_count: 3,
+          episodes: [
+            { id: 'ep_s1_1', episode_number: 1, name: 'E1', runtime_minutes: 30, air_date: '2026-01-01' },
+            { id: 'ep_s1_2', episode_number: 2, name: 'E2', runtime_minutes: 30, air_date: '2026-01-02' },
+            { id: 'ep_s1_3', episode_number: 3, name: 'E3', runtime_minutes: 30, air_date: '2026-01-03' },
+          ],
+        },
+      ],
+    };
+
+    expect(calculateWatchedEpisodesCount(['ep_s1_1'], title)).toBe(1);
+    expect(calculateWatchedEpisodesCount(['ep_s1_1', 'ep_1'], title)).toBe(1); // deduplicates alias
+    expect(calculateWatchedEpisodesCount(['ep_s1_1', 'ep_s1_2'], title)).toBe(2);
+    expect(calculateWatchedEpisodesCount(['ep_s1_1', 'ep_s1_2', 'ep_s1_3'], title)).toBe(3);
+  });
+
+  it('infers status accurately based on watchedCount vs totalEpisodes', () => {
+    // 1. Auto-promote to completed when watchedCount >= totalEpisodes
+    expect(inferWatchedTrackingStatus({ currentStatus: 'active', watchedCount: 12, totalEpisodes: 12 })).toBe('completed');
+    expect(inferWatchedTrackingStatus({ currentStatus: 'planned', watchedCount: 12, totalEpisodes: 12 })).toBe('completed');
+    expect(inferWatchedTrackingStatus({ currentStatus: 'active', watchedCount: 15, totalEpisodes: 12 })).toBe('completed');
+
+    // 2. Auto-promote planned to active when progress begins
+    expect(inferWatchedTrackingStatus({ currentStatus: 'planned', watchedCount: 1, totalEpisodes: 12 })).toBe('active');
+    expect(inferWatchedTrackingStatus({ currentStatus: 'active', watchedCount: 6, totalEpisodes: 12 })).toBe('active');
+
+    // 3. Auto-demote completed to active when an episode is uncompleted
+    expect(inferWatchedTrackingStatus({ currentStatus: 'completed', watchedCount: 11, totalEpisodes: 12 })).toBe('active');
+
+    // 4. Auto-revert to planned when progress reaches 0
+    expect(inferWatchedTrackingStatus({ currentStatus: 'active', watchedCount: 0, totalEpisodes: 12 })).toBe('planned');
+    expect(inferWatchedTrackingStatus({ currentStatus: 'completed', watchedCount: 0, totalEpisodes: 12 })).toBe('planned');
+  });
+
+  it('auto-promotes show to completed in logEpisodeProgress when final episode is watched', async () => {
+    const userId = 'user_auto_complete_1';
+    const titleId = 'tv_short_series';
+
+    const item = await upsertLibraryItem({
+      userId,
+      titleId,
+      status: 'active',
+      titleData: {
+        id: titleId,
+        media_type: 'tv',
+        title: 'Short Series',
+        total_episodes: 3,
+        genres: ['Drama'],
+      },
+    });
+
+    item.episodes_watched = ['ep_1', 'ep_2'];
+    saveStoredLibraries([item]);
+
+    // Mark the 3rd (and final) episode as watched
+    const updated = await logEpisodeProgress({
+      libraryId: item.id,
+      userId,
+      episodeId: 'ep_3',
+      watched: true,
+    });
+
+    expect(updated.status).toBe('completed');
+    expect(updated.completed_at).toBeTruthy();
+    expect(updated.episodes_watched).toEqual(['ep_1', 'ep_2', 'ep_3']);
+
+    // Persisted storage check
+    const stored = (await fetchUserLibrary(userId))[0];
+    expect(stored.status).toBe('completed');
+  });
+
+  it('auto-demotes show from completed to active when an episode is unchecked', async () => {
+    const userId = 'user_auto_demote_1';
+    const titleId = 'tv_short_series_demote';
+
+    const item = await upsertLibraryItem({
+      userId,
+      titleId,
+      status: 'completed',
+      titleData: {
+        id: titleId,
+        media_type: 'tv',
+        title: 'Short Series Demote',
+        total_episodes: 3,
+        genres: ['Drama'],
+      },
+    });
+
+    item.episodes_watched = ['ep_1', 'ep_2', 'ep_3'];
+    item.completed_at = '2026-10-30T10:00:00Z';
+    saveStoredLibraries([item]);
+
+    // Uncheck episode 3
+    const updated = await logEpisodeProgress({
+      libraryId: item.id,
+      userId,
+      episodeId: 'ep_3',
+      watched: false,
+    });
+
+    expect(updated.status).toBe('active');
+    expect(updated.completed_at).toBeNull();
+    expect(updated.episodes_watched).toEqual(['ep_1', 'ep_2']);
+
+    const stored = (await fetchUserLibrary(userId))[0];
+    expect(stored.status).toBe('active');
+  });
+
+  it('auto-promotes show to completed in logBatchEpisodeProgress when full season equals total episodes', async () => {
+    const userId = 'user_batch_complete_1';
+    const titleId = 'tv_miniseries';
+
+    const item = await upsertLibraryItem({
+      userId,
+      titleId,
+      status: 'planned',
+      titleData: {
+        id: titleId,
+        media_type: 'tv',
+        title: 'Mini Series',
+        total_episodes: 4,
+        genres: ['Mystery'],
+      },
+    });
+
+    // Mark all 4 episodes as watched via batch progress
+    const updated = await logBatchEpisodeProgress({
+      libraryId: item.id,
+      userId,
+      episodeIds: ['ep_1', 'ep_2', 'ep_3', 'ep_4'],
+      watched: true,
+    });
+
+    expect(updated.status).toBe('completed');
+    expect(updated.completed_at).toBeTruthy();
+    expect(updated.episodes_watched.length).toBe(4);
+
+    const stored = (await fetchUserLibrary(userId))[0];
+    expect(stored.status).toBe('completed');
+  });
+
+  it('maintains active status when batch marking 1 season of a multi-season show', async () => {
+    const userId = 'user_batch_season_1';
+    const titleId = 'tv_multi_season';
+
+    const item = await upsertLibraryItem({
+      userId,
+      titleId,
+      status: 'planned',
+      titleData: {
+        id: titleId,
+        media_type: 'tv',
+        title: 'Multi Season Show',
+        total_episodes: 20,
+        genres: ['Action'],
+      },
+    });
+
+    // Mark Season 1 (10 episodes out of 20 total)
+    const season1EpIds = Array.from({ length: 10 }, (_, i) => `ep_${i + 1}`);
+    const updated = await logBatchEpisodeProgress({
+      libraryId: item.id,
+      userId,
+      episodeIds: season1EpIds,
+      watched: true,
+    });
+
+    expect(updated.status).toBe('active');
+    expect(updated.completed_at).toBeNull();
+    expect(updated.episodes_watched.length).toBe(10);
+
+    const stored = (await fetchUserLibrary(userId))[0];
+    expect(stored.status).toBe('active');
   });
 });
 

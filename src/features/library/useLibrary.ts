@@ -7,6 +7,9 @@ import {
   logBatchEpisodeProgress,
   logReadingProgress,
   removeLibraryItem,
+  calculateTotalEpisodes,
+  calculateWatchedEpisodesCount,
+  inferWatchedTrackingStatus,
   type UserLibraryItem,
 } from './libraryService';
 import type { TrackingStatus } from '../../types/database.types';
@@ -135,17 +138,21 @@ export function useIncrementEpisode() {
             const watched = variables.watched
               ? [...new Set([...item.episodes_watched, variables.episodeId])]
               : item.episodes_watched.filter((id) => id !== variables.episodeId);
+
+            const totalEpisodes = calculateTotalEpisodes(item.title);
+            const watchedCount = calculateWatchedEpisodesCount(watched, item.title);
+            const nextStatus = inferWatchedTrackingStatus({
+              currentStatus: item.status,
+              watchedCount,
+              totalEpisodes,
+            });
+
             return {
               ...item,
               episodes_watched: watched,
-              status:
-                !variables.watched && watched.length === 0
-                  ? ('planned' as TrackingStatus)
-                  : variables.watched &&
-                    watched.length > 0 &&
-                    (!item.title.total_episodes || watched.length < item.title.total_episodes)
-                  ? ('active' as TrackingStatus)
-                  : item.status,
+              status: nextStatus,
+              started_at: nextStatus === 'planned' ? null : (item.started_at || new Date().toISOString()),
+              completed_at: nextStatus === 'completed' ? (item.completed_at || new Date().toISOString()) : null,
             };
           }
           return item;
@@ -186,17 +193,21 @@ export function useBatchEpisodeProgress() {
             const watched = variables.watched
               ? [...new Set([...item.episodes_watched, ...variables.episodeIds])]
               : item.episodes_watched.filter((id) => !variables.episodeIds.includes(id));
+
+            const totalEpisodes = calculateTotalEpisodes(item.title);
+            const watchedCount = calculateWatchedEpisodesCount(watched, item.title);
+            const nextStatus = inferWatchedTrackingStatus({
+              currentStatus: item.status,
+              watchedCount,
+              totalEpisodes,
+            });
+
             return {
               ...item,
               episodes_watched: watched,
-              status:
-                !variables.watched && watched.length === 0
-                  ? ('planned' as TrackingStatus)
-                  : variables.watched &&
-                    watched.length > 0 &&
-                    (!item.title.total_episodes || watched.length < item.title.total_episodes)
-                  ? ('active' as TrackingStatus)
-                  : item.status,
+              status: nextStatus,
+              started_at: nextStatus === 'planned' ? null : (item.started_at || new Date().toISOString()),
+              completed_at: nextStatus === 'completed' ? (item.completed_at || new Date().toISOString()) : null,
             };
           }
           return item;

@@ -35,6 +35,11 @@ import {
   useIncrementChapter,
   useRemoveFromLibrary,
 } from '../library/useLibrary';
+import {
+  calculateTotalEpisodes,
+  calculateWatchedEpisodesCount,
+  inferWatchedTrackingStatus,
+} from '../library/libraryService';
 import type { TrackingStatus, PrivacyLevel } from '../../types/database.types';
 import { StarRating } from '../../components/ui/StarRating';
 import { ReviewModal } from '../reviews/ReviewModal';
@@ -196,10 +201,11 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   const currentChapter: number = existingEntry ? existingEntry.last_chapter_read : localChapter;
   const watchedEpisodesList: string[] = existingEntry ? existingEntry.episodes_watched : localEpisodes;
 
-  const totalEpCount =
-    title.total_episodes ||
-    (title as any).episodes ||
-    (title.seasons ? title.seasons.reduce((acc, s) => acc + (s.episode_count || s.episodes?.length || 0), 0) : null);
+  const totalEpCount = calculateTotalEpisodes(title) || null;
+  const displayWatchedCount =
+    existingEntry?.status === 'completed' && watchedEpisodesList.length === 0 && totalEpCount
+      ? totalEpCount
+      : calculateWatchedEpisodesCount(watchedEpisodesList, title);
 
   const isEpisodeWatched = (ep: { id: string; episode_number: number }) => {
     if (watchedEpisodesList.includes(ep.id)) return true;
@@ -317,29 +323,22 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     }
     setLocalEpisodes(updatedEpisodes);
 
-    // Auto-revert to 'planned' if progress drops to 0
-    if (updatedEpisodes.length === 0) {
-      setLocalStatus('planned');
-      if (existingEntry) {
-        upsertMutation.mutate({
-          userId: activeUserId,
-          titleId: title.id,
-          status: 'planned',
-          titleData: title,
-        });
-      }
-    } else if (!isWatched && (currentStatus === 'planned' || currentStatus === 'completed')) {
-      if (!totalEpCount || updatedEpisodes.length < totalEpCount) {
-        setLocalStatus('active');
-        if (existingEntry) {
-          upsertMutation.mutate({
-            userId: activeUserId,
-            titleId: title.id,
-            status: 'active',
-            titleData: title,
-          });
-        }
-      }
+    const totalCount = calculateTotalEpisodes(title);
+    const newWatchedCount = calculateWatchedEpisodesCount(updatedEpisodes, title);
+    const targetStatus = inferWatchedTrackingStatus({
+      currentStatus,
+      watchedCount: newWatchedCount,
+      totalEpisodes: totalCount,
+    });
+
+    setLocalStatus(targetStatus);
+    if (existingEntry && existingEntry.status !== targetStatus) {
+      upsertMutation.mutate({
+        userId: activeUserId,
+        titleId: title.id,
+        status: targetStatus,
+        titleData: title,
+      });
     }
 
     let libId = existingEntry?.id;
@@ -347,7 +346,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       const created = await upsertMutation.mutateAsync({
         userId: activeUserId,
         titleId: title.id,
-        status: updatedEpisodes.length > 0 ? 'active' : 'planned',
+        status: targetStatus,
         titleData: title,
       });
       libId = created.id;
@@ -396,9 +395,22 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     const updatedEpisodes = [...new Set([...watchedEpisodesList, ...allToMark, `ep_${catchUpPrompt.targetEp.episode_number}`])];
     setLocalEpisodes(updatedEpisodes);
 
-    // Auto update status to active (Currently Watching)
-    if (currentStatus !== 'active' && (!totalEpCount || updatedEpisodes.length < totalEpCount)) {
-      setLocalStatus('active');
+    const totalCount = calculateTotalEpisodes(title);
+    const newWatchedCount = calculateWatchedEpisodesCount(updatedEpisodes, title);
+    const targetStatus = inferWatchedTrackingStatus({
+      currentStatus,
+      watchedCount: newWatchedCount,
+      totalEpisodes: totalCount,
+    });
+
+    setLocalStatus(targetStatus);
+    if (existingEntry && existingEntry.status !== targetStatus) {
+      upsertMutation.mutate({
+        userId: activeUserId,
+        titleId: title.id,
+        status: targetStatus,
+        titleData: title,
+      });
     }
 
     let libId = existingEntry?.id;
@@ -406,7 +418,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       const created = await upsertMutation.mutateAsync({
         userId: activeUserId,
         titleId: title.id,
-        status: 'active',
+        status: targetStatus,
         titleData: title,
       });
       libId = created.id;
@@ -435,8 +447,22 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     const updatedEpisodes = [...new Set([...watchedEpisodesList, ...allEpIds])];
     setLocalEpisodes(updatedEpisodes);
 
-    if (currentStatus !== 'active' && (!title.total_episodes || updatedEpisodes.length < title.total_episodes)) {
-      setLocalStatus('active');
+    const totalCount = calculateTotalEpisodes(title);
+    const newWatchedCount = calculateWatchedEpisodesCount(updatedEpisodes, title);
+    const targetStatus = inferWatchedTrackingStatus({
+      currentStatus,
+      watchedCount: newWatchedCount,
+      totalEpisodes: totalCount,
+    });
+
+    setLocalStatus(targetStatus);
+    if (existingEntry && existingEntry.status !== targetStatus) {
+      upsertMutation.mutate({
+        userId: activeUserId,
+        titleId: title.id,
+        status: targetStatus,
+        titleData: title,
+      });
     }
 
     let libId = existingEntry?.id;
@@ -444,7 +470,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       const created = await upsertMutation.mutateAsync({
         userId: activeUserId,
         titleId: title.id,
-        status: 'active',
+        status: targetStatus,
         titleData: title,
       });
       libId = created.id;
@@ -462,9 +488,23 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     const newCh = Math.max(0, currentChapter + delta);
     setLocalChapter(newCh);
 
-    // Auto-status transition to 'active' (Currently Reading)
-    if (newCh > 0 && (!title.total_chapters || newCh < title.total_chapters)) {
-      setLocalStatus('active');
+    let targetStatus: TrackingStatus = currentStatus;
+    if (newCh === 0) {
+      targetStatus = 'planned';
+    } else if (title.total_chapters && newCh >= title.total_chapters) {
+      targetStatus = 'completed';
+    } else if (currentStatus === 'planned' || currentStatus === 'completed') {
+      targetStatus = 'active';
+    }
+
+    setLocalStatus(targetStatus);
+    if (existingEntry && existingEntry.status !== targetStatus) {
+      upsertMutation.mutate({
+        userId: activeUserId,
+        titleId: title.id,
+        status: targetStatus,
+        titleData: title,
+      });
     }
 
     let libId = existingEntry?.id;
@@ -472,7 +512,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       const created = await upsertMutation.mutateAsync({
         userId: activeUserId,
         titleId: title.id,
-        status: 'active',
+        status: targetStatus,
       });
       libId = created.id;
     }
@@ -486,9 +526,23 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   const handleSetCustomChapter = async (val: number) => {
     setLocalChapter(val);
 
-    // Auto-status transition to 'active' (Currently Reading)
-    if (val > 0 && (!title.total_chapters || val < title.total_chapters)) {
-      setLocalStatus('active');
+    let targetStatus: TrackingStatus = currentStatus;
+    if (val === 0) {
+      targetStatus = 'planned';
+    } else if (title.total_chapters && val >= title.total_chapters) {
+      targetStatus = 'completed';
+    } else if (currentStatus === 'planned' || currentStatus === 'completed') {
+      targetStatus = 'active';
+    }
+
+    setLocalStatus(targetStatus);
+    if (existingEntry && existingEntry.status !== targetStatus) {
+      upsertMutation.mutate({
+        userId: activeUserId,
+        titleId: title.id,
+        status: targetStatus,
+        titleData: title,
+      });
     }
 
     let libId = existingEntry?.id;
@@ -496,7 +550,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       const created = await upsertMutation.mutateAsync({
         userId: activeUserId,
         titleId: title.id,
-        status: 'active',
+        status: targetStatus,
         titleData: title,
       });
       libId = created.id;
@@ -717,7 +771,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
             <div className="flex items-center gap-3">
               {totalEpCount ? (
                 <span className="text-xs font-mono text-text-muted">
-                  {watchedEpisodesList.length} / {totalEpCount} Watched
+                  {displayWatchedCount} / {totalEpCount} Watched
                 </span>
               ) : null}
               <button

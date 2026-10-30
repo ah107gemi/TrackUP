@@ -268,6 +268,85 @@ export async function updateItemStatus(params: {
   });
 }
 
+/**
+ * Calculates total episode count across standard, extended, and season-based title metadata.
+ */
+export function calculateTotalEpisodes(title?: NormalizedCatalogItem | null): number {
+  if (!title) return 0;
+  if (typeof title.total_episodes === 'number' && title.total_episodes > 0) {
+    return title.total_episodes;
+  }
+  if (typeof (title as any).episodes === 'number' && (title as any).episodes > 0) {
+    return (title as any).episodes;
+  }
+  if (Array.isArray(title.seasons) && title.seasons.length > 0) {
+    const seasonsTotal = title.seasons.reduce(
+      (acc, s) => acc + (s.episode_count || s.episodes?.length || 0),
+      0
+    );
+    if (seasonsTotal > 0) return seasonsTotal;
+  }
+  return 0;
+}
+
+/**
+ * Calculates how many distinct episodes are watched, matching season episodes by ID or number if available.
+ */
+export function calculateWatchedEpisodesCount(
+  watchedEpisodes: string[],
+  title?: NormalizedCatalogItem | null
+): number {
+  if (!Array.isArray(watchedEpisodes) || watchedEpisodes.length === 0) {
+    return 0;
+  }
+  if (title?.seasons && Array.isArray(title.seasons) && title.seasons.length > 0) {
+    const allSeasonEpisodes = title.seasons.flatMap((s) => s.episodes || []);
+    if (allSeasonEpisodes.length > 0) {
+      const matched = allSeasonEpisodes.filter((e) =>
+        watchedEpisodes.includes(e.id) ||
+        watchedEpisodes.includes(`ep_${e.episode_number}`) ||
+        watchedEpisodes.some((id) => id === `ep_${e.episode_number}` || id.endsWith(`_${e.episode_number}`))
+      );
+      if (matched.length > 0) {
+        return matched.length;
+      }
+    }
+  }
+  return watchedEpisodes.length;
+}
+
+/**
+ * Infers the tracking status based on watched episodes vs total episodes:
+ * - If 0 episodes watched: reverts to 'planned'
+ * - If watchedCount >= totalEpisodes (and totalEpisodes > 0): promotes to 'completed'
+ * - If 0 < watchedCount < totalEpisodes: promotes 'planned' or 'completed' to 'active' ('watching')
+ */
+export function inferWatchedTrackingStatus(params: {
+  currentStatus: TrackingStatus;
+  watchedCount: number;
+  totalEpisodes: number;
+}): TrackingStatus {
+  const { currentStatus, watchedCount, totalEpisodes } = params;
+
+  if (watchedCount === 0) {
+    if (currentStatus === 'active' || currentStatus === 'completed') {
+      return 'planned';
+    }
+    return currentStatus;
+  }
+
+  if (totalEpisodes > 0 && watchedCount >= totalEpisodes) {
+    return 'completed';
+  }
+
+  // watchedCount < totalEpisodes (or totalEpisodes is 0 / unknown)
+  if (currentStatus === 'planned' || currentStatus === 'completed') {
+    return 'active';
+  }
+
+  return currentStatus;
+}
+
 export async function logEpisodeProgress(params: {
   libraryId: string;
   userId: string;
@@ -302,26 +381,48 @@ export async function logEpisodeProgress(params: {
     updatedEpisodes = updatedEpisodes.filter((id) => id !== params.episodeId);
   }
 
-  let nextStatus = item.status;
-  if (!params.watched && updatedEpisodes.length === 0) {
-    if (item.status === 'active' || item.status === 'completed') {
-      nextStatus = 'planned';
-    }
-  } else if (params.watched && updatedEpisodes.length > 0) {
-    if (!item.title.total_episodes || updatedEpisodes.length < item.title.total_episodes) {
-      nextStatus = 'active';
-    }
-  }
+  const totalEpisodes = calculateTotalEpisodes(item.title);
+  const watchedCount = calculateWatchedEpisodesCount(updatedEpisodes, item.title);
+  const nextStatus = inferWatchedTrackingStatus({
+    currentStatus: item.status,
+    watchedCount,
+    totalEpisodes,
+  });
+
+  const nextCompletedAt = nextStatus === 'completed' ? (item.completed_at || now) : null;
+  const nextStartedAt = nextStatus === 'planned' ? null : (item.started_at || now);
 
   const updated: UserLibraryItem = {
     ...item,
     episodes_watched: updatedEpisodes,
     status: nextStatus,
+    started_at: nextStartedAt,
+    completed_at: nextCompletedAt,
     last_progressed_at: now,
   };
 
   all[index] = updated;
   saveStoredLibraries(all);
+
+  // Sync to Supabase if available
+  if (supabase) {
+    try {
+      await supabase
+        .from('user_libraries')
+        // @ts-expect-error dynamic typing
+        .update({
+          status: nextStatus,
+          started_at: nextStartedAt,
+          completed_at: nextCompletedAt,
+          last_progressed_at: now,
+          updated_at: now,
+        })
+        .match({ user_id: params.userId, id: params.libraryId });
+    } catch {
+      // silent fallback
+    }
+  }
+
   return updated;
 }
 
@@ -364,26 +465,48 @@ export async function logBatchEpisodeProgress(params: {
     updatedEpisodes = updatedEpisodes.filter((id) => !toRemove.has(id));
   }
 
-  let nextStatus = item.status;
-  if (!params.watched && updatedEpisodes.length === 0) {
-    if (item.status === 'active' || item.status === 'completed') {
-      nextStatus = 'planned';
-    }
-  } else if (params.watched && updatedEpisodes.length > 0) {
-    if (!item.title.total_episodes || updatedEpisodes.length < item.title.total_episodes) {
-      nextStatus = 'active';
-    }
-  }
+  const totalEpisodes = calculateTotalEpisodes(item.title);
+  const watchedCount = calculateWatchedEpisodesCount(updatedEpisodes, item.title);
+  const nextStatus = inferWatchedTrackingStatus({
+    currentStatus: item.status,
+    watchedCount,
+    totalEpisodes,
+  });
+
+  const nextCompletedAt = nextStatus === 'completed' ? (item.completed_at || now) : null;
+  const nextStartedAt = nextStatus === 'planned' ? null : (item.started_at || now);
 
   const updated: UserLibraryItem = {
     ...item,
     episodes_watched: updatedEpisodes,
     status: nextStatus,
+    started_at: nextStartedAt,
+    completed_at: nextCompletedAt,
     last_progressed_at: now,
   };
 
   all[index] = updated;
   saveStoredLibraries(all);
+
+  // Sync to Supabase if available
+  if (supabase) {
+    try {
+      await supabase
+        .from('user_libraries')
+        // @ts-expect-error dynamic typing
+        .update({
+          status: nextStatus,
+          started_at: nextStartedAt,
+          completed_at: nextCompletedAt,
+          last_progressed_at: now,
+          updated_at: now,
+        })
+        .match({ user_id: params.userId, id: params.libraryId });
+    } catch {
+      // silent fallback
+    }
+  }
+
   return updated;
 }
 
