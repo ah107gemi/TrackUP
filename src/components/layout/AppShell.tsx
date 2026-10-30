@@ -11,7 +11,7 @@ import { LibraryView } from '../../features/library/LibraryView';
 import { DashboardStats } from '../../features/dashboard/DashboardStats';
 import { HistoryTimeline } from '../../features/history/HistoryTimeline';
 import { ImportExportView } from '../../features/import-export/ImportExportView';
-import { SocialFeedView } from '../../features/social/SocialFeedView';
+import { FriendsPage } from '../../features/social/FriendsPage';
 import { RecommendationsView } from '../../features/catalog/RecommendationsView';
 import { ReleaseCalendarView } from '../../features/calendar/ReleaseCalendarView';
 import { ProfilePage } from '../../features/profile/ProfilePage';
@@ -274,7 +274,7 @@ export const AppShell: React.FC = () => {
               {activeTab === 'social' && (
                 <div data-testid="social-view" className="max-w-6xl mx-auto space-y-4">
                   <AuthGuard fallbackTitle="Sign In to Join the Community" fallbackDescription="Follow friends, share tracking activity, and compare ratings.">
-                    <SocialFeedView onSelectTitle={handleSelectTitle} />
+                    <FriendsPage onSelectTitle={handleSelectTitle} />
                   </AuthGuard>
                 </div>
               )}

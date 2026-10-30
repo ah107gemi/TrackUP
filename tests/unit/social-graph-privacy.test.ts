@@ -4,6 +4,7 @@ import {
   unfollowUser,
   isUserFollowing,
   searchProfiles,
+  searchUsers,
   getFollowingActivityFeed,
   getRatingComparison,
 } from '../../src/features/social/socialService';
@@ -173,5 +174,66 @@ describe('Phase 6: Activity Feed Privacy & Rating Comparison', () => {
     expect(comp?.user_b_rating).toBe(8); // Elena: 4.0 stars
     expect(comp?.delta).toBe(1); // +1 point higher (+0.5 star)
     expect(comp?.user_b_username).toBe('elena_tracker');
+  });
+
+  describe('Find Friends Profile Search Service (searchUsers)', () => {
+    it('searches users by username, display_name, and @handle using partial matching', async () => {
+      const resultsWithAt = await searchUsers('@marcus_anime', 'user_alice');
+      expect(resultsWithAt.length).toBe(1);
+      expect(resultsWithAt[0].username).toBe('marcus_anime');
+      expect(resultsWithAt[0].display_name).toBe('Marcus Vance');
+
+      const resultsPartial = await searchUsers('Elena', 'user_alice');
+      expect(resultsPartial.length).toBe(1);
+      expect(resultsPartial[0].username).toBe('elena_tracker');
+
+      const resultsDisplay = await searchUsers('Vance', 'user_alice');
+      expect(resultsDisplay.some((u) => u.username === 'marcus_anime')).toBe(true);
+    });
+
+    it('strictly excludes the currently logged-in user from search results', async () => {
+      // Alice searches for 'alice'
+      const dynamicProfiles = {
+        user_alice: {
+          id: 'user_alice',
+          username: 'alice_wonder',
+          display_name: 'Alice Wonder',
+        },
+        user_alice_cooper: {
+          id: 'user_alice_cooper',
+          username: 'alice_cooper',
+          display_name: 'Alice Cooper',
+        },
+      };
+      localStorage.setItem('trackup_mock_profiles', JSON.stringify(dynamicProfiles));
+
+      const results = await searchUsers('alice', 'user_alice');
+      expect(results.some((u) => u.id === 'user_alice')).toBe(false);
+      expect(results.some((u) => u.id === 'user_alice_cooper')).toBe(true);
+    });
+
+    it('enforces a maximum safety limit of 20 results', async () => {
+      const bulkProfiles: Record<string, any> = {};
+      for (let i = 1; i <= 30; i++) {
+        bulkProfiles[`user_${i}`] = {
+          id: `user_${i}`,
+          username: `cinephile_${i}`,
+          display_name: `Cinephile ${i}`,
+        };
+      }
+      localStorage.setItem('trackup_mock_profiles', JSON.stringify(bulkProfiles));
+
+      const results = await searchUsers('cinephile', 'user_main');
+      expect(results.length).toBeLessThanOrEqual(20);
+      expect(results.length).toBe(20);
+    });
+
+    it('reflects correct is_following status for searched friends', async () => {
+      await followUser('user_alice', 'user_marcus_anime');
+
+      const results = await searchUsers('marcus', 'user_alice');
+      expect(results.length).toBe(1);
+      expect(results[0].is_following).toBe(true);
+    });
   });
 });

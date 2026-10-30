@@ -1,6 +1,7 @@
 import type { SocialProfile, ActivityFeedItem, RatingComparisonData } from './types';
 import { getStoredLibraries } from '../library/libraryService';
 import { supabase } from '../../lib/supabase';
+export { searchUsers, type UserSearchResult } from '../profile/profileService';
 
 const LOCAL_STORAGE_FOLLOWS_KEY = 'trackup_user_follows';
 const LOCAL_STORAGE_ACTIVITIES_KEY = 'trackup_activity_logs';
