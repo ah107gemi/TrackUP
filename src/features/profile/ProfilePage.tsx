@@ -63,6 +63,58 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   const [bannerUploadError, setBannerUploadError] = useState<string | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Cached banner retrieval for resilient hydration on mobile browsers / hard-refreshes
+  const getCachedBanner = (): string | null => {
+    try {
+      if (typeof window === 'undefined') return null;
+      if (user?.id) {
+        const direct = localStorage.getItem(`trackup_banner_${user.id}`);
+        if (direct) return direct;
+      }
+      const profiles = JSON.parse(localStorage.getItem('trackup_mock_profiles') || '{}');
+      if (user?.id && profiles[user.id]?.banner_url) {
+        return profiles[user.id].banner_url;
+      }
+      const sessionStr = localStorage.getItem('trackup_mock_session');
+      if (sessionStr) {
+        const session = JSON.parse(sessionStr);
+        if (session?.banner_url) return session.banner_url;
+      }
+    } catch {
+      // Safe fallback on storage/quota errors
+    }
+    return null;
+  };
+
+  const [activeBannerUrl, setActiveBannerUrl] = useState<string | null>(() => {
+    return profile?.banner_url || getCachedBanner();
+  });
+
+  useEffect(() => {
+    if (profile?.banner_url) {
+      setActiveBannerUrl(profile.banner_url);
+      try {
+        if (user?.id) {
+          localStorage.setItem(`trackup_banner_${user.id}`, profile.banner_url);
+        }
+      } catch {}
+    } else if (profile && profile.banner_url === null) {
+      setActiveBannerUrl(null);
+      try {
+        if (user?.id) {
+          localStorage.removeItem(`trackup_banner_${user.id}`);
+        }
+      } catch {}
+    } else {
+      const cached = getCachedBanner();
+      if (cached) {
+        setActiveBannerUrl(cached);
+      }
+    }
+  }, [profile?.banner_url, profile, user?.id]);
+
+  const effectiveBanner = activeBannerUrl || profile?.banner_url || getCachedBanner();
+
   // Dedicated Library Selector & Image Cropper state
   const [isLibrarySelectorOpen, setIsLibrarySelectorOpen] = useState(false);
   const [isCropperOpen, setIsCropperOpen] = useState(false);
@@ -182,7 +234,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   const handleOpenEditProfile = () => {
     setEditName(profile?.display_name || profile?.full_name || user.username || '');
     setEditUsername(profile?.username || user.username || '');
-    setEditBannerUrl(profile?.banner_url || null);
+    setEditBannerUrl(effectiveBanner || null);
     setBannerTab('upload');
     setBannerUploadError(null);
     setEditError(null);
@@ -219,6 +271,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
       }
 
       setEditBannerUrl(url);
+      setActiveBannerUrl(url);
+      try {
+        localStorage.setItem(`trackup_banner_${user.id}`, url);
+      } catch {}
       await updateProfile({ banner_url: url });
       setBannerUploading(false);
       return;
@@ -243,6 +299,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
     }
 
     setEditBannerUrl(url);
+    setActiveBannerUrl(url);
+    try {
+      localStorage.setItem(`trackup_banner_${user.id}`, url);
+    } catch {}
     await updateProfile({ banner_url: url });
     setBannerUploading(false);
 
@@ -264,11 +324,19 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
 
   const handleSelectBackdropUrl = async (url: string) => {
     setEditBannerUrl(url);
+    setActiveBannerUrl(url);
+    try {
+      localStorage.setItem(`trackup_banner_${user.id}`, url);
+    } catch {}
     await updateProfile({ banner_url: url });
   };
 
   const handleRemoveBanner = async () => {
     setEditBannerUrl(null);
+    setActiveBannerUrl(null);
+    try {
+      localStorage.removeItem(`trackup_banner_${user.id}`);
+    } catch {}
     await updateProfile({ banner_url: null });
   };
 
@@ -298,6 +366,18 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
 
     setSavingProfile(true);
     try {
+      if (editBannerUrl) {
+        setActiveBannerUrl(editBannerUrl);
+        try {
+          localStorage.setItem(`trackup_banner_${user.id}`, editBannerUrl);
+        } catch {}
+      } else if (editBannerUrl === null) {
+        setActiveBannerUrl(null);
+        try {
+          localStorage.removeItem(`trackup_banner_${user.id}`);
+        } catch {}
+      }
+
       const res = await updateProfile({
         display_name: cleanName,
         full_name: cleanName,
@@ -403,12 +483,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
       {/* Profile Hero Header */}
       <div
         data-testid="profile-hero-header"
-        className="relative rounded-3xl overflow-hidden bg-surface border border-surface-elevated shadow-xl h-[28rem] sm:h-[32vh] lg:h-[40vh] min-h-[26rem] flex flex-col justify-end"
+        className="relative rounded-3xl overflow-hidden bg-surface border border-surface-elevated shadow-xl min-h-[22rem] sm:min-h-[24rem] md:min-h-[26rem] h-auto md:h-[34vh] lg:h-[40vh] flex flex-col justify-end"
       >
         {/* Full-bleed Banner Image, Video, or Sleek Gradient */}
         <div className="absolute inset-0 w-full h-full pointer-events-none overflow-hidden">
-          {profile?.banner_url ? (
-            isVideoBanner(profile.banner_url) ? (
+          {effectiveBanner ? (
+            isVideoBanner(effectiveBanner) ? (
               <video
                 autoPlay
                 loop
@@ -416,16 +496,16 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                 playsInline
                 data-testid="profile-banner-video"
                 className="absolute inset-0 w-full h-full object-cover"
-                src={profile.banner_url}
+                src={effectiveBanner}
               >
                 <source
-                  src={profile.banner_url}
-                  type={profile.banner_url.toLowerCase().includes('.webm') ? 'video/webm' : 'video/mp4'}
+                  src={effectiveBanner}
+                  type={effectiveBanner.toLowerCase().includes('.webm') ? 'video/webm' : 'video/mp4'}
                 />
               </video>
             ) : (
               <img
-                src={profile.banner_url}
+                src={effectiveBanner}
                 alt="Profile banner"
                 data-testid="profile-banner-image"
                 className="w-full h-full object-cover"
@@ -442,8 +522,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
         </div>
 
         {/* Hero Foreground Content */}
-        <div className="relative z-10 p-6 sm:p-8">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+        <div className="relative z-10 pt-16 pb-6 px-4 sm:p-8 flex flex-col justify-end">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
           {/* Avatar with Custom Upload Trigger */}
           <div className="relative group shrink-0">
             <div
@@ -485,7 +565,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
           </div>
 
           {/* User Details */}
-          <div className="flex-1 text-center sm:text-left min-w-0">
+          <div className="flex-1 text-center sm:text-left min-w-0 w-full sm:w-auto">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight">
@@ -494,7 +574,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                 <p className="text-sm font-mono text-accent mt-0.5">@{user.username}</p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-1 sm:mt-0">
                 <button
                   type="button"
                   onClick={handleOpenEditProfile}
@@ -536,26 +616,26 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
               <p className="text-xs text-status-dropped mt-2 font-medium">{uploadError}</p>
             )}
 
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 mt-4 pt-4 border-t border-surface-elevated text-xs text-text-muted">
-              <span className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-accent" />
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 sm:gap-4 mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-surface-elevated/80 text-[11px] sm:text-xs text-text-muted">
+              <span className="inline-flex items-center gap-1.5 shrink-0">
+                <Calendar className="w-3.5 h-3.5 text-accent shrink-0" />
                 <span>Member since {new Date().getFullYear()}</span>
               </span>
-              <span className="flex items-center gap-1.5 font-mono">
-                <CheckCircle2 className="w-3.5 h-3.5 text-status-completed" />
+              <span className="inline-flex items-center gap-1.5 font-mono shrink-0">
+                <CheckCircle2 className="w-3.5 h-3.5 text-status-completed shrink-0" />
                 <span>{library.length} titles in library</span>
               </span>
-              <span className="flex items-center gap-1.5 font-mono">
-                <Tv className="w-3.5 h-3.5 text-purple-400" />
+              <span className="inline-flex items-center gap-1.5 font-mono shrink-0">
+                <Tv className="w-3.5 h-3.5 text-purple-400 shrink-0" />
                 <span>{totalEpisodesWatched} eps watched</span>
               </span>
-              <span data-testid="global-watch-time" className="flex items-center gap-1.5 font-mono">
-                <Clock className="w-3.5 h-3.5 text-accent" />
+              <span data-testid="global-watch-time" className="inline-flex items-center gap-1.5 font-mono shrink-0">
+                <Clock className="w-3.5 h-3.5 text-accent shrink-0" />
                 <span className="font-bold text-accent">{formatWatchTime(combinedWatchTimeMinutes)}</span>
                 <span>watch time</span>
               </span>
-              <span className="flex items-center gap-1.5 font-mono">
-                <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="inline-flex items-center gap-1.5 font-mono shrink-0">
+                <BookOpen className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 <span>{totalChaptersRead} chs read</span>
               </span>
             </div>

@@ -59,15 +59,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           // fetch or create profile
           const { data: p } = await supabase.from('profiles').select('*').eq('id', u.id).single();
+          const cachedProfiles = JSON.parse(localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY) || '{}');
+          const cachedBanner = localStorage.getItem(`trackup_banner_${u.id}`) || cachedProfiles[u.id]?.banner_url;
+
           if (p && mounted) {
-            setProfile(p as Profile);
+            const resolvedProfile: Profile = {
+              ...(p as Profile),
+              banner_url: (p as Profile).banner_url || cachedBanner || null,
+            };
+            setProfile(resolvedProfile);
+            try {
+              cachedProfiles[u.id] = resolvedProfile;
+              localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(cachedProfiles));
+              if (resolvedProfile.banner_url) {
+                localStorage.setItem(`trackup_banner_${u.id}`, resolvedProfile.banner_url);
+              }
+            } catch {}
           } else if (mounted) {
             const fallbackProfile: Profile = {
               id: u.id,
               username: u.username,
               display_name: session.user.user_metadata?.display_name || u.username,
               avatar_url: session.user.user_metadata?.avatar_url || null,
-              banner_url: session.user.user_metadata?.banner_url || null,
+              banner_url: session.user.user_metadata?.banner_url || cachedBanner || null,
               bio: null,
               library_visibility: 'public',
               activity_visibility: 'public',
@@ -76,6 +90,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               updated_at: new Date().toISOString(),
             };
             setProfile(fallbackProfile);
+            try {
+              cachedProfiles[u.id] = fallbackProfile;
+              localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(cachedProfiles));
+            } catch {}
           }
           setLoading(false);
           return;
@@ -116,7 +134,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(u);
         const { data: p } = await supabase.from('profiles').select('*').eq('id', u.id).single();
         if (p && mounted) {
-          setProfile(p as Profile);
+          const cachedProfiles = JSON.parse(localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY) || '{}');
+          const cachedBanner = localStorage.getItem(`trackup_banner_${u.id}`) || cachedProfiles[u.id]?.banner_url;
+          const resolvedProfile: Profile = {
+            ...(p as Profile),
+            banner_url: (p as Profile).banner_url || cachedBanner || null,
+          };
+          setProfile(resolvedProfile);
+          try {
+            cachedProfiles[u.id] = resolvedProfile;
+            localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(cachedProfiles));
+            if (resolvedProfile.banner_url) {
+              localStorage.setItem(`trackup_banner_${u.id}`, resolvedProfile.banner_url);
+            }
+          } catch {}
         }
       } else if (event === 'SIGNED_OUT') {
         const hasMockSession = localStorage.getItem(LOCAL_STORAGE_SESSION_KEY);
@@ -484,7 +515,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('id', user.id);
 
       if (!error) {
-        setProfile({ ...profile, ...formattedUpdates, updated_at: new Date().toISOString() });
+        const updatedProfile: Profile = { ...profile, ...formattedUpdates, updated_at: new Date().toISOString() };
+        setProfile(updatedProfile);
+        try {
+          const mockProfiles = JSON.parse(localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY) || '{}');
+          mockProfiles[user.id] = updatedProfile;
+          localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(mockProfiles));
+          if (formattedUpdates.banner_url) {
+            localStorage.setItem(`trackup_banner_${user.id}`, formattedUpdates.banner_url);
+          } else if (formattedUpdates.banner_url === null) {
+            localStorage.removeItem(`trackup_banner_${user.id}`);
+          }
+        } catch {}
         if (formattedUpdates.username && formattedUpdates.username !== user.username) {
           const updatedUser: UserSession = { ...user, username: formattedUpdates.username };
           setUser(updatedUser);
@@ -517,7 +559,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .eq('id', user.id);
 
           if (!retryRes.error) {
-            setProfile({ ...profile, ...formattedUpdates, updated_at: new Date().toISOString() });
+            const updatedProfile: Profile = { ...profile, ...formattedUpdates, updated_at: new Date().toISOString() };
+            setProfile(updatedProfile);
+            try {
+              const mockProfiles = JSON.parse(localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY) || '{}');
+              mockProfiles[user.id] = updatedProfile;
+              localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(mockProfiles));
+              if (formattedUpdates.banner_url) {
+                localStorage.setItem(`trackup_banner_${user.id}`, formattedUpdates.banner_url);
+              } else if (formattedUpdates.banner_url === null) {
+                localStorage.removeItem(`trackup_banner_${user.id}`);
+              }
+            } catch {}
             if (formattedUpdates.username && formattedUpdates.username !== user.username) {
               const updatedUser: UserSession = { ...user, username: formattedUpdates.username };
               setUser(updatedUser);

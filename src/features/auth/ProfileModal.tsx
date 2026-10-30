@@ -31,6 +31,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ onSelectTitle }) => 
   const [loading, setLoading] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
+  React.useEffect(() => {
+    if (profile) {
+      setDisplayName(profile.display_name || profile.full_name || user?.username || '');
+      setUsername(profile.username || user?.username || '');
+      setBio(profile.bio || '');
+      setLibraryVisibility(profile.library_visibility || 'public');
+      setRatingPref(profile.rating_display_preference || 'stars_5');
+    }
+  }, [profile, user?.username]);
+
   if (!profileModalOpen || !user) return null;
 
   const handleDeleteAccount = async () => {

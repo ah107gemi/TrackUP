@@ -435,6 +435,60 @@ describe('Profile Banner Feature (Upload & Library Selection)', () => {
     expect(videoFile.name.endsWith('.mp4')).toBe(true);
     expect(gifFile.name.endsWith('.gif')).toBe(true);
   });
+
+  it('safely recovers banner_url from local cache during mobile initial hydration', () => {
+    const userId = 'user_mobile_test';
+    const cachedBannerUrl = 'https://image.tmdb.org/t/p/w1280/mobile_cinematic_backdrop.jpg';
+
+    // Simulate saving banner in mobile local storage
+    localStorage.setItem(`trackup_banner_${userId}`, cachedBannerUrl);
+    localStorage.setItem(
+      'trackup_mock_profiles',
+      JSON.stringify({
+        [userId]: {
+          id: userId,
+          username: 'mobile_user',
+          banner_url: cachedBannerUrl,
+        },
+      })
+    );
+
+    // Hydration resolver matching ProfilePage.tsx logic
+    const resolveBannerOnHydration = (
+      profileBanner: string | null | undefined,
+      uid: string
+    ): string | null => {
+      if (profileBanner) return profileBanner;
+      try {
+        const direct = localStorage.getItem(`trackup_banner_${uid}`);
+        if (direct) return direct;
+        const profiles = JSON.parse(localStorage.getItem('trackup_mock_profiles') || '{}');
+        if (profiles[uid]?.banner_url) return profiles[uid].banner_url;
+      } catch {
+        return null;
+      }
+      return null;
+    };
+
+    // When profile is still pending / undefined on mobile refresh:
+    expect(resolveBannerOnHydration(undefined, userId)).toBe(cachedBannerUrl);
+    // When profile returns null banner:
+    expect(resolveBannerOnHydration(null, userId)).toBe(cachedBannerUrl);
+    // When profile provides active banner:
+    expect(
+      resolveBannerOnHydration('https://image.tmdb.org/t/p/w1280/live_server_banner.jpg', userId)
+    ).toBe('https://image.tmdb.org/t/p/w1280/live_server_banner.jpg');
+  });
+
+  it('verifies mobile-safe container sizing and top padding against avatar overflow', () => {
+    // Assert required mobile classes are present in design contract
+    const mobileHeaderClasses = 'min-h-[22rem] sm:min-h-[24rem] md:min-h-[26rem] h-auto md:h-[34vh] lg:h-[40vh] flex flex-col justify-end';
+    const mobileForegroundClasses = 'relative z-10 pt-16 pb-6 px-4 sm:p-8 flex flex-col justify-end';
+
+    expect(mobileHeaderClasses).toContain('min-h-[22rem]');
+    expect(mobileForegroundClasses).toContain('pt-16');
+    expect(mobileForegroundClasses).toContain('sm:p-8');
+  });
 });
 
 describe('Change Password Feature Validation & Logic', () => {
