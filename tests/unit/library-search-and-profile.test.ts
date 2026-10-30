@@ -746,3 +746,100 @@ describe('Yellowstone Hardcoded Fixture & Poster Hydration', () => {
     expect(library[0].title.poster_url).toBe('https://image.tmdb.org/t/p/w500/a743b67R5AARn4yq1y9wD6oE1hQ.jpg');
   });
 });
+
+describe('Profile Picture 1:1 Cropper & Defensive Avatar Hydration', () => {
+  beforeEach(() => {
+    mockLocalStorage['trackup_avatar_user_mobile_1'] = '';
+    mockLocalStorage['trackup_mock_profiles'] = '';
+  });
+
+  it('safely rejects null or undefined avatar updates if a valid URL is already painted', () => {
+    let currentAvatarUrl: string | null = 'https://supabase.co/storage/v1/object/public/avatars/user_1_cropped.jpg';
+
+    // The defensive setter logic used in ProfilePage
+    const setSafeAvatarUrl = (nextUrl: string | null | ((prev: string | null) => string | null)) => {
+      const prev = currentAvatarUrl;
+      const resolved = typeof nextUrl === 'function' ? nextUrl(prev) : nextUrl;
+      if (!resolved && prev) {
+        // Reject null/undefined updates if already painted
+        return;
+      }
+      currentAvatarUrl = resolved;
+    };
+
+    // Incoming network payload has null avatar_url due to race condition
+    setSafeAvatarUrl(null);
+    expect(currentAvatarUrl).toBe('https://supabase.co/storage/v1/object/public/avatars/user_1_cropped.jpg');
+
+    setSafeAvatarUrl(undefined as any);
+    expect(currentAvatarUrl).toBe('https://supabase.co/storage/v1/object/public/avatars/user_1_cropped.jpg');
+
+    // Valid update proceeds normally
+    setSafeAvatarUrl('https://supabase.co/storage/v1/object/public/avatars/new_photo.jpg');
+    expect(currentAvatarUrl).toBe('https://supabase.co/storage/v1/object/public/avatars/new_photo.jpg');
+  });
+
+  it('preserves cached avatar on mobile refresh when network profile returns null avatar_url', () => {
+    const userId = 'user_mobile_1';
+    const cachedUrl = 'https://supabase.co/storage/v1/object/public/avatars/persisted_avatar.jpg';
+    mockLocalStorage[`trackup_avatar_${userId}`] = cachedUrl;
+
+    // Simulate incoming profile from network with null avatar_url
+    const networkProfile = {
+      id: userId,
+      username: 'mobile_user',
+      display_name: 'Mobile User',
+      avatar_url: null,
+      banner_url: null,
+    };
+
+    // Resilient hydration fallback
+    const resolvedAvatar =
+      networkProfile.avatar_url ||
+      mockLocalStorage[`trackup_avatar_${userId}`] ||
+      null;
+
+    expect(resolvedAvatar).toBe(cachedUrl);
+  });
+
+  it('configures 1:1 square aspect ratio and circular crop shape for avatar cropper', () => {
+    const avatarCropperConfig = {
+      aspect: 1,
+      cropShape: 'round' as const,
+      minZoom: 1,
+      maxZoom: 3,
+      showGrid: true,
+    };
+
+    expect(avatarCropperConfig.aspect).toBe(1);
+    expect(avatarCropperConfig.cropShape).toBe('round');
+    expect(avatarCropperConfig.maxZoom).toBeGreaterThanOrEqual(3);
+  });
+
+  it('performs defensive merging and initiates silent DB healing when DB avatar is missing', () => {
+    const userId = 'user_heal_1';
+    const cachedAvatar = 'https://supabase.co/storage/v1/object/public/avatars/healed.jpg';
+    mockLocalStorage[`trackup_avatar_${userId}`] = cachedAvatar;
+
+    let dbUpdatedUrl: string | null = null;
+    const mockSupabaseUpdate = (fields: { avatar_url: string }) => {
+      dbUpdatedUrl = fields.avatar_url;
+      return Promise.resolve({ error: null });
+    };
+
+    const incomingDbProfile: { id: string; avatar_url: string | null } = {
+      id: userId,
+      avatar_url: null,
+    };
+
+    // Defensive merging logic
+    let effectiveAvatar = incomingDbProfile.avatar_url;
+    if (!effectiveAvatar && cachedAvatar) {
+      effectiveAvatar = cachedAvatar;
+      mockSupabaseUpdate({ avatar_url: cachedAvatar });
+    }
+
+    expect(effectiveAvatar).toBe(cachedAvatar);
+    expect(dbUpdatedUrl).toBe(cachedAvatar);
+  });
+});

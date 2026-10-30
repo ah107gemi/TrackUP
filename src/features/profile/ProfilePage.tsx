@@ -24,6 +24,7 @@ import { useUserLibrary } from '../library/useLibrary';
 import { uploadAvatarImage } from '../../lib/avatarUpload';
 import { uploadBannerImage, isVideoBanner } from '../../lib/bannerUpload';
 import { BannerCropperModal } from './BannerCropperModal';
+import { AvatarCropperModal } from './AvatarCropperModal';
 import { BannerLibrarySelector } from './BannerLibrarySelector';
 import {
   fetchUserFavorites,
@@ -143,25 +144,43 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
     return profile?.avatar_url || getCachedAvatar();
   });
 
+  // Defensive avatar state setter that explicitly rejects null/undefined updates if a valid URL is already painted on screen
+  const setSafeAvatarUrl = (nextUrl: string | null | ((prev: string | null) => string | null)) => {
+    setActiveAvatarUrl((prev) => {
+      const resolved = typeof nextUrl === 'function' ? nextUrl(prev) : nextUrl;
+      if (!resolved && prev) {
+        return prev;
+      }
+      return resolved;
+    });
+  };
+
   useEffect(() => {
     if (profile?.avatar_url) {
-      setActiveAvatarUrl(profile.avatar_url);
+      setSafeAvatarUrl(profile.avatar_url);
       try {
         if (user?.id) {
           localStorage.setItem(`trackup_avatar_${user.id}`, profile.avatar_url);
         }
       } catch {}
-    } else if (profile && profile.avatar_url === null) {
-      setActiveAvatarUrl(null);
-      try {
-        if (user?.id) {
-          localStorage.removeItem(`trackup_avatar_${user.id}`);
-        }
-      } catch {}
     } else {
       const cached = getCachedAvatar();
       if (cached) {
-        setActiveAvatarUrl(cached);
+        setSafeAvatarUrl(cached);
+        // Silent background DB healing if incoming profile has null avatar but valid local cache exists
+        if (user?.id && profile && !profile.avatar_url) {
+          (async () => {
+            try {
+              await supabase
+                .from('profiles')
+                // @ts-expect-error dynamic typing
+                .update({ avatar_url: cached, updated_at: new Date().toISOString() })
+                .eq('id', user.id);
+            } catch (err) {
+              console.warn('[AvatarHydration] Silent healing failed:', err);
+            }
+          })();
+        }
       }
     }
   }, [profile?.avatar_url, profile, user?.id]);
@@ -210,6 +229,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   const [isCropperOpen, setIsCropperOpen] = useState(false);
   const [cropperImageSrc, setCropperImageSrc] = useState<string | null>(null);
   const [pendingCropFile, setPendingCropFile] = useState<File | null>(null);
+
+  // Avatar 1:1 Cropper state
+  const [isAvatarCropperOpen, setIsAvatarCropperOpen] = useState(false);
+  const [avatarCropperSrc, setAvatarCropperSrc] = useState<string | null>(null);
+  const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null);
 
   // Change Password state
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
@@ -303,26 +327,58 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
     }
   };
 
-  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Reset input value so user can re-select the same file if needed
+    e.target.value = '';
+
+    setUploadError(null);
+
+    // Enforce 10MB limit
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError('Avatar file size must be under 10MB');
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    setAvatarCropperSrc(objectUrl);
+    setPendingAvatarFile(file);
+    setIsAvatarCropperOpen(true);
+  };
+
+  const handleConfirmAvatarCrop = async (croppedFile: File) => {
     setUploading(true);
     setUploadError(null);
 
-    const { url, error } = await uploadAvatarImage(file, user.id);
+    const { url, error } = await uploadAvatarImage(croppedFile, user.id);
     if (error || !url) {
-      setUploadError(error || 'Failed to upload image');
+      setUploadError(error || 'Failed to upload cropped image');
       setUploading(false);
       return;
     }
 
-    setActiveAvatarUrl(url);
+    setSafeAvatarUrl(url);
     try {
       localStorage.setItem(`trackup_avatar_${user.id}`, url);
+      const profiles = JSON.parse(localStorage.getItem('trackup_mock_profiles') || '{}');
+      if (profiles[user.id]) {
+        profiles[user.id].avatar_url = url;
+        localStorage.setItem('trackup_mock_profiles', JSON.stringify(profiles));
+      }
     } catch {}
     await updateProfile({ avatar_url: url });
     setUploading(false);
+  };
+
+  const handleCloseAvatarCropper = () => {
+    setIsAvatarCropperOpen(false);
+    if (avatarCropperSrc) {
+      URL.revokeObjectURL(avatarCropperSrc);
+      setAvatarCropperSrc(null);
+    }
+    setPendingAvatarFile(null);
   };
 
   const handleOpenEditProfile = () => {
@@ -1164,6 +1220,46 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                 </div>
               )}
 
+              {/* Profile Picture Change Section */}
+              <div
+                data-testid="edit-avatar-section"
+                className="flex items-center gap-4 p-3.5 rounded-2xl bg-surface-elevated/40 border border-surface-elevated"
+              >
+                <div className="relative w-14 h-14 rounded-full overflow-hidden bg-surface-elevated border-2 border-accent shadow-md shrink-0 flex items-center justify-center">
+                  {effectiveAvatar ? (
+                    <img
+                      src={effectiveAvatar}
+                      alt="Profile Avatar"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="w-7 h-7 text-accent" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-xs font-bold text-text-primary">Profile Picture</h4>
+                  <p className="text-[11px] text-text-muted">
+                    1:1 square photo with interactive circular cropping
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  data-testid="edit-avatar-trigger"
+                  className="px-3.5 py-1.5 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-text-primary text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                >
+                  <Camera className="w-3.5 h-3.5 text-accent" />
+                  <span>{uploading ? 'Uploading...' : 'Change Photo'}</span>
+                </button>
+              </div>
+
+              {uploadError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium">
+                  {uploadError}
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-text-secondary mb-1">
                   Full Name / Display Name
@@ -1392,6 +1488,16 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
         fileType={pendingCropFile?.type}
         onClose={handleCloseCropper}
         onConfirmCrop={handleConfirmCrop}
+      />
+
+      {/* 1:1 Avatar Cropper Modal */}
+      <AvatarCropperModal
+        isOpen={isAvatarCropperOpen}
+        imageSrc={avatarCropperSrc}
+        fileName={pendingAvatarFile?.name}
+        fileType={pendingAvatarFile?.type}
+        onClose={handleCloseAvatarCropper}
+        onConfirmCrop={handleConfirmAvatarCrop}
       />
 
       {/* Change Password Modal */}

@@ -57,17 +57,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
           setUser(u);
 
-          // fetch or create profile
-          const { data: p } = await supabase.from('profiles').select('*').eq('id', u.id).single();
+          // fetch or create profile with explicit column selection guaranteeing avatar_url is never omitted
+          let p: any = null;
+          try {
+            const res: any = await (supabase.from('profiles') as any)
+              .select('id, username, display_name, full_name, avatar_url, banner_url, bio, library_visibility, activity_visibility, rating_display_preference, created_at, updated_at')
+              .eq('id', u.id)
+              .single();
+            if (!res?.error && res?.data) {
+              p = res.data;
+            } else if (res?.error) {
+              const resFallback: any = await (supabase.from('profiles') as any)
+                .select('id, username, display_name, avatar_url, banner_url, bio, library_visibility, activity_visibility, rating_display_preference, created_at, updated_at')
+                .eq('id', u.id)
+                .single();
+              if (!resFallback?.error && resFallback?.data) {
+                p = resFallback.data;
+              }
+            }
+          } catch {
+            // offline / network failure
+          }
+
           const cachedProfiles = JSON.parse(localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY) || '{}');
           const cachedBanner = localStorage.getItem(`trackup_banner_${u.id}`) || cachedProfiles[u.id]?.banner_url;
           const cachedAvatar = localStorage.getItem(`trackup_avatar_${u.id}`) || cachedProfiles[u.id]?.avatar_url;
 
           if (p && mounted) {
+            let effectiveAvatarUrl = (p as Profile).avatar_url;
+            // Defensive merging: if incoming DB avatar_url is missing/null but valid local cache exists, do not overwrite!
+            if (!effectiveAvatarUrl && cachedAvatar) {
+              effectiveAvatarUrl = cachedAvatar;
+              (async () => {
+                try {
+                  await supabase
+                    .from('profiles')
+                    // @ts-expect-error dynamic typing
+                    .update({ avatar_url: cachedAvatar, updated_at: new Date().toISOString() })
+                    .eq('id', u.id);
+                } catch (healErr) {
+                  console.warn('[AvatarHydration] Silent background DB healing failed:', healErr);
+                }
+              })();
+            }
+
+            let effectiveBannerUrl = (p as Profile).banner_url;
+            if (!effectiveBannerUrl && cachedBanner) {
+              effectiveBannerUrl = cachedBanner;
+              (async () => {
+                try {
+                  await supabase
+                    .from('profiles')
+                    // @ts-expect-error dynamic typing
+                    .update({ banner_url: cachedBanner, updated_at: new Date().toISOString() })
+                    .eq('id', u.id);
+                } catch {}
+              })();
+            }
+
             const resolvedProfile: Profile = {
               ...(p as Profile),
-              banner_url: (p as Profile).banner_url || cachedBanner || null,
-              avatar_url: (p as Profile).avatar_url || cachedAvatar || null,
+              banner_url: effectiveBannerUrl || null,
+              avatar_url: effectiveAvatarUrl || null,
             };
             setProfile(resolvedProfile);
             try {
@@ -140,15 +191,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           username: session.user.user_metadata?.username || session.user.email?.split('@')[0] || 'user',
         };
         setUser(u);
-        const { data: p } = await supabase.from('profiles').select('*').eq('id', u.id).single();
+        let p: any = null;
+        try {
+          const res: any = await (supabase.from('profiles') as any)
+            .select('id, username, display_name, full_name, avatar_url, banner_url, bio, library_visibility, activity_visibility, rating_display_preference, created_at, updated_at')
+            .eq('id', u.id)
+            .single();
+          if (!res?.error && res?.data) {
+            p = res.data;
+          } else if (res?.error) {
+            const resFallback: any = await (supabase.from('profiles') as any)
+              .select('id, username, display_name, avatar_url, banner_url, bio, library_visibility, activity_visibility, rating_display_preference, created_at, updated_at')
+              .eq('id', u.id)
+              .single();
+            if (!resFallback?.error && resFallback?.data) {
+              p = resFallback.data;
+            }
+          }
+        } catch {
+          // offline
+        }
+
         if (p && mounted) {
           const cachedProfiles = JSON.parse(localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY) || '{}');
           const cachedBanner = localStorage.getItem(`trackup_banner_${u.id}`) || cachedProfiles[u.id]?.banner_url;
           const cachedAvatar = localStorage.getItem(`trackup_avatar_${u.id}`) || cachedProfiles[u.id]?.avatar_url;
+
+          let effectiveAvatarUrl = (p as Profile).avatar_url;
+          if (!effectiveAvatarUrl && cachedAvatar) {
+            effectiveAvatarUrl = cachedAvatar;
+            (async () => {
+              try {
+                await supabase
+                  .from('profiles')
+                  // @ts-expect-error dynamic typing
+                  .update({ avatar_url: cachedAvatar, updated_at: new Date().toISOString() })
+                  .eq('id', u.id);
+              } catch {}
+            })();
+          }
+
+          let effectiveBannerUrl = (p as Profile).banner_url;
+          if (!effectiveBannerUrl && cachedBanner) {
+            effectiveBannerUrl = cachedBanner;
+            (async () => {
+              try {
+                await supabase
+                  .from('profiles')
+                  // @ts-expect-error dynamic typing
+                  .update({ banner_url: cachedBanner, updated_at: new Date().toISOString() })
+                  .eq('id', u.id);
+              } catch {}
+            })();
+          }
+
           const resolvedProfile: Profile = {
             ...(p as Profile),
-            banner_url: (p as Profile).banner_url || cachedBanner || null,
-            avatar_url: (p as Profile).avatar_url || cachedAvatar || null,
+            banner_url: effectiveBannerUrl || null,
+            avatar_url: effectiveAvatarUrl || null,
           };
           setProfile(resolvedProfile);
           try {
@@ -209,17 +309,78 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
           setUser(u);
 
-          // Fetch or create profile
-          const { data: p } = await supabase.from('profiles').select('*').eq('id', u.id).single();
+          // Fetch or create profile with explicit columns
+          let p: any = null;
+          try {
+            const { data } = await (supabase.from('profiles') as any)
+              .select('id, username, display_name, full_name, avatar_url, banner_url, bio, library_visibility, activity_visibility, rating_display_preference, created_at, updated_at')
+              .eq('id', u.id)
+              .single();
+            p = data;
+          } catch {
+            try {
+              const { data } = await (supabase.from('profiles') as any)
+                .select('id, username, display_name, avatar_url, banner_url, bio, library_visibility, activity_visibility, rating_display_preference, created_at, updated_at')
+                .eq('id', u.id)
+                .single();
+              p = data;
+            } catch {
+              // ignore
+            }
+          }
+
+          const cachedProfiles = JSON.parse(localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY) || '{}');
+          const cachedBanner = localStorage.getItem(`trackup_banner_${u.id}`) || cachedProfiles[u.id]?.banner_url;
+          const cachedAvatar = localStorage.getItem(`trackup_avatar_${u.id}`) || cachedProfiles[u.id]?.avatar_url;
+
           if (p) {
-            setProfile(p as Profile);
+            let effectiveAvatarUrl = (p as Profile).avatar_url;
+            if (!effectiveAvatarUrl && cachedAvatar) {
+              effectiveAvatarUrl = cachedAvatar;
+              (async () => {
+                try {
+                  await supabase
+                    .from('profiles')
+                    // @ts-expect-error dynamic typing
+                    .update({ avatar_url: cachedAvatar, updated_at: new Date().toISOString() })
+                    .eq('id', u.id);
+                } catch {}
+              })();
+            }
+
+            let effectiveBannerUrl = (p as Profile).banner_url;
+            if (!effectiveBannerUrl && cachedBanner) {
+              effectiveBannerUrl = cachedBanner;
+              (async () => {
+                try {
+                  await supabase
+                    .from('profiles')
+                    // @ts-expect-error dynamic typing
+                    .update({ banner_url: cachedBanner, updated_at: new Date().toISOString() })
+                    .eq('id', u.id);
+                } catch {}
+              })();
+            }
+
+            const resolvedProfile: Profile = {
+              ...(p as Profile),
+              banner_url: effectiveBannerUrl || null,
+              avatar_url: effectiveAvatarUrl || null,
+            };
+            setProfile(resolvedProfile);
+            try {
+              cachedProfiles[u.id] = resolvedProfile;
+              localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(cachedProfiles));
+              if (resolvedProfile.banner_url) localStorage.setItem(`trackup_banner_${u.id}`, resolvedProfile.banner_url);
+              if (resolvedProfile.avatar_url) localStorage.setItem(`trackup_avatar_${u.id}`, resolvedProfile.avatar_url);
+            } catch {}
           } else {
             const newProfile: Profile = {
               id: u.id,
               username: u.username,
               display_name: data.user.user_metadata?.display_name || u.username,
-              avatar_url: data.user.user_metadata?.avatar_url || null,
-              banner_url: data.user.user_metadata?.banner_url || null,
+              avatar_url: data.user.user_metadata?.avatar_url || cachedAvatar || null,
+              banner_url: data.user.user_metadata?.banner_url || cachedBanner || null,
               bio: null,
               library_visibility: 'public',
               activity_visibility: 'public',
@@ -229,6 +390,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             };
             await (supabase.from('profiles') as any).upsert(newProfile);
             setProfile(newProfile);
+            try {
+              cachedProfiles[u.id] = newProfile;
+              localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(cachedProfiles));
+              if (newProfile.banner_url) localStorage.setItem(`trackup_banner_${u.id}`, newProfile.banner_url);
+              if (newProfile.avatar_url) localStorage.setItem(`trackup_avatar_${u.id}`, newProfile.avatar_url);
+            } catch {}
           }
 
           // Store session for persistence
