@@ -61,11 +61,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const { data: p } = await supabase.from('profiles').select('*').eq('id', u.id).single();
           const cachedProfiles = JSON.parse(localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY) || '{}');
           const cachedBanner = localStorage.getItem(`trackup_banner_${u.id}`) || cachedProfiles[u.id]?.banner_url;
+          const cachedAvatar = localStorage.getItem(`trackup_avatar_${u.id}`) || cachedProfiles[u.id]?.avatar_url;
 
           if (p && mounted) {
             const resolvedProfile: Profile = {
               ...(p as Profile),
               banner_url: (p as Profile).banner_url || cachedBanner || null,
+              avatar_url: (p as Profile).avatar_url || cachedAvatar || null,
             };
             setProfile(resolvedProfile);
             try {
@@ -74,13 +76,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               if (resolvedProfile.banner_url) {
                 localStorage.setItem(`trackup_banner_${u.id}`, resolvedProfile.banner_url);
               }
+              if (resolvedProfile.avatar_url) {
+                localStorage.setItem(`trackup_avatar_${u.id}`, resolvedProfile.avatar_url);
+              }
             } catch {}
           } else if (mounted) {
             const fallbackProfile: Profile = {
               id: u.id,
               username: u.username,
               display_name: session.user.user_metadata?.display_name || u.username,
-              avatar_url: session.user.user_metadata?.avatar_url || null,
+              avatar_url: session.user.user_metadata?.avatar_url || cachedAvatar || null,
               banner_url: session.user.user_metadata?.banner_url || cachedBanner || null,
               bio: null,
               library_visibility: 'public',
@@ -93,6 +98,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             try {
               cachedProfiles[u.id] = fallbackProfile;
               localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(cachedProfiles));
+              if (fallbackProfile.avatar_url) {
+                localStorage.setItem(`trackup_avatar_${u.id}`, fallbackProfile.avatar_url);
+              }
             } catch {}
           }
           setLoading(false);
@@ -136,9 +144,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (p && mounted) {
           const cachedProfiles = JSON.parse(localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY) || '{}');
           const cachedBanner = localStorage.getItem(`trackup_banner_${u.id}`) || cachedProfiles[u.id]?.banner_url;
+          const cachedAvatar = localStorage.getItem(`trackup_avatar_${u.id}`) || cachedProfiles[u.id]?.avatar_url;
           const resolvedProfile: Profile = {
             ...(p as Profile),
             banner_url: (p as Profile).banner_url || cachedBanner || null,
+            avatar_url: (p as Profile).avatar_url || cachedAvatar || null,
           };
           setProfile(resolvedProfile);
           try {
@@ -146,6 +156,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(cachedProfiles));
             if (resolvedProfile.banner_url) {
               localStorage.setItem(`trackup_banner_${u.id}`, resolvedProfile.banner_url);
+            }
+            if (resolvedProfile.avatar_url) {
+              localStorage.setItem(`trackup_avatar_${u.id}`, resolvedProfile.avatar_url);
             }
           } catch {}
         }
@@ -479,6 +492,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updated: Profile = { ...profile, ...formattedUpdates, updated_at: new Date().toISOString() };
       mockProfiles[user.id] = updated;
       localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(mockProfiles));
+      if (formattedUpdates.banner_url) {
+        localStorage.setItem(`trackup_banner_${user.id}`, formattedUpdates.banner_url);
+      } else if (formattedUpdates.banner_url === null) {
+        localStorage.removeItem(`trackup_banner_${user.id}`);
+      }
+      if (formattedUpdates.avatar_url) {
+        localStorage.setItem(`trackup_avatar_${user.id}`, formattedUpdates.avatar_url);
+      } else if (formattedUpdates.avatar_url === null) {
+        localStorage.removeItem(`trackup_avatar_${user.id}`);
+      }
       setProfile(updated);
 
       if (formattedUpdates.username && formattedUpdates.username !== user.username) {
@@ -526,6 +549,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } else if (formattedUpdates.banner_url === null) {
             localStorage.removeItem(`trackup_banner_${user.id}`);
           }
+          if (formattedUpdates.avatar_url) {
+            localStorage.setItem(`trackup_avatar_${user.id}`, formattedUpdates.avatar_url);
+          } else if (formattedUpdates.avatar_url === null) {
+            localStorage.removeItem(`trackup_avatar_${user.id}`);
+          }
         } catch {}
         if (formattedUpdates.username && formattedUpdates.username !== user.username) {
           const updatedUser: UserSession = { ...user, username: formattedUpdates.username };
@@ -569,6 +597,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 localStorage.setItem(`trackup_banner_${user.id}`, formattedUpdates.banner_url);
               } else if (formattedUpdates.banner_url === null) {
                 localStorage.removeItem(`trackup_banner_${user.id}`);
+              }
+              if (formattedUpdates.avatar_url) {
+                localStorage.setItem(`trackup_avatar_${user.id}`, formattedUpdates.avatar_url);
+              } else if (formattedUpdates.avatar_url === null) {
+                localStorage.removeItem(`trackup_avatar_${user.id}`);
               }
             } catch {}
             if (formattedUpdates.username && formattedUpdates.username !== user.username) {

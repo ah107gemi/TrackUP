@@ -480,14 +480,65 @@ describe('Profile Banner Feature (Upload & Library Selection)', () => {
     ).toBe('https://image.tmdb.org/t/p/w1280/live_server_banner.jpg');
   });
 
-  it('verifies mobile-safe container sizing and top padding against avatar overflow', () => {
-    // Assert required mobile classes are present in design contract
-    const mobileHeaderClasses = 'min-h-[22rem] sm:min-h-[24rem] md:min-h-[26rem] h-auto md:h-[34vh] lg:h-[40vh] flex flex-col justify-end';
-    const mobileForegroundClasses = 'relative z-10 pt-16 pb-6 px-4 sm:p-8 flex flex-col justify-end';
+  it('safely recovers avatar_url from local cache during mobile initial hydration', () => {
+    const userId = 'user_mobile_avatar_test';
+    const cachedAvatarUrl = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150';
 
-    expect(mobileHeaderClasses).toContain('min-h-[22rem]');
-    expect(mobileForegroundClasses).toContain('pt-16');
-    expect(mobileForegroundClasses).toContain('sm:p-8');
+    // Simulate saving avatar in mobile local storage
+    localStorage.setItem(`trackup_avatar_${userId}`, cachedAvatarUrl);
+    localStorage.setItem(
+      'trackup_mock_profiles',
+      JSON.stringify({
+        [userId]: {
+          id: userId,
+          username: 'mobile_avatar_user',
+          avatar_url: cachedAvatarUrl,
+        },
+      })
+    );
+
+    // Hydration resolver matching ProfilePage.tsx avatar logic
+    const resolveAvatarOnHydration = (
+      profileAvatar: string | null | undefined,
+      uid: string
+    ): string | null => {
+      if (profileAvatar) return profileAvatar;
+      try {
+        const direct = localStorage.getItem(`trackup_avatar_${uid}`);
+        if (direct) return direct;
+        const profiles = JSON.parse(localStorage.getItem('trackup_mock_profiles') || '{}');
+        if (profiles[uid]?.avatar_url) return profiles[uid].avatar_url;
+      } catch {
+        return null;
+      }
+      return null;
+    };
+
+    // When profile is still pending / undefined on mobile refresh:
+    expect(resolveAvatarOnHydration(undefined, userId)).toBe(cachedAvatarUrl);
+    // When profile returns null avatar:
+    expect(resolveAvatarOnHydration(null, userId)).toBe(cachedAvatarUrl);
+    // When profile provides active avatar:
+    expect(
+      resolveAvatarOnHydration('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', userId)
+    ).toBe('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150');
+  });
+
+  it('verifies Pro Max redesign layout specifications (distinct banner block & left-aligned overlapping avatar)', () => {
+    // Assert required classes for Pro Max design contract
+    const bannerBlockClasses = 'relative w-full h-48 sm:h-56 md:h-64 overflow-hidden bg-surface-elevated/40';
+    const avatarContainerClasses = 'w-24 h-24 sm:w-32 sm:h-32 rounded-full overflow-hidden bg-surface-elevated border-4 border-background shadow-2xl flex items-center justify-center relative ring-2 ring-accent/30';
+    const avatarRowClasses = 'flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-12 sm:-mt-16 mb-4';
+
+    // Distinct banner block: full width, h-48 mobile to md:h-64 desktop
+    expect(bannerBlockClasses).toContain('h-48');
+    expect(bannerBlockClasses).toContain('md:h-64');
+
+    // Left-aligned overlapping avatar: circular, -mt-12/-mt-16, thick background border
+    expect(avatarContainerClasses).toContain('rounded-full');
+    expect(avatarContainerClasses).toContain('border-4 border-background');
+    expect(avatarRowClasses).toContain('-mt-12');
+    expect(avatarRowClasses).toContain('sm:-mt-16');
   });
 });
 

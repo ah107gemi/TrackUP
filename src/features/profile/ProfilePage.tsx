@@ -36,6 +36,7 @@ import { formatWatchTime } from '../../lib/dateUtils';
 import { supabase } from '../../lib/supabase';
 import { clearUserLibrary } from '../library/libraryService';
 import { ChangePasswordModal } from '../auth/ChangePasswordModal';
+import { getStoredFollows, MOCK_COMMUNITY_PROFILES } from '../social/socialService';
 
 interface ProfilePageProps {
   onSelectTitle?: (titleId: string) => void;
@@ -114,6 +115,95 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   }, [profile?.banner_url, profile, user?.id]);
 
   const effectiveBanner = activeBannerUrl || profile?.banner_url || getCachedBanner();
+
+  // Cached avatar retrieval for resilient hydration on mobile browsers / hard-refreshes
+  const getCachedAvatar = (): string | null => {
+    try {
+      if (typeof window === 'undefined') return null;
+      if (user?.id) {
+        const direct = localStorage.getItem(`trackup_avatar_${user.id}`);
+        if (direct) return direct;
+      }
+      const profiles = JSON.parse(localStorage.getItem('trackup_mock_profiles') || '{}');
+      if (user?.id && profiles[user.id]?.avatar_url) {
+        return profiles[user.id].avatar_url;
+      }
+      const sessionStr = localStorage.getItem('trackup_mock_session');
+      if (sessionStr) {
+        const session = JSON.parse(sessionStr);
+        if (session?.avatar_url) return session.avatar_url;
+      }
+    } catch {
+      // Safe fallback on storage/quota errors
+    }
+    return null;
+  };
+
+  const [activeAvatarUrl, setActiveAvatarUrl] = useState<string | null>(() => {
+    return profile?.avatar_url || getCachedAvatar();
+  });
+
+  useEffect(() => {
+    if (profile?.avatar_url) {
+      setActiveAvatarUrl(profile.avatar_url);
+      try {
+        if (user?.id) {
+          localStorage.setItem(`trackup_avatar_${user.id}`, profile.avatar_url);
+        }
+      } catch {}
+    } else if (profile && profile.avatar_url === null) {
+      setActiveAvatarUrl(null);
+      try {
+        if (user?.id) {
+          localStorage.removeItem(`trackup_avatar_${user.id}`);
+        }
+      } catch {}
+    } else {
+      const cached = getCachedAvatar();
+      if (cached) {
+        setActiveAvatarUrl(cached);
+      }
+    }
+  }, [profile?.avatar_url, profile, user?.id]);
+
+  const effectiveAvatar = activeAvatarUrl || profile?.avatar_url || getCachedAvatar();
+
+  // Social metrics state (Followers & Following counts)
+  const [socialStats, setSocialStats] = useState<{ followers: number; following: number }>({
+    followers: 0,
+    following: 0,
+  });
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const loadSocial = async () => {
+      try {
+        const follows = getStoredFollows();
+        let followers = follows.filter((f) => f.following_id === user.id).length;
+        let following = follows.filter((f) => f.follower_id === user.id).length;
+
+        const mockP = MOCK_COMMUNITY_PROFILES.find(
+          (p) => p.id === user.id || p.username.toLowerCase() === user.username.toLowerCase()
+        );
+        if (mockP) {
+          followers = Math.max(followers, mockP.follower_count || 0);
+          following = Math.max(following, mockP.following_count || 0);
+        }
+
+        try {
+          const [fRes, gRes] = await Promise.all([
+            supabase.from('user_follows').select('id', { count: 'exact', head: true }).eq('following_id', user.id),
+            supabase.from('user_follows').select('id', { count: 'exact', head: true }).eq('follower_id', user.id),
+          ]);
+          if (fRes.count !== null && fRes.count !== undefined) followers = Math.max(followers, fRes.count);
+          if (gRes.count !== null && gRes.count !== undefined) following = Math.max(following, gRes.count);
+        } catch {}
+
+        setSocialStats({ followers, following });
+      } catch {}
+    };
+    loadSocial();
+  }, [user?.id, user?.username]);
 
   // Dedicated Library Selector & Image Cropper state
   const [isLibrarySelectorOpen, setIsLibrarySelectorOpen] = useState(false);
@@ -227,6 +317,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
       return;
     }
 
+    setActiveAvatarUrl(url);
+    try {
+      localStorage.setItem(`trackup_avatar_${user.id}`, url);
+    } catch {}
     await updateProfile({ avatar_url: url });
     setUploading(false);
   };
@@ -480,13 +574,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
 
   return (
     <div data-testid="profile-page" className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-200">
-      {/* Profile Hero Header */}
+      {/* Profile Hero Header - Pro Max Left-Aligned Aesthetic */}
       <div
         data-testid="profile-hero-header"
-        className="relative rounded-3xl overflow-hidden bg-surface border border-surface-elevated shadow-xl min-h-[22rem] sm:min-h-[24rem] md:min-h-[26rem] h-auto md:h-[34vh] lg:h-[40vh] flex flex-col justify-end"
+        className="relative rounded-3xl overflow-hidden bg-surface border border-surface-elevated shadow-xl"
       >
-        {/* Full-bleed Banner Image, Video, or Sleek Gradient */}
-        <div className="absolute inset-0 w-full h-full pointer-events-none overflow-hidden">
+        {/* 1. Distinct Full-Width Top Banner Block (Crisp image/video without heavy dark gradient) */}
+        <div className="relative w-full h-48 sm:h-56 md:h-64 overflow-hidden bg-surface-elevated/40">
           {effectiveBanner ? (
             isVideoBanner(effectiveBanner) ? (
               <video
@@ -495,7 +589,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                 muted
                 playsInline
                 data-testid="profile-banner-video"
-                className="absolute inset-0 w-full h-full object-cover"
+                className="w-full h-full object-cover"
                 src={effectiveBanner}
               >
                 <source
@@ -514,100 +608,97 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
           ) : (
             <div
               data-testid="profile-banner-fallback"
-              className="w-full h-full bg-gradient-to-br from-surface via-surface-elevated/80 to-surface"
+              className="w-full h-full bg-gradient-to-r from-surface via-surface-elevated to-surface"
             />
           )}
-          {/* Dark gradient overlay for sharp text and stats contrast */}
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/85 to-transparent backdrop-blur-[0.5px]" />
         </div>
 
-        {/* Hero Foreground Content */}
-        <div className="relative z-10 pt-16 pb-6 px-4 sm:p-8 flex flex-col justify-end">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
-          {/* Avatar with Custom Upload Trigger */}
-          <div className="relative group shrink-0">
-            <div
-              data-testid="profile-avatar-container"
-              className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden bg-surface-elevated border-2 border-accent/40 shadow-xl flex items-center justify-center relative"
-            >
-              {profile?.avatar_url ? (
-                <img
-                  src={profile.avatar_url}
-                  alt={profile.display_name || user.username}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <User className="w-12 h-12 text-accent" />
-              )}
+        {/* 2. Hero Content Section with Overlapping Avatar */}
+        <div className="px-4 sm:px-8 pb-6 sm:pb-8">
+          {/* Avatar and Action Controls Row */}
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-12 sm:-mt-16 mb-4">
+            {/* Left-Aligned Overlapping Circular Avatar */}
+            <div className="relative group shrink-0 ml-1 sm:ml-0">
+              <div
+                data-testid="profile-avatar-container"
+                className="w-24 h-24 sm:w-32 sm:h-32 rounded-full overflow-hidden bg-surface-elevated border-4 border-background shadow-2xl flex items-center justify-center relative ring-2 ring-accent/30"
+              >
+                {effectiveAvatar ? (
+                  <img
+                    src={effectiveAvatar}
+                    alt={profile?.display_name || user.username}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <User className="w-12 h-12 sm:w-16 sm:h-16 text-accent" />
+                )}
 
-              {/* Hover upload overlay */}
+                {/* Hover upload overlay */}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  data-testid="avatar-upload-trigger"
+                  aria-label="Upload profile picture"
+                  className="absolute inset-0 bg-background/70 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-accent font-semibold text-xs gap-1 cursor-pointer rounded-full"
+                >
+                  <Camera className="w-5 h-5 sm:w-6 sm:h-6" />
+                  <span className="text-[10px] sm:text-xs">{uploading ? 'Uploading...' : 'Change Photo'}</span>
+                </button>
+              </div>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                data-testid="avatar-file-input"
+                className="hidden"
+                onChange={handleAvatarFileChange}
+              />
+            </div>
+
+            {/* Top-Right Action Buttons */}
+            <div className="flex flex-wrap items-center gap-2 self-start sm:self-end">
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                data-testid="avatar-upload-trigger"
-                aria-label="Upload profile picture"
-                className="absolute inset-0 bg-background/70 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-accent font-semibold text-xs gap-1 cursor-pointer"
+                onClick={handleOpenEditProfile}
+                data-testid="edit-profile-btn"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs transition-all shadow-md cursor-pointer"
               >
-                <Camera className="w-6 h-6" />
-                <span>{uploading ? 'Uploading...' : 'Change Photo'}</span>
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Edit Profile</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsChangePasswordOpen(true)}
+                data-testid="change-password-btn"
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-xs font-semibold text-text-secondary hover:text-text-primary transition-all shadow-sm cursor-pointer"
+                title="Change Password"
+              >
+                <Lock className="w-3.5 h-3.5 text-accent" />
+                <span>Change Password</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setProfileModalOpen(true)}
+                data-testid="open-settings-btn"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-xs font-semibold text-text-secondary hover:text-text-primary transition-all shadow-sm cursor-pointer"
+                title="Preferences & Settings"
+              >
+                <span>Settings</span>
               </button>
             </div>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              data-testid="avatar-file-input"
-              className="hidden"
-              onChange={handleAvatarFileChange}
-            />
           </div>
 
-          {/* User Details */}
-          <div className="flex-1 text-center sm:text-left min-w-0 w-full sm:w-auto">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight">
-                  {profile?.display_name || user.username}
-                </h1>
-                <p className="text-sm font-mono text-accent mt-0.5">@{user.username}</p>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-1 sm:mt-0">
-                <button
-                  type="button"
-                  onClick={handleOpenEditProfile}
-                  data-testid="edit-profile-btn"
-                  className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs transition-all shadow-md cursor-pointer"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  <span>Edit Profile</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsChangePasswordOpen(true)}
-                  data-testid="change-password-btn"
-                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-xs font-semibold text-text-secondary hover:text-text-primary transition-all shadow-sm cursor-pointer"
-                  title="Change Password"
-                >
-                  <Lock className="w-3.5 h-3.5 text-accent" />
-                  <span>Change Password</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setProfileModalOpen(true)}
-                  data-testid="open-settings-btn"
-                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-xs font-semibold text-text-secondary hover:text-text-primary transition-all shadow-sm cursor-pointer"
-                  title="Preferences & Settings"
-                >
-                  <span>Settings</span>
-                </button>
-              </div>
-            </div>
+          {/* 3. User Details: Left-aligned Display Name and @username */}
+          <div className="text-left space-y-1">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight">
+              {profile?.display_name || user.username}
+            </h1>
+            <p className="text-sm font-mono text-accent">@{user.username}</p>
 
             {profile?.bio && (
-              <p className="text-sm text-text-secondary mt-3 max-w-2xl leading-relaxed">
+              <p className="text-sm text-text-secondary mt-2 max-w-2xl leading-relaxed">
                 {profile.bio}
               </p>
             )}
@@ -615,33 +706,75 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
             {uploadError && (
               <p className="text-xs text-status-dropped mt-2 font-medium">{uploadError}</p>
             )}
+          </div>
 
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 sm:gap-4 mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-surface-elevated/80 text-[11px] sm:text-xs text-text-muted">
-              <span className="inline-flex items-center gap-1.5 shrink-0">
-                <Calendar className="w-3.5 h-3.5 text-accent shrink-0" />
-                <span>Member since {new Date().getFullYear()}</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5 font-mono shrink-0">
-                <CheckCircle2 className="w-3.5 h-3.5 text-status-completed shrink-0" />
-                <span>{library.length} titles in library</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5 font-mono shrink-0">
-                <Tv className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                <span>{totalEpisodesWatched} eps watched</span>
-              </span>
-              <span data-testid="global-watch-time" className="inline-flex items-center gap-1.5 font-mono shrink-0">
-                <Clock className="w-3.5 h-3.5 text-accent shrink-0" />
-                <span className="font-bold text-accent">{formatWatchTime(combinedWatchTimeMinutes)}</span>
-                <span>watch time</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5 font-mono shrink-0">
-                <BookOpen className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>{totalChaptersRead} chs read</span>
-              </span>
+          {/* 4. Social Metrics: Followers & Following in a clean, left-aligned horizontal row */}
+          <div className="flex flex-wrap items-center gap-5 sm:gap-6 mt-4 text-sm">
+            <div className="flex items-center gap-1.5" data-testid="profile-followers-count">
+              <span className="font-extrabold text-text-primary">{socialStats.followers}</span>
+              <span className="text-text-muted text-xs">Followers</span>
+            </div>
+            <div className="flex items-center gap-1.5" data-testid="profile-following-count">
+              <span className="font-extrabold text-text-primary">{socialStats.following}</span>
+              <span className="text-text-muted text-xs">Following</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-text-muted font-mono">
+              <Calendar className="w-3.5 h-3.5 text-accent" />
+              <span>Joined {new Date().getFullYear()}</span>
+            </div>
+          </div>
+
+          {/* 5. Premium Stat Cards: Watch Time, Episodes, Library, Chapters */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-6 pt-6 border-t border-surface-elevated/70">
+            {/* Watch Time Card */}
+            <div className="p-4 rounded-2xl bg-surface-elevated/40 border border-surface-elevated/80 hover:border-accent/30 transition-all shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">Watch Time</span>
+                <Clock className="w-4 h-4 text-accent" />
+              </div>
+              <p data-testid="global-watch-time" className="text-lg sm:text-xl font-extrabold text-accent font-mono">
+                {formatWatchTime(combinedWatchTimeMinutes)}
+              </p>
+              <p className="text-[10px] text-text-muted mt-0.5">Series & anime</p>
+            </div>
+
+            {/* Episodes Watched Card */}
+            <div className="p-4 rounded-2xl bg-surface-elevated/40 border border-surface-elevated/80 hover:border-purple-500/30 transition-all shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">Episodes</span>
+                <Tv className="w-4 h-4 text-purple-400" />
+              </div>
+              <p className="text-lg sm:text-xl font-extrabold text-text-primary font-mono">
+                {totalEpisodesWatched.toLocaleString()}
+              </p>
+              <p className="text-[10px] text-text-muted mt-0.5">Watched total</p>
+            </div>
+
+            {/* Library Titles Card */}
+            <div className="p-4 rounded-2xl bg-surface-elevated/40 border border-surface-elevated/80 hover:border-status-completed/30 transition-all shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">In Library</span>
+                <CheckCircle2 className="w-4 h-4 text-status-completed" />
+              </div>
+              <p className="text-lg sm:text-xl font-extrabold text-text-primary font-mono">
+                {library.length.toLocaleString()}
+              </p>
+              <p className="text-[10px] text-text-muted mt-0.5">Tracked titles</p>
+            </div>
+
+            {/* Chapters Read Card */}
+            <div className="p-4 rounded-2xl bg-surface-elevated/40 border border-surface-elevated/80 hover:border-emerald-500/30 transition-all shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">Reading</span>
+                <BookOpen className="w-4 h-4 text-emerald-400" />
+              </div>
+              <p className="text-lg sm:text-xl font-extrabold text-text-primary font-mono">
+                {totalChaptersRead.toLocaleString()}
+              </p>
+              <p className="text-[10px] text-text-muted mt-0.5">Chapters read</p>
             </div>
           </div>
         </div>
-      </div>
       </div>
 
       {/* TV Time-Style Tracking Sections Groundwork */}
