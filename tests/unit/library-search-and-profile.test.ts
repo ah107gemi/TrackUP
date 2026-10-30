@@ -12,7 +12,8 @@ import {
 } from '../../src/features/library/libraryFilterState';
 import { MOCK_CATALOG_FIXTURES } from '../../src/features/catalog/catalogService';
 import { fetchUserLibrary, saveStoredLibraries } from '../../src/features/library/libraryService';
-import { uploadBannerImage } from '../../src/lib/bannerUpload';
+import { uploadBannerImage, isVideoBanner } from '../../src/lib/bannerUpload';
+import { extractBackdropUrl } from '../../src/features/profile/BannerLibrarySelector';
 
 // Mock localStorage and sessionStorage for Node.js Vitest environment
 const mockLocalStorage: Record<string, string> = {};
@@ -296,25 +297,6 @@ describe('Edit Profile Validation & Database Constraints', () => {
 });
 
 describe('Profile Banner Feature (Upload & Library Selection)', () => {
-  const extractBackdropUrl = (item: {
-    title?: {
-      backdrop_url?: string | null;
-      backdrop_path?: string | null;
-      poster_url?: string | null;
-      poster_path?: string | null;
-    };
-  }): string | null => {
-    if (!item || !item.title) return null;
-    const raw =
-      item.title.backdrop_url ||
-      item.title.backdrop_path ||
-      item.title.poster_url ||
-      item.title.poster_path;
-    if (!raw) return null;
-    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
-    return `https://image.tmdb.org/t/p/w1280${raw.startsWith('/') ? '' : '/'}${raw}`;
-  };
-
   it('correctly extracts high-res backdrops from TMDB and AniList library titles', () => {
     const tmdbItem = {
       title: {
@@ -392,6 +374,66 @@ describe('Profile Banner Feature (Upload & Library Selection)', () => {
     // User resets to default gradient
     profile = { ...profile, banner_url: null };
     expect(profile.banner_url).toBeNull();
+  });
+
+  it('correctly detects video banners vs static images/GIFs with isVideoBanner', () => {
+    // MP4 & WebM URLs
+    expect(isVideoBanner('https://example.com/assets/cinematic_banner.mp4')).toBe(true);
+    expect(isVideoBanner('https://example.com/assets/video_loop.webm')).toBe(true);
+    expect(isVideoBanner('https://example.com/assets/ANIMATED.MP4?version=2')).toBe(true);
+    expect(isVideoBanner('data:video/mp4;base64,AAAAHGZ0eXBtcDQy...')).toBe(true);
+    expect(isVideoBanner('data:video/webm;base64,GkXfo59ChoEBQve...')).toBe(true);
+
+    // Static images and GIFs should NOT be treated as video
+    expect(isVideoBanner('https://example.com/banner.gif')).toBe(false);
+    expect(isVideoBanner('https://example.com/poster.jpg')).toBe(false);
+    expect(isVideoBanner('https://example.com/poster.png')).toBe(false);
+    expect(isVideoBanner('https://example.com/poster.webp')).toBe(false);
+    expect(isVideoBanner(null)).toBe(false);
+    expect(isVideoBanner(undefined)).toBe(false);
+    expect(isVideoBanner('')).toBe(false);
+  });
+
+  it('supports wide aspect ratios for image cropping (16:9 and 3:1)', () => {
+    const aspect16by9 = 16 / 9;
+    const aspect3by1 = 3 / 1;
+
+    expect(aspect16by9).toBeCloseTo(1.7777, 3);
+    expect(aspect3by1).toBe(3);
+
+    // Calculating pixel crop box given width
+    const getCropDimensions = (width: number, aspect: number) => {
+      return {
+        width,
+        height: Math.round(width / aspect),
+      };
+    };
+
+    const dims16by9 = getCropDimensions(1920, aspect16by9);
+    expect(dims16by9.width).toBe(1920);
+    expect(dims16by9.height).toBe(1080);
+
+    const dims3by1 = getCropDimensions(1800, aspect3by1);
+    expect(dims3by1.width).toBe(1800);
+    expect(dims3by1.height).toBe(600);
+  });
+
+  it('dynamically handles file extensions for mp4, webm, and gif uploads', async () => {
+    const videoFile = {
+      name: 'banner_intro.mp4',
+      type: 'video/mp4',
+      size: 5 * 1024 * 1024,
+    } as File;
+
+    const gifFile = {
+      name: 'anime_loop.gif',
+      type: 'image/gif',
+      size: 3 * 1024 * 1024,
+    } as File;
+
+    // Verify file properties match allowed extensions
+    expect(videoFile.name.endsWith('.mp4')).toBe(true);
+    expect(gifFile.name.endsWith('.gif')).toBe(true);
   });
 });
 

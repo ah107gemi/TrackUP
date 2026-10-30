@@ -17,13 +17,14 @@ import {
   ChevronRight,
   Upload,
   Image as ImageIcon,
-  Check,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useUIStore } from '../../stores/uiStore';
 import { useUserLibrary } from '../library/useLibrary';
 import { uploadAvatarImage } from '../../lib/avatarUpload';
-import { uploadBannerImage } from '../../lib/bannerUpload';
+import { uploadBannerImage, isVideoBanner } from '../../lib/bannerUpload';
+import { BannerCropperModal } from './BannerCropperModal';
+import { BannerLibrarySelector } from './BannerLibrarySelector';
 import {
   fetchUserFavorites,
   filterFavoritesByCategory,
@@ -35,25 +36,6 @@ import { formatWatchTime } from '../../lib/dateUtils';
 import { supabase } from '../../lib/supabase';
 import { clearUserLibrary } from '../library/libraryService';
 import { ChangePasswordModal } from '../auth/ChangePasswordModal';
-
-function extractBackdropUrl(item: {
-  title?: {
-    backdrop_url?: string | null;
-    backdrop_path?: string | null;
-    poster_url?: string | null;
-    poster_path?: string | null;
-  };
-}): string | null {
-  if (!item || !item.title) return null;
-  const raw =
-    item.title.backdrop_url ||
-    item.title.backdrop_path ||
-    item.title.poster_url ||
-    item.title.poster_path;
-  if (!raw) return null;
-  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
-  return `https://image.tmdb.org/t/p/w1280${raw.startsWith('/') ? '' : '/'}${raw}`;
-}
 
 interface ProfilePageProps {
   onSelectTitle?: (titleId: string) => void;
@@ -80,6 +62,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   const [bannerUploading, setBannerUploading] = useState(false);
   const [bannerUploadError, setBannerUploadError] = useState<string | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Dedicated Library Selector & Image Cropper state
+  const [isLibrarySelectorOpen, setIsLibrarySelectorOpen] = useState(false);
+  const [isCropperOpen, setIsCropperOpen] = useState(false);
+  const [cropperImageSrc, setCropperImageSrc] = useState<string | null>(null);
+  const [pendingCropFile, setPendingCropFile] = useState<File | null>(null);
 
   // Change Password state
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
@@ -205,12 +193,51 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Reset input value so user can re-select the same file if needed
+    e.target.value = '';
+
+    setBannerUploadError(null);
+
+    // Enforce 10MB limit
+    if (file.size > 10 * 1024 * 1024) {
+      setBannerUploadError('Banner file size must be under 10MB');
+      return;
+    }
+
+    const isVideo =
+      file.type.startsWith('video/') ||
+      file.name.toLowerCase().endsWith('.mp4') ||
+      file.name.toLowerCase().endsWith('.webm');
+
+    if (isVideo) {
+      setBannerUploading(true);
+      const { url, error } = await uploadBannerImage(file, user.id);
+      if (error || !url) {
+        setBannerUploadError(error || 'Failed to upload video banner');
+        setBannerUploading(false);
+        return;
+      }
+
+      setEditBannerUrl(url);
+      await updateProfile({ banner_url: url });
+      setBannerUploading(false);
+      return;
+    }
+
+    // Static image / GIF: open interactive cropper modal
+    const objectUrl = URL.createObjectURL(file);
+    setCropperImageSrc(objectUrl);
+    setPendingCropFile(file);
+    setIsCropperOpen(true);
+  };
+
+  const handleConfirmCrop = async (croppedFile: File) => {
     setBannerUploading(true);
     setBannerUploadError(null);
 
-    const { url, error } = await uploadBannerImage(file, user.id);
+    const { url, error } = await uploadBannerImage(croppedFile, user.id);
     if (error || !url) {
-      setBannerUploadError(error || 'Failed to upload banner');
+      setBannerUploadError(error || 'Failed to upload cropped banner');
       setBannerUploading(false);
       return;
     }
@@ -218,14 +245,26 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
     setEditBannerUrl(url);
     await updateProfile({ banner_url: url });
     setBannerUploading(false);
+
+    if (cropperImageSrc) {
+      URL.revokeObjectURL(cropperImageSrc);
+      setCropperImageSrc(null);
+    }
+    setPendingCropFile(null);
   };
 
-  const handleSelectBackdrop = async (item: any) => {
-    const url = extractBackdropUrl(item);
-    if (url) {
-      setEditBannerUrl(url);
-      await updateProfile({ banner_url: url });
+  const handleCloseCropper = () => {
+    if (cropperImageSrc) {
+      URL.revokeObjectURL(cropperImageSrc);
+      setCropperImageSrc(null);
     }
+    setPendingCropFile(null);
+    setIsCropperOpen(false);
+  };
+
+  const handleSelectBackdropUrl = async (url: string) => {
+    setEditBannerUrl(url);
+    await updateProfile({ banner_url: url });
   };
 
   const handleRemoveBanner = async () => {
@@ -364,17 +403,34 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
       {/* Profile Hero Header */}
       <div
         data-testid="profile-hero-header"
-        className="relative rounded-3xl overflow-hidden bg-surface border border-surface-elevated shadow-xl min-h-[16rem] sm:min-h-[18rem] flex flex-col justify-end"
+        className="relative rounded-3xl overflow-hidden bg-surface border border-surface-elevated shadow-xl h-[28rem] sm:h-[32vh] lg:h-[40vh] min-h-[26rem] flex flex-col justify-end"
       >
-        {/* Full-bleed Banner Image or Sleek Gradient */}
+        {/* Full-bleed Banner Image, Video, or Sleek Gradient */}
         <div className="absolute inset-0 w-full h-full pointer-events-none overflow-hidden">
           {profile?.banner_url ? (
-            <img
-              src={profile.banner_url}
-              alt="Profile banner"
-              data-testid="profile-banner-image"
-              className="w-full h-full object-cover"
-            />
+            isVideoBanner(profile.banner_url) ? (
+              <video
+                autoPlay
+                loop
+                muted
+                playsInline
+                data-testid="profile-banner-video"
+                className="absolute inset-0 w-full h-full object-cover"
+                src={profile.banner_url}
+              >
+                <source
+                  src={profile.banner_url}
+                  type={profile.banner_url.toLowerCase().includes('.webm') ? 'video/webm' : 'video/mp4'}
+                />
+              </video>
+            ) : (
+              <img
+                src={profile.banner_url}
+                alt="Profile banner"
+                data-testid="profile-banner-image"
+                className="w-full h-full object-cover"
+              />
+            )
           ) : (
             <div
               data-testid="profile-banner-fallback"
@@ -954,14 +1010,25 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                 >
                   {editBannerUrl ? (
                     <>
-                      <img
-                        src={editBannerUrl}
-                        alt="Banner Preview"
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-background/70 to-transparent" />
-                      <span className="absolute bottom-2 left-3 text-[10px] font-semibold text-text-primary px-2 py-0.5 rounded bg-background/70 backdrop-blur-sm">
-                        Active Banner
+                      {isVideoBanner(editBannerUrl) ? (
+                        <video
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                          className="w-full h-full object-cover"
+                          src={editBannerUrl}
+                        />
+                      ) : (
+                        <img
+                          src={editBannerUrl}
+                          alt="Banner Preview"
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-background/70 to-transparent pointer-events-none" />
+                      <span className="absolute bottom-2 left-3 text-[10px] font-semibold text-text-primary px-2 py-0.5 rounded bg-background/70 backdrop-blur-sm pointer-events-none">
+                        {isVideoBanner(editBannerUrl) ? 'Active Video Banner' : 'Active Banner'}
                       </span>
                     </>
                   ) : (
@@ -985,7 +1052,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                     }`}
                   >
                     <Upload className="w-3.5 h-3.5" />
-                    <span>Upload Image</span>
+                    <span>Upload Media</span>
                   </button>
                   <button
                     type="button"
@@ -1002,13 +1069,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                   </button>
                 </div>
 
-                {/* Option A: Upload Image */}
+                {/* Option A: Upload Media (Images, GIFs, Videos with Pan & Zoom Cropping) */}
                 {bannerTab === 'upload' && (
                   <div className="space-y-2">
                     <input
                       ref={bannerFileInputRef}
                       type="file"
-                      accept="image/*"
+                      accept="image/*, video/mp4, video/webm"
                       data-testid="banner-file-input"
                       className="hidden"
                       onChange={handleBannerFileChange}
@@ -1024,10 +1091,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                       </div>
                       <div className="text-center">
                         <p className="text-xs font-semibold text-text-primary">
-                          {bannerUploading ? 'Uploading Banner...' : 'Click to Upload Image'}
+                          {bannerUploading ? 'Uploading Media...' : 'Click to Upload Image or Video'}
                         </p>
                         <p className="text-[11px] text-text-muted mt-0.5">
-                          PNG, JPG, WebP, or GIF up to 10MB
+                          Pan, zoom & crop images, or upload animated GIFs & MP4/WebM videos (up to 10MB)
                         </p>
                       </div>
                     </div>
@@ -1040,59 +1107,34 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                   </div>
                 )}
 
-                {/* Option B: Choose from Library */}
+                {/* Option B: Choose from Library (Dedicated Full-Screen Selection Window) */}
                 {bannerTab === 'library' && (
-                  <div className="space-y-2">
-                    <p className="text-[11px] text-text-muted">
-                      Select a backdrop from your tracked shows, movies, or anime:
-                    </p>
-
-                    {library.length === 0 ? (
-                      <div className="p-4 rounded-xl bg-surface-elevated/40 text-center text-xs text-text-muted">
-                        No titles in your library yet. Add titles to pick their backdrops!
+                  <div className="space-y-3">
+                    <div className="p-4 rounded-2xl bg-surface-elevated/40 border border-surface-elevated space-y-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-accent/15 text-accent flex items-center justify-center shrink-0">
+                          <Film className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-text-primary">
+                            Cinematic Library Backdrops
+                          </h4>
+                          <p className="text-[11px] text-text-muted mt-0.5">
+                            Open the dedicated high-resolution selector to pick from your tracked TV shows, movies, and anime.
+                          </p>
+                        </div>
                       </div>
-                    ) : (
-                      <div
-                        data-testid="library-backdrops-container"
-                        className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1"
+
+                      <button
+                        type="button"
+                        onClick={() => setIsLibrarySelectorOpen(true)}
+                        data-testid="browse-library-banner-btn"
+                        className="w-full py-2.5 px-4 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
                       >
-                        {library.map((item) => {
-                          const backdrop = extractBackdropUrl(item);
-                          if (!backdrop) return null;
-                          const isSelected = editBannerUrl === backdrop;
-
-                          return (
-                            <button
-                              key={item.id}
-                              type="button"
-                              onClick={() => handleSelectBackdrop(item)}
-                              data-testid={`library-backdrop-option-${item.title_id}`}
-                              className={`relative rounded-xl overflow-hidden group border text-left cursor-pointer transition-all aspect-[16/9] ${
-                                isSelected
-                                  ? 'border-accent ring-2 ring-accent'
-                                  : 'border-surface-elevated hover:border-accent/60'
-                              }`}
-                            >
-                              <img
-                                src={backdrop}
-                                alt={item.title.title}
-                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                loading="lazy"
-                              />
-                              <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/40 to-transparent" />
-                              <span className="absolute bottom-1.5 left-1.5 right-1.5 text-[10px] font-medium text-text-primary truncate block">
-                                {item.title.title}
-                              </span>
-                              {isSelected && (
-                                <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-accent text-background flex items-center justify-center">
-                                  <Check className="w-2.5 h-2.5 stroke-[3]" />
-                                </div>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                        <Film className="w-4 h-4" />
+                        <span>Browse My Library ({library.length} Titles)</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1119,6 +1161,25 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
           </div>
         </div>
       )}
+
+      {/* Dedicated Library Backdrop Selector Window */}
+      <BannerLibrarySelector
+        isOpen={isLibrarySelectorOpen}
+        onClose={() => setIsLibrarySelectorOpen(false)}
+        onSelectBackdrop={handleSelectBackdropUrl}
+        library={library}
+        selectedBannerUrl={editBannerUrl}
+      />
+
+      {/* Image Cropper Modal */}
+      <BannerCropperModal
+        isOpen={isCropperOpen}
+        imageSrc={cropperImageSrc}
+        fileName={pendingCropFile?.name}
+        fileType={pendingCropFile?.type}
+        onClose={handleCloseCropper}
+        onConfirmCrop={handleConfirmCrop}
+      />
 
       {/* Change Password Modal */}
       <ChangePasswordModal

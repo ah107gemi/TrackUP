@@ -12,12 +12,12 @@ VALUES (
   'profile_assets',
   true,
   10485760, -- 10MB limit
-  ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+  ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm']
 )
 ON CONFLICT (id) DO UPDATE SET
   public = true,
   file_size_limit = 10485760,
-  allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm'];
 
 -- 3. Storage RLS Policies for profile_assets
 DO $$

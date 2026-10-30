@@ -83,8 +83,13 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     await expect(page.locator('[data-testid="banner-tab-upload"]')).toBeVisible();
     await expect(page.locator('[data-testid="banner-tab-library"]')).toBeVisible();
 
-    // Verify switching to Choose from Library tab in Edit Profile Modal
+    // Verify switching to Choose from Library tab and opening dedicated selector
     await page.locator('[data-testid="banner-tab-library"]').click();
+    await expect(page.locator('[data-testid="browse-library-banner-btn"]')).toBeVisible();
+    await page.locator('[data-testid="browse-library-banner-btn"]').click();
+    await expect(page.locator('[data-testid="banner-library-selector-modal"]')).toBeVisible();
+    await page.locator('[data-testid="close-library-selector-btn"]').click();
+    await expect(page.locator('[data-testid="banner-library-selector-modal"]')).toBeHidden();
     await page.locator('[data-testid="banner-tab-upload"]').click();
 
     await page.locator('[data-testid="edit-profile-name-input"]').fill('Binger Master');
