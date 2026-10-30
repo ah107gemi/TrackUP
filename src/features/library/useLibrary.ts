@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchUserLibrary,
   upsertLibraryItem,
+  updateItemStatus,
   logEpisodeProgress,
   logBatchEpisodeProgress,
   logReadingProgress,
@@ -36,11 +37,68 @@ export function useUpsertLibrary() {
       const previous = queryClient.getQueryData<UserLibraryItem[]>(['library', newEntry.userId]);
 
       if (previous) {
-        const optimistic = previous.map((item) =>
-          item.title_id === newEntry.titleId
-            ? { ...item, status: newEntry.status || item.status, rating: newEntry.rating !== undefined ? newEntry.rating : item.rating }
-            : item
-        );
+        const optimistic = previous.map((item) => {
+          if (item.title_id === newEntry.titleId) {
+            const nextStatus = newEntry.status || item.status;
+            const isPlanned = nextStatus === 'planned';
+            return {
+              ...item,
+              status: nextStatus,
+              rating: newEntry.rating !== undefined ? newEntry.rating : item.rating,
+              episodes_watched: isPlanned ? [] : item.episodes_watched,
+              last_chapter_read: isPlanned ? 0 : item.last_chapter_read,
+              last_volume_read: isPlanned ? 0 : item.last_volume_read,
+            };
+          }
+          return item;
+        });
+        queryClient.setQueryData(['library', newEntry.userId], optimistic);
+      }
+
+      return { previous };
+    },
+    onError: (_err, newEntry, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['library', newEntry.userId], context.previous);
+      }
+    },
+    onSettled: (_data, _error, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library', variables.userId] });
+    },
+  });
+}
+
+export function useUpdateItemStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: {
+      userId: string;
+      titleId?: string;
+      libraryId?: string;
+      status: TrackingStatus;
+    }) => updateItemStatus(params),
+    onMutate: async (newEntry) => {
+      await queryClient.cancelQueries({ queryKey: ['library', newEntry.userId] });
+      const previous = queryClient.getQueryData<UserLibraryItem[]>(['library', newEntry.userId]);
+
+      if (previous) {
+        const isPlanned = newEntry.status === 'planned';
+        const optimistic = previous.map((item) => {
+          if (
+            (newEntry.titleId && item.title_id === newEntry.titleId) ||
+            (newEntry.libraryId && item.id === newEntry.libraryId)
+          ) {
+            return {
+              ...item,
+              status: newEntry.status,
+              episodes_watched: isPlanned ? [] : item.episodes_watched,
+              last_chapter_read: isPlanned ? 0 : item.last_chapter_read,
+              last_volume_read: isPlanned ? 0 : item.last_volume_read,
+            };
+          }
+          return item;
+        });
         queryClient.setQueryData(['library', newEntry.userId], optimistic);
       }
 

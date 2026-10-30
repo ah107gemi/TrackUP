@@ -15,6 +15,7 @@ import { FriendsPage } from '../../features/social/FriendsPage';
 import { RecommendationsView } from '../../features/catalog/RecommendationsView';
 import { ReleaseCalendarView } from '../../features/calendar/ReleaseCalendarView';
 import { ProfilePage } from '../../features/profile/ProfilePage';
+import { PublicProfilePage } from '../../features/profile/PublicProfilePage';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../features/auth/AuthContext';
 import {
@@ -32,7 +33,14 @@ import { formatRuntime } from '../../lib/dateUtils';
 const EMPTY_LIBRARY: any[] = [];
 
 export const AppShell: React.FC = () => {
-  const { activeTab, setActiveTab, selectedTitleId, setSelectedTitleId } = useUIStore();
+  const {
+    activeTab,
+    setActiveTab,
+    selectedTitleId,
+    setSelectedTitleId,
+    viewingPublicUser,
+    setViewingPublicUser,
+  } = useUIStore();
   const { user } = useAuth();
   const { data: userLibrary = EMPTY_LIBRARY } = useUserLibrary(user?.id);
 
@@ -52,6 +60,37 @@ export const AppShell: React.FC = () => {
       window.history.back();
     }
   };
+
+  const handleBackFromPublicProfile = () => {
+    setViewingPublicUser(null);
+    if (typeof window !== 'undefined' && window.location.hash.includes('/user/')) {
+      window.location.hash = '#/social';
+    }
+  };
+
+  // Route listener for #/user/:username and #/user/:userId
+  React.useEffect(() => {
+    const handleUrlChange = () => {
+      if (typeof window === 'undefined') return;
+      const hash = window.location.hash || '';
+      const pathname = window.location.pathname || '';
+      const target = hash.startsWith('#') ? hash.slice(1) : pathname;
+      const match = target.match(/\/user\/([^/?#]+)/i);
+      if (match && match[1]) {
+        setViewingPublicUser(decodeURIComponent(match[1]));
+      } else if (viewingPublicUser && !target.includes('/user/')) {
+        setViewingPublicUser(null);
+      }
+    };
+
+    handleUrlChange();
+    window.addEventListener('hashchange', handleUrlChange);
+    window.addEventListener('popstate', handleUrlChange);
+    return () => {
+      window.removeEventListener('hashchange', handleUrlChange);
+      window.removeEventListener('popstate', handleUrlChange);
+    };
+  }, [setViewingPublicUser, viewingPublicUser]);
 
   React.useEffect(() => {
     const handlePopState = () => {
@@ -87,6 +126,12 @@ export const AppShell: React.FC = () => {
             <TitleDetailPage
               titleId={selectedTitleId}
               onBack={handleBackFromDetail}
+              onSelectTitle={handleSelectTitle}
+            />
+          ) : viewingPublicUser ? (
+            <PublicProfilePage
+              userParam={viewingPublicUser}
+              onBack={handleBackFromPublicProfile}
               onSelectTitle={handleSelectTitle}
             />
           ) : (

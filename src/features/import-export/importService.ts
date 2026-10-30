@@ -343,37 +343,47 @@ export async function commitImportBatch(params: {
       const isCompleted = item.row.status === 'completed';
       const isEpisodic = existing.title.media_type === 'tv' || existing.title.media_type === 'anime_series';
 
+      const resolvedStatus = duplicatePolicy === 'merge' && item.row.status === 'completed'
+        ? 'completed'
+        : (item.row.status || existing.status);
+      const isPlanned = resolvedStatus === 'planned';
+
       if (duplicatePolicy === 'fill' || duplicatePolicy === 'merge') {
-        const incomingEpCount = item.row.episodesWatched || (isCompleted && isEpisodic && (existing.title.total_episodes || (existing.title as any).episodes) ? (existing.title.total_episodes || (existing.title as any).episodes) : 0);
-        const incomingEps = buildWatchedEpisodeIds(existing.title, incomingEpCount);
-        const existingEps = existing.episodes_watched || [];
-        const mergedEps = Array.from(new Set([...existingEps, ...incomingEps]));
+        const incomingEpCount = isPlanned
+          ? 0
+          : (item.row.episodesWatched || (isCompleted && isEpisodic && (existing.title.total_episodes || (existing.title as any).episodes) ? (existing.title.total_episodes || (existing.title as any).episodes) : 0));
+        const incomingEps = isPlanned ? [] : buildWatchedEpisodeIds(existing.title, incomingEpCount);
+        const existingEps = isPlanned ? [] : (existing.episodes_watched || []);
+        const mergedEps = isPlanned ? [] : Array.from(new Set([...existingEps, ...incomingEps]));
 
         allLibraries[existingIndex] = {
           ...existing,
           rating: duplicatePolicy === 'merge'
             ? (item.row.rating ?? existing.rating)
             : (existing.rating ?? item.row.rating ?? null),
-          status: duplicatePolicy === 'merge' && item.row.status === 'completed'
-            ? 'completed'
-            : (existing.status || item.row.status),
-          episodes_watched: mergedEps,
-          last_chapter_read: Math.max(existing.last_chapter_read || 0, item.row.chaptersRead || 0),
-          last_volume_read: Math.max(existing.last_volume_read || 0, item.row.volumesRead || 0),
+          status: resolvedStatus,
+          episodes_watched: isPlanned ? [] : mergedEps,
+          last_chapter_read: isPlanned ? 0 : Math.max(existing.last_chapter_read || 0, item.row.chaptersRead || 0),
+          last_volume_read: isPlanned ? 0 : Math.max(existing.last_volume_read || 0, item.row.volumesRead || 0),
+          started_at: isPlanned ? null : existing.started_at,
+          completed_at: isPlanned ? null : (resolvedStatus === 'completed' ? (existing.completed_at || now) : null),
           last_progressed_at: now,
         };
       } else if (duplicatePolicy === 'overwrite') {
+        const overwritePlanned = item.row.status === 'planned';
         const defaultCompletedEps = isCompleted && isEpisodic && (existing.title.total_episodes || (existing.title as any).episodes) ? (existing.title.total_episodes || (existing.title as any).episodes) : existing.episodes_watched.length;
-        const targetEpCount = item.row.episodesWatched !== undefined ? item.row.episodesWatched : defaultCompletedEps;
-        const overwriteEps = buildWatchedEpisodeIds(existing.title, targetEpCount);
+        const targetEpCount = overwritePlanned ? 0 : (item.row.episodesWatched !== undefined ? item.row.episodesWatched : defaultCompletedEps);
+        const overwriteEps = overwritePlanned ? [] : buildWatchedEpisodeIds(existing.title, targetEpCount);
 
         allLibraries[existingIndex] = {
           ...existing,
           rating: item.row.rating ?? existing.rating,
           status: item.row.status,
-          episodes_watched: overwriteEps,
-          last_chapter_read: item.row.chaptersRead ?? existing.last_chapter_read,
-          last_volume_read: item.row.volumesRead ?? existing.last_volume_read,
+          episodes_watched: overwritePlanned ? [] : overwriteEps,
+          last_chapter_read: overwritePlanned ? 0 : (item.row.chaptersRead ?? 0),
+          last_volume_read: overwritePlanned ? 0 : (item.row.volumesRead ?? 0),
+          started_at: overwritePlanned ? null : existing.started_at,
+          completed_at: overwritePlanned ? null : (item.row.status === 'completed' ? (item.row.completedAt || now) : null),
           last_progressed_at: now,
         };
       }
@@ -388,11 +398,14 @@ export async function commitImportBatch(params: {
     }
 
     const catalogItem = item.resolvedTitle;
-    const isCompleted = item.row.status === 'completed';
+    const isPlannedItem = item.row.status === 'planned';
+    const isCompleted = !isPlannedItem && item.row.status === 'completed';
     const isEpisodic = catalogItem.media_type === 'tv' || catalogItem.media_type === 'anime_series';
-    const initialEpCount = item.row.episodesWatched && item.row.episodesWatched > 0
-      ? item.row.episodesWatched
-      : (isCompleted && isEpisodic && (catalogItem.total_episodes || (catalogItem as any).episodes) ? (catalogItem.total_episodes || (catalogItem as any).episodes) : 0);
+    const initialEpCount = isPlannedItem
+      ? 0
+      : (item.row.episodesWatched && item.row.episodesWatched > 0
+          ? item.row.episodesWatched
+          : (isCompleted && isEpisodic && (catalogItem.total_episodes || (catalogItem as any).episodes) ? (catalogItem.total_episodes || (catalogItem as any).episodes) : 0));
 
     const newLibraryEntry: UserLibraryItem = {
       id: `lib_${Math.random().toString(36).substring(2, 11)}`,
@@ -403,11 +416,11 @@ export async function commitImportBatch(params: {
       is_private: false,
       personal_notes: item.row.notes || null,
       started_at: item.row.status === 'active' ? now : null,
-      completed_at: item.row.completedAt || (item.row.status === 'completed' ? now : null),
+      completed_at: isPlannedItem ? null : (item.row.completedAt || (item.row.status === 'completed' ? now : null)),
       last_progressed_at: now,
-      episodes_watched: buildWatchedEpisodeIds(catalogItem, initialEpCount),
-      last_chapter_read: item.row.chaptersRead || 0,
-      last_volume_read: item.row.volumesRead || 0,
+      episodes_watched: isPlannedItem ? [] : buildWatchedEpisodeIds(catalogItem, initialEpCount),
+      last_chapter_read: isPlannedItem ? 0 : (item.row.chaptersRead || 0),
+      last_volume_read: isPlannedItem ? 0 : (item.row.volumesRead || 0),
       title: catalogItem,
     };
 

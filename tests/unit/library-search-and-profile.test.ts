@@ -11,7 +11,15 @@ import {
   type LibraryFilterState,
 } from '../../src/features/library/libraryFilterState';
 import { MOCK_CATALOG_FIXTURES } from '../../src/features/catalog/catalogService';
-import { fetchUserLibrary, saveStoredLibraries } from '../../src/features/library/libraryService';
+import {
+  fetchUserLibrary,
+  saveStoredLibraries,
+  upsertLibraryItem,
+  updateItemStatus,
+} from '../../src/features/library/libraryService';
+import { commitImportBatch } from '../../src/features/import-export/importService';
+import { matchPublicProfileRoute } from '../../src/App';
+import { followUser, unfollowUser, getStoredFollows } from '../../src/features/social/socialService';
 import { uploadBannerImage, isVideoBanner } from '../../src/lib/bannerUpload';
 import { extractBackdropUrl } from '../../src/features/profile/BannerLibrarySelector';
 
@@ -841,5 +849,209 @@ describe('Profile Picture 1:1 Cropper & Defensive Avatar Hydration', () => {
 
     expect(effectiveAvatar).toBe(cachedAvatar);
     expect(dbUpdatedUrl).toBe(cachedAvatar);
+  });
+});
+
+describe('Episode & Progress Reset on Status Downgrade ("Planned")', () => {
+  beforeEach(() => {
+    mockLocalStorage['trackup_user_libraries'] = JSON.stringify([]);
+  });
+
+  it('automatically resets episodes_watched to [] and dates to null when show status is downgraded to planned', async () => {
+    const userId = 'user_downgrade_test';
+    const titleId = 'tv_breaking_bad_1396';
+
+    // 1. Initially watching with 5 episodes tracked
+    const initialItem = await upsertLibraryItem({
+      userId,
+      titleId,
+      status: 'active',
+      titleData: {
+        id: titleId,
+        media_type: 'tv',
+        title: 'Breaking Bad',
+        total_episodes: 62,
+        genres: ['Drama'],
+      },
+    });
+
+    initialItem.episodes_watched = ['ep_1', 'ep_2', 'ep_3', 'ep_4', 'ep_5'];
+    saveStoredLibraries([initialItem]);
+
+    // Verify it has 5 watched episodes
+    const current = (await fetchUserLibrary(userId))[0];
+    expect(current.episodes_watched.length).toBe(5);
+
+    // 2. User downgrades status to 'planned'
+    const updated = await updateItemStatus({
+      userId,
+      titleId,
+      status: 'planned',
+    });
+
+    expect(updated.status).toBe('planned');
+    expect(updated.episodes_watched).toEqual([]);
+    expect(updated.started_at).toBeNull();
+    expect(updated.completed_at).toBeNull();
+
+    // Verify persisted state in storage
+    const stored = (await fetchUserLibrary(userId))[0];
+    expect(stored.episodes_watched).toEqual([]);
+  });
+
+  it('automatically resets reading progress (chapters & volumes) to 0 when manga status is changed to planned', async () => {
+    const userId = 'user_downgrade_reading';
+    const titleId = 'manga_solo_leveling_105398';
+
+    const item = await upsertLibraryItem({
+      userId,
+      titleId,
+      status: 'active',
+      titleData: {
+        id: titleId,
+        media_type: 'manga',
+        title: 'Solo Leveling',
+        genres: ['Action'],
+      },
+    });
+
+    item.last_chapter_read = 75;
+    item.last_volume_read = 6;
+    saveStoredLibraries([item]);
+
+    // Downgrade to 'planned'
+    const updated = await updateItemStatus({
+      userId,
+      titleId,
+      status: 'planned',
+    });
+
+    expect(updated.status).toBe('planned');
+    expect(updated.last_chapter_read).toBe(0);
+    expect(updated.last_volume_read).toBe(0);
+  });
+
+  it('clears episodes_watched to [] on CSV import when incoming status is planned', async () => {
+    const userId = 'user_csv_import_planned';
+    saveStoredLibraries([]);
+
+    const catalogItem = {
+      id: 'tv_breaking_bad_1396',
+      media_type: 'tv' as const,
+      title: 'Breaking Bad',
+      total_episodes: 62,
+      genres: ['Drama'],
+    };
+
+    const importRows = [
+      {
+        row: {
+          title: 'Breaking Bad',
+          mediaType: 'tv' as const,
+          status: 'planned' as const,
+          episodesWatched: 15, // Incoming file had episodes, but status is planned
+        },
+        status: 'matched',
+        resolvedTitle: catalogItem,
+      },
+    ];
+
+    const result = await commitImportBatch({
+      userId,
+      items: importRows as any,
+      duplicatePolicy: 'overwrite',
+    });
+
+    expect(result.committed).toBe(1);
+    const storedLibraries = JSON.parse(mockLocalStorage['trackup_user_libraries'] || '[]');
+    const importedEntry = storedLibraries.find((i: any) => i.title_id === 'tv_breaking_bad_1396');
+
+    expect(importedEntry).toBeDefined();
+    expect(importedEntry.status).toBe('planned');
+    expect(importedEntry.episodes_watched).toEqual([]);
+  });
+});
+
+describe('Public Profile View & Routing', () => {
+  it('correctly matches and extracts public profile username from routes', () => {
+    expect(matchPublicProfileRoute('#/user/elena_tracker')).toBe('elena_tracker');
+    expect(matchPublicProfileRoute('#/user/user_12345')).toBe('user_12345');
+    expect(matchPublicProfileRoute('/user/marcus_anime')).toBe('marcus_anime');
+    expect(matchPublicProfileRoute('#/dashboard')).toBeNull();
+    expect(matchPublicProfileRoute('#/watch')).toBeNull();
+  });
+
+  it('filters out private items from public user library', async () => {
+    const targetUserId = 'user_public_target';
+    const publicItem: UserLibraryItem = {
+      id: 'lib_pub_1',
+      user_id: targetUserId,
+      title_id: 'movie_inception_27205',
+      status: 'completed',
+      rating: 10,
+      is_private: false,
+      personal_notes: null,
+      started_at: null,
+      completed_at: null,
+      last_progressed_at: new Date().toISOString(),
+      episodes_watched: [],
+      last_chapter_read: 0,
+      last_volume_read: 0,
+      title: {
+        id: 'movie_inception_27205',
+        media_type: 'movie',
+        title: 'Inception',
+        genres: ['Sci-Fi'],
+      },
+    };
+
+    const privateItem: UserLibraryItem = {
+      id: 'lib_priv_1',
+      user_id: targetUserId,
+      title_id: 'tv_secret_show',
+      status: 'active',
+      rating: 8,
+      is_private: true,
+      personal_notes: 'Private guilty pleasure',
+      started_at: null,
+      completed_at: null,
+      last_progressed_at: new Date().toISOString(),
+      episodes_watched: ['ep_1'],
+      last_chapter_read: 0,
+      last_volume_read: 0,
+      title: {
+        id: 'tv_secret_show',
+        media_type: 'tv',
+        title: 'Secret Show',
+        genres: ['Drama'],
+      },
+    };
+
+    saveStoredLibraries([publicItem, privateItem]);
+
+    const library = await fetchUserLibrary(targetUserId);
+    const publicOnly = library.filter((item) => !item.is_private);
+
+    expect(library.length).toBe(2);
+    expect(publicOnly.length).toBe(1);
+    expect(publicOnly[0].title.title).toBe('Inception');
+  });
+
+  it('updates follow records correctly on follow and unfollow', async () => {
+    mockLocalStorage['trackup_user_follows'] = JSON.stringify([]);
+    const followerId = 'user_alice';
+    const targetId = 'user_bob';
+
+    const followSuccess = await followUser(followerId, targetId);
+    expect(followSuccess).toBe(true);
+
+    let storedFollows = getStoredFollows();
+    expect(storedFollows.some((f) => f.follower_id === followerId && f.following_id === targetId)).toBe(true);
+
+    const unfollowSuccess = await unfollowUser(followerId, targetId);
+    expect(unfollowSuccess).toBe(false);
+
+    storedFollows = getStoredFollows();
+    expect(storedFollows.some((f) => f.follower_id === followerId && f.following_id === targetId)).toBe(false);
   });
 });

@@ -40,6 +40,9 @@ interface UIState {
   setLibraryViewMode: (mode: LibraryViewMode) => void;
   scrolledHeaderTitle: string | null;
   setScrolledHeaderTitle: (title: string | null) => void;
+  // Public Profile Discovery State
+  viewingPublicUser: string | null;
+  setViewingPublicUser: (username: string | null) => void;
   // Preserved Library Filter State
   watchLibraryFilters: LibraryFilterState;
   setWatchLibraryFilters: (filters: Partial<LibraryFilterState>) => void;
@@ -59,9 +62,11 @@ export const useUIStore = create<UIState>((set, get) => ({
   profileModalOpen: false,
   setProfileModalOpen: (open) => set({ profileModalOpen: open }),
   activeTab: 'dashboard',
-  setActiveTab: (tab) => set({ activeTab: tab, selectedTitleId: null, scrolledHeaderTitle: null }),
+  setActiveTab: (tab) => set({ activeTab: tab, selectedTitleId: null, scrolledHeaderTitle: null, viewingPublicUser: null }),
   selectedTitleId: null,
   setSelectedTitleId: (id) => set({ selectedTitleId: id, scrolledHeaderTitle: null }),
+  viewingPublicUser: null,
+  setViewingPublicUser: (username) => set({ viewingPublicUser: username, selectedTitleId: null, scrolledHeaderTitle: null }),
   libraryViewMode: 'grid',
   setLibraryViewMode: (mode) => set({ libraryViewMode: mode }),
   scrolledHeaderTitle: null,

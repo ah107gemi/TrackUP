@@ -133,10 +133,16 @@ export async function upsertLibraryItem(params: {
 
   if (existingIndex >= 0 && existing) {
     const nextStatus = params.status !== undefined ? params.status : existing.status;
+    const isPlanned = nextStatus === 'planned';
     const isCompleted = nextStatus === 'completed';
     const isEpisodic = existing.title.media_type === 'tv' || existing.title.media_type === 'anime_series';
-    let episodesWatched = existing.episodes_watched || [];
-    if (isCompleted && isEpisodic && episodesWatched.length === 0 && existing.title.total_episodes) {
+
+    // Interception logic: if newStatus is 'planned', reset episodes_watched to [] and progress to 0
+    let episodesWatched = isPlanned ? [] : (existing.episodes_watched || []);
+    let lastChapter = isPlanned ? 0 : (existing.last_chapter_read || 0);
+    let lastVolume = isPlanned ? 0 : (existing.last_volume_read || 0);
+
+    if (!isPlanned && isCompleted && isEpisodic && episodesWatched.length === 0 && existing.title.total_episodes) {
       episodesWatched = Array.from({ length: existing.title.total_episodes }, (_, i) => `ep_${i + 1}`);
     }
 
@@ -148,16 +154,52 @@ export async function upsertLibraryItem(params: {
       personal_notes: params.notes !== undefined ? params.notes : existing.personal_notes,
       title: (params.titleData && params.titleData.title !== 'Unknown Title') ? params.titleData : existing.title,
       episodes_watched: episodesWatched,
+      last_chapter_read: lastChapter,
+      last_volume_read: lastVolume,
+      started_at: isPlanned ? null : (nextStatus === 'active' && !existing.started_at ? now : existing.started_at),
+      completed_at: isPlanned ? null : (isCompleted && !existing.completed_at ? now : (isCompleted ? existing.completed_at : null)),
       last_progressed_at: now,
     };
     all[existingIndex] = updated;
     saveStoredLibraries(all);
+
+    // Sync to Supabase database if available
+    if (supabase) {
+      try {
+        await supabase
+          .from('user_libraries')
+          // @ts-expect-error dynamic typing
+          .update({
+            status: nextStatus,
+            started_at: updated.started_at,
+            completed_at: updated.completed_at,
+            last_progressed_at: now,
+            updated_at: now,
+          })
+          .match({ user_id: params.userId, title_id: params.titleId });
+
+        if (isPlanned) {
+          await supabase
+            .from('user_episode_progress')
+            .delete()
+            .match({ user_id: params.userId, library_id: existing.id });
+          await supabase
+            .from('user_reading_progress')
+            .delete()
+            .match({ user_id: params.userId, library_id: existing.id });
+        }
+      } catch (err) {
+        // silent fallback
+      }
+    }
+
     return updated;
   }
 
-  const isNewCompleted = (params.status || 'planned') === 'completed';
+  const isNewPlanned = (params.status || 'planned') === 'planned';
+  const isNewCompleted = !isNewPlanned && (params.status || 'planned') === 'completed';
   const isNewEpisodic = resolvedTitle.media_type === 'tv' || resolvedTitle.media_type === 'anime_series';
-  const initialEpisodes = (isNewCompleted && isNewEpisodic && resolvedTitle.total_episodes)
+  const initialEpisodes = (!isNewPlanned && isNewCompleted && isNewEpisodic && resolvedTitle.total_episodes)
     ? Array.from({ length: resolvedTitle.total_episodes }, (_, i) => `ep_${i + 1}`)
     : [];
 
@@ -170,9 +212,9 @@ export async function upsertLibraryItem(params: {
     is_private: params.isPrivate || false,
     personal_notes: params.notes || null,
     started_at: params.status === 'active' ? now : null,
-    completed_at: params.status === 'completed' ? now : null,
+    completed_at: isNewCompleted ? now : null,
     last_progressed_at: now,
-    episodes_watched: initialEpisodes,
+    episodes_watched: isNewPlanned ? [] : initialEpisodes,
     last_chapter_read: 0,
     last_volume_read: 0,
     title: resolvedTitle,
@@ -180,7 +222,50 @@ export async function upsertLibraryItem(params: {
 
   all.push(newItem);
   saveStoredLibraries(all);
+
+  // Sync insert to Supabase if available
+  if (supabase) {
+    try {
+      await (supabase.from('user_libraries') as any).upsert({
+        id: newItem.id,
+        user_id: newItem.user_id,
+        title_id: newItem.title_id,
+        status: newItem.status,
+        rating: newItem.rating,
+        is_private: newItem.is_private,
+        personal_notes: newItem.personal_notes,
+        started_at: newItem.started_at,
+        completed_at: newItem.completed_at,
+        last_progressed_at: newItem.last_progressed_at,
+      });
+    } catch {}
+  }
+
   return newItem;
+}
+
+/**
+ * Updates an item's tracking status with progress reset when status is downgraded to 'planned'.
+ */
+export async function updateItemStatus(params: {
+  userId: string;
+  titleId?: string;
+  libraryId?: string;
+  status: TrackingStatus;
+}): Promise<UserLibraryItem> {
+  const all = getStoredLibraries();
+  const target = all.find(
+    (item) =>
+      item.user_id === params.userId &&
+      ((params.libraryId && item.id === params.libraryId) || (params.titleId && item.title_id === params.titleId))
+  );
+
+  const titleId = params.titleId || target?.title_id || '';
+  return upsertLibraryItem({
+    userId: params.userId,
+    titleId,
+    status: params.status,
+  });
 }
 
 export async function logEpisodeProgress(params: {

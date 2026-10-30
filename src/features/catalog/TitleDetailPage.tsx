@@ -219,6 +219,9 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
   const handleStatusChange = (newStatus: TrackingStatus) => {
     setLocalStatus(newStatus);
+    if (newStatus === 'planned') {
+      setLocalEpisodes([]);
+    }
     upsertMutation.mutate({
       userId: activeUserId,
       titleId: title.id,

@@ -37,9 +37,16 @@ import {
 interface LibraryViewProps {
   domain: 'watch' | 'read';
   onSelectTitle: (id: string) => void;
+  userId?: string;
+  readOnly?: boolean;
 }
 
-export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle }) => {
+export const LibraryView: React.FC<LibraryViewProps> = ({
+  domain,
+  onSelectTitle,
+  userId,
+  readOnly: _readOnly = false,
+}) => {
   const {
     libraryViewMode,
     setLibraryViewMode,
@@ -50,7 +57,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ domain, onSelectTitle 
     setReadLibraryFilters,
   } = useUIStore();
   const { user } = useAuth();
-  const { data: library = [], isLoading } = useUserLibrary(user?.id);
+  const effectiveUserId = userId || user?.id;
+  const { data: library = [], isLoading } = useUserLibrary(effectiveUserId);
 
   const incrementEpisode = useIncrementEpisode();
   const incrementChapter = useIncrementChapter();

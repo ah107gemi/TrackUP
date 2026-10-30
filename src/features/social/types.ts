@@ -5,6 +5,7 @@ export interface SocialProfile {
   username: string;
   display_name: string;
   avatar_url: string | null;
+  banner_url?: string | null;
   bio: string | null;
   library_visibility: PrivacyLevel;
   activity_visibility: PrivacyLevel;

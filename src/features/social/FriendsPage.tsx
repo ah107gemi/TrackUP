@@ -21,6 +21,7 @@ import {
   unfollowUser,
 } from './socialService';
 import { useAuth } from '../auth/AuthContext';
+import { useUIStore } from '../../stores/uiStore';
 
 interface FriendsPageProps {
   onSelectTitle?: (titleId: string) => void;
@@ -28,7 +29,15 @@ interface FriendsPageProps {
 
 export const FriendsPage: React.FC<FriendsPageProps> = ({ onSelectTitle }) => {
   const { user } = useAuth();
+  const { setViewingPublicUser } = useUIStore();
   const activeUserId = user?.id || 'local_tracker';
+
+  const handleViewProfile = (username: string) => {
+    if (typeof window !== 'undefined') {
+      window.location.hash = `#/user/${username}`;
+    }
+    setViewingPublicUser(username);
+  };
 
   // Search & Debounce state
   const [searchQuery, setSearchQuery] = useState('');
@@ -243,7 +252,11 @@ export const FriendsPage: React.FC<FriendsPageProps> = ({ onSelectTitle }) => {
                 data-testid={`profile-card-${p.username}`}
                 className="p-4 rounded-xl bg-surface-elevated/60 border border-surface-elevated hover:border-accent/40 flex flex-col justify-between gap-3 group transition-all shadow-sm"
               >
-                <div className="flex items-start gap-3 min-w-0">
+                <div
+                  className="flex items-start gap-3 min-w-0 cursor-pointer"
+                  onClick={() => handleViewProfile(p.username)}
+                  title={`View @${p.username}'s public profile`}
+                >
                   {/* Avatar with fallback */}
                   {p.avatar_url ? (
                     <img
@@ -258,7 +271,7 @@ export const FriendsPage: React.FC<FriendsPageProps> = ({ onSelectTitle }) => {
                   )}
 
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-text-primary truncate">{p.display_name}</p>
+                    <p className="text-sm font-bold text-text-primary truncate hover:text-accent transition-colors">{p.display_name}</p>
                     <p className="text-xs font-mono text-accent">@{p.username}</p>
                     {p.bio && (
                       <p className="text-[11px] text-text-muted truncate mt-1 leading-snug">
@@ -272,7 +285,7 @@ export const FriendsPage: React.FC<FriendsPageProps> = ({ onSelectTitle }) => {
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-surface-elevated/60">
                   <button
                     type="button"
-                    onClick={() => setSelectedUserForModal(p)}
+                    onClick={() => handleViewProfile(p.username)}
                     data-testid={`view-profile-btn-${p.username}`}
                     className="px-3 py-1.5 rounded-lg border border-surface-elevated hover:border-accent/50 hover:bg-surface-elevated text-xs font-semibold text-text-secondary hover:text-text-primary transition-all flex items-center gap-1 cursor-pointer"
                   >
