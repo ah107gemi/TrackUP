@@ -44,6 +44,7 @@ import type { TrackingStatus, PrivacyLevel } from '../../types/database.types';
 import { StarRating } from '../../components/ui/StarRating';
 import { ReviewModal } from '../reviews/ReviewModal';
 import { ReviewCard } from '../reviews/ReviewCard';
+import { ErrorBoundary } from '../../components/shared/ErrorBoundary';
 import {
   fetchReviewsForTitle,
   createOrUpdateReview,
@@ -143,7 +144,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   }, [title, setScrolledHeaderTitle]);
 
   // Find user's existing tracked record for this title
-  const existingEntry = userLibrary.find((item) => item.title_id === titleId);
+  const existingEntry = userLibrary?.find((item) => item?.title_id === titleId);
 
   useEffect(() => {
     let mounted = true;
@@ -157,8 +158,8 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
       if (mounted) {
         setTitle(data);
-        setRelated(rels);
-        setReviews(revs);
+        setRelated(rels || []);
+        setReviews(revs || []);
         setIsFavorited(fav);
         setLoading(false);
       }
@@ -169,6 +170,15 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       mounted = false;
     };
   }, [titleId, activeUserId]);
+
+  useEffect(() => {
+    if (existingEntry) {
+      setLocalEpisodes(Array.isArray(existingEntry.episodes_watched) ? existingEntry.episodes_watched : []);
+      setLocalStatus(existingEntry.status || 'planned');
+      setLocalRating(existingEntry.rating ?? null);
+      setLocalChapter(existingEntry.last_chapter_read || 0);
+    }
+  }, [existingEntry?.id, existingEntry?.status, existingEntry?.episodes_watched?.length]);
 
   if (loading) {
     return (
@@ -192,36 +202,32 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     );
   }
 
-  useEffect(() => {
-    if (existingEntry) {
-      setLocalEpisodes(existingEntry.episodes_watched || []);
-      setLocalStatus(existingEntry.status);
-      setLocalRating(existingEntry.rating);
-      setLocalChapter(existingEntry.last_chapter_read || 0);
-    }
-  }, [existingEntry?.id, existingEntry?.status, existingEntry?.episodes_watched?.length]);
+  const isReading = title?.media_type === 'manga' || title?.media_type === 'manhwa';
+  const isEpisodic = title?.media_type === 'tv' || title?.media_type === 'anime_series';
+  const isSingleWatch = title?.media_type === 'movie' || title?.media_type === 'anime_film';
 
-  const isReading = title.media_type === 'manga' || title.media_type === 'manhwa';
-  const isEpisodic = title.media_type === 'tv' || title.media_type === 'anime_series';
-  const isSingleWatch = title.media_type === 'movie' || title.media_type === 'anime_film';
+  const currentStatus: TrackingStatus = localStatus || existingEntry?.status || 'planned';
+  const currentRating: number | null = localRating !== null ? localRating : (existingEntry?.rating ?? null);
+  const currentChapter: number = localChapter || existingEntry?.last_chapter_read || 0;
+  const watchedEpisodesList: string[] = Array.isArray(localEpisodes)
+    ? localEpisodes
+    : Array.isArray(existingEntry?.episodes_watched)
+    ? existingEntry.episodes_watched
+    : [];
 
-  const currentStatus: TrackingStatus = localStatus || (existingEntry ? existingEntry.status : 'planned');
-  const currentRating: number | null = localRating !== null ? localRating : (existingEntry ? existingEntry.rating : null);
-  const currentChapter: number = localChapter || (existingEntry ? existingEntry.last_chapter_read : 0);
-  const watchedEpisodesList: string[] = localEpisodes !== null ? localEpisodes : (existingEntry ? existingEntry.episodes_watched : []);
-
-  const totalEpCount = calculateTotalEpisodes(title) || null;
+  const totalEpCount = title ? calculateTotalEpisodes(title) || null : null;
   const displayWatchedCount =
     currentStatus === 'completed' && watchedEpisodesList.length === 0 && totalEpCount
       ? totalEpCount
       : calculateWatchedEpisodesCount(watchedEpisodesList, title);
 
   const isEpisodeWatched = (ep: { id: string; episode_number: number }) => {
+    if (!ep || !Array.isArray(watchedEpisodesList)) return false;
     if (watchedEpisodesList.includes(ep.id)) return true;
     if (watchedEpisodesList.includes(`ep_${ep.episode_number}`)) return true;
     if (
       watchedEpisodesList.some(
-        (id) => id === `ep_${ep.episode_number}` || id.endsWith(`_${ep.episode_number}`)
+        (id) => typeof id === 'string' && (id === `ep_${ep.episode_number}` || id.endsWith(`_${ep.episode_number}`))
       )
     ) {
       return true;
@@ -311,25 +317,27 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   };
 
   const handleToggleEpisode = async (ep: { id: string; episode_number: number }) => {
+    if (!ep || !title) return;
     const isWatched = isEpisodeWatched(ep);
     let updatedEpisodes: string[];
+    const currentWatched = Array.isArray(watchedEpisodesList) ? watchedEpisodesList : [];
 
     if (isWatched) {
-      if (currentStatus === 'completed' && watchedEpisodesList.length === 0) {
-        const allEps = title.seasons?.flatMap((s) => s.episodes) || [];
+      if (currentStatus === 'completed' && currentWatched.length === 0) {
+        const allEps = title?.seasons?.flatMap((s) => s.episodes || []) || [];
         updatedEpisodes = allEps
-          .filter((e) => e.episode_number !== ep.episode_number && e.id !== ep.id)
+          .filter((e) => e && e.episode_number !== ep.episode_number && e.id !== ep.id)
           .map((e) => e.id);
       } else {
-        updatedEpisodes = watchedEpisodesList.filter(
+        updatedEpisodes = currentWatched.filter(
           (id) =>
             id !== ep.id &&
             id !== `ep_${ep.episode_number}` &&
-            !id.endsWith(`_${ep.episode_number}`)
+            (typeof id !== 'string' || !id.endsWith(`_${ep.episode_number}`))
         );
       }
     } else {
-      updatedEpisodes = [...new Set([...watchedEpisodesList, ep.id, `ep_${ep.episode_number}`])];
+      updatedEpisodes = [...new Set([...currentWatched, ep.id])];
     }
     setLocalEpisodes(updatedEpisodes);
 
@@ -370,6 +378,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   };
 
   const handleEpisodeClick = (ep: { id: string; episode_number: number; name: string }) => {
+    if (!ep || !title) return;
     const isWatched = isEpisodeWatched(ep);
     if (isWatched) {
       handleToggleEpisode(ep);
@@ -377,10 +386,10 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     }
 
     // Inspect active season to see if previous episodes are unmarked
-    const activeSeason = title.seasons?.[activeSeasonIndex];
-    const previousEpisodes = activeSeason?.episodes.filter(
-      (e) => e.episode_number < ep.episode_number
-    ) || [];
+    const activeSeason = title?.seasons?.[activeSeasonIndex];
+    const previousEpisodes = (activeSeason?.episodes || []).filter(
+      (e) => e && e.episode_number < ep.episode_number
+    );
 
     const unmarkedPrevious = previousEpisodes
       .filter((e) => !isEpisodeWatched(e))
@@ -398,11 +407,14 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   };
 
   const handleConfirmCatchUp = async () => {
-    if (!catchUpPrompt) return;
-    const allToMark = [...catchUpPrompt.previousEpIds, catchUpPrompt.targetEp.id];
+    if (!catchUpPrompt || !title) return;
+    const allToMark = [...(catchUpPrompt.previousEpIds || []), catchUpPrompt.targetEp.id];
     setCatchUpPrompt(null);
 
-    const updatedEpisodes = [...new Set([...watchedEpisodesList, ...allToMark, `ep_${catchUpPrompt.targetEp.episode_number}`])];
+    const currentWatched = Array.isArray(watchedEpisodesList) ? watchedEpisodesList : [];
+    const updatedEpisodes = [
+      ...new Set([...currentWatched, ...allToMark, `ep_${catchUpPrompt.targetEp.episode_number}`]),
+    ];
     setLocalEpisodes(updatedEpisodes);
 
     const totalCount = calculateTotalEpisodes(title);
@@ -443,18 +455,20 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   };
 
   const handleCancelCatchUp = () => {
-    if (!catchUpPrompt) return;
+    if (!catchUpPrompt?.targetEp) return;
     const targetEp = catchUpPrompt.targetEp;
     setCatchUpPrompt(null);
     handleToggleEpisode(targetEp);
   };
 
   const handleBatchMarkSeasonWatched = async () => {
-    const activeSeason = title.seasons?.[activeSeasonIndex];
-    if (!activeSeason) return;
+    if (!title) return;
+    const activeSeason = title?.seasons?.[activeSeasonIndex];
+    if (!activeSeason || !Array.isArray(activeSeason.episodes)) return;
 
     const allEpIds = activeSeason.episodes.map((e) => e.id);
-    const updatedEpisodes = [...new Set([...watchedEpisodesList, ...allEpIds])];
+    const currentWatched = Array.isArray(watchedEpisodesList) ? watchedEpisodesList : [];
+    const updatedEpisodes = [...new Set([...currentWatched, ...allEpIds])];
     setLocalEpisodes(updatedEpisodes);
 
     const totalCount = calculateTotalEpisodes(title);
@@ -584,7 +598,11 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   };
 
   return (
-    <div data-testid="title-detail-page" className="space-y-8 animate-in fade-in duration-200">
+    <ErrorBoundary
+      fallbackTitle="Error loading title details"
+      onReset={onBack}
+    >
+      <div data-testid="title-detail-page" className="space-y-8 animate-in fade-in duration-200">
       {/* Back Button */}
       <div className="flex items-center justify-between">
         <button
@@ -600,10 +618,10 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       {/* Cinematic Backdrop Hero */}
       <div className="relative rounded-3xl overflow-hidden bg-surface border border-surface-elevated shadow-2xl">
         <div className="relative w-full h-[260px] md:h-[420px] bg-surface-elevated">
-          {title.backdrop_url || (title as any).backdrop_path ? (
+          {title.backdrop_url || (title as any).backdrop_path || (title as any).bannerImage ? (
             <img
-              src={title.backdrop_url || (title as any).backdrop_path}
-              alt={title.title}
+              src={title.backdrop_url || (title as any).backdrop_path || (title as any).bannerImage}
+              alt={title.title || 'Backdrop'}
               className="w-full h-full object-cover"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
@@ -620,8 +638,18 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
           {/* Poster Card */}
           <div ref={heroRef} className="w-36 md:w-56 shrink-0 rounded-2xl overflow-hidden border-2 border-surface-elevated shadow-2xl bg-surface">
             <img
-              src={title.poster_url || (title as any).poster_path || '/assets/trackup-logo.jpg'}
-              alt={title.title}
+              src={
+                title.poster_url ||
+                (title as any).poster_path ||
+                (title as any).coverImage?.extraLarge ||
+                (title as any).coverImage?.large ||
+                (title as any).coverImage?.medium ||
+                (title as any).cover_image ||
+                title.backdrop_url ||
+                (title as any).backdrop_path ||
+                '/assets/trackup-logo.jpg'
+              }
+              alt={title.title || 'Poster'}
               className="w-full aspect-[2/3] object-cover"
               onError={(e) => {
                 e.currentTarget.onerror = null;
@@ -634,7 +662,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <span className="px-2.5 py-0.5 rounded-md text-xs font-bold tracking-wider uppercase bg-accent text-background">
-                {title.media_type.replace('_', ' ')}
+                {title.media_type ? title.media_type.replace('_', ' ') : 'MEDIA'}
               </span>
               {title.release_date ? (
                 <span
@@ -679,7 +707,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
             {/* Genres */}
             <div className="flex flex-wrap gap-1.5 mt-3">
-              {title.genres.map((g, i) => (
+              {(title.genres || []).map((g, i) => (
                 <span
                   key={i}
                   className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-surface-elevated text-text-secondary border border-surface-elevated"
@@ -844,7 +872,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
               {title.seasons[activeSeasonIndex] && (
                 <div className="flex items-center justify-between text-xs text-text-muted px-1">
                   <span className="font-medium text-text-secondary">
-                    {title.seasons[activeSeasonIndex].name} — {title.seasons[activeSeasonIndex].episode_count || title.seasons[activeSeasonIndex].episodes.length} Episodes
+                    {title.seasons[activeSeasonIndex].name} — {title.seasons[activeSeasonIndex].episode_count || title.seasons[activeSeasonIndex].episodes?.length || 0} Episodes
                   </span>
                   {title.seasons[activeSeasonIndex].overview && (
                     <span className="text-[11px] text-text-muted italic hidden md:inline truncate max-w-md">
@@ -859,7 +887,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                 data-testid="scrollable-episodes-list"
                 className="max-h-96 overflow-y-auto pr-1.5 space-y-2 focus:outline-none"
               >
-                {title.seasons[activeSeasonIndex]?.episodes.map((ep) => {
+                {(title.seasons[activeSeasonIndex]?.episodes || []).map((ep) => {
                   const isWatched = isEpisodeWatched(ep);
                   const countdown = getAirDateCountdown(ep.air_date);
                   const formattedAirDate = formatReleaseDate(ep.air_date);
@@ -1262,5 +1290,6 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       {/* TMDB Mandatory Attribution Footer */}
       <TmdbAttribution className="mt-12" />
     </div>
+    </ErrorBoundary>
   );
 };

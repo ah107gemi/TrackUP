@@ -7,6 +7,7 @@ import { ProfileModal } from '../../features/auth/ProfileModal';
 import { AuthGuard } from '../../features/auth/AuthGuard';
 import { SearchPage } from '../../features/catalog/SearchPage';
 import { TitleDetailPage } from '../../features/catalog/TitleDetailPage';
+import { ErrorBoundary } from '../shared/ErrorBoundary';
 import { LibraryView } from '../../features/library/LibraryView';
 import { DashboardStats } from '../../features/dashboard/DashboardStats';
 import { HistoryTimeline } from '../../features/history/HistoryTimeline';
@@ -121,17 +122,27 @@ export const AppShell: React.FC = () => {
         {/* Scrollable Viewport */}
         <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6 pb-8">
           {selectedTitleId ? (
-            <TitleDetailPage
-              titleId={selectedTitleId}
-              onBack={handleBackFromDetail}
-              onSelectTitle={handleSelectTitle}
-            />
+            <ErrorBoundary
+              fallbackTitle="Error loading title data"
+              onReset={handleBackFromDetail}
+            >
+              <TitleDetailPage
+                titleId={selectedTitleId}
+                onBack={handleBackFromDetail}
+                onSelectTitle={handleSelectTitle}
+              />
+            </ErrorBoundary>
           ) : viewingPublicUser ? (
-            <PublicProfilePage
-              userParam={viewingPublicUser}
-              onBack={handleBackFromPublicProfile}
-              onSelectTitle={handleSelectTitle}
-            />
+            <ErrorBoundary
+              fallbackTitle="Error loading profile data"
+              onReset={handleBackFromPublicProfile}
+            >
+              <PublicProfilePage
+                userParam={viewingPublicUser}
+                onBack={handleBackFromPublicProfile}
+                onSelectTitle={handleSelectTitle}
+              />
+            </ErrorBoundary>
           ) : (
             <>
               {activeTab === 'dashboard' && (

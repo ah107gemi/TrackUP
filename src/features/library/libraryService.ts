@@ -359,7 +359,7 @@ export async function logEpisodeProgress(params: {
 
   const item = all[index];
   const now = new Date().toISOString();
-  let updatedEpisodes = [...item.episodes_watched];
+  let updatedEpisodes = Array.isArray(item.episodes_watched) ? [...item.episodes_watched] : [];
 
   if (params.watched) {
     if (!updatedEpisodes.includes(params.episodeId)) {
@@ -451,10 +451,11 @@ export async function toggleEpisode(params: {
   if (index < 0) throw new Error('Library entry not found');
 
   const item = all[index];
+  const currentEpisodes = Array.isArray(item.episodes_watched) ? item.episodes_watched : [];
   const isWatched =
-    item.episodes_watched.includes(params.episodeId) ||
-    item.episodes_watched.some(
-      (id) => id === `ep_${params.episodeId}` || id.endsWith(`_${params.episodeId}`)
+    currentEpisodes.includes(params.episodeId) ||
+    currentEpisodes.some(
+      (id) => typeof id === 'string' && (id === `ep_${params.episodeId}` || id.endsWith(`_${params.episodeId}`))
     );
 
   return logEpisodeProgress({
@@ -477,7 +478,7 @@ export async function logBatchEpisodeProgress(params: {
 
   const item = all[index];
   const now = new Date().toISOString();
-  let updatedEpisodes = [...item.episodes_watched];
+  let updatedEpisodes = Array.isArray(item.episodes_watched) ? [...item.episodes_watched] : [];
 
   if (params.watched) {
     params.episodeIds.forEach((epId) => {
