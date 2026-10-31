@@ -1,7 +1,9 @@
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchUserLibrary,
   upsertLibraryItem,
+  updateLibraryItem,
   updateItemStatus,
   logEpisodeProgress,
   logBatchEpisodeProgress,
@@ -12,15 +14,51 @@ import {
   inferWatchedTrackingStatus,
   type UserLibraryItem,
 } from './libraryService';
+import { healLibraryBatch } from '../catalog/metadataHealer';
 import type { TrackingStatus } from '../../types/database.types';
 
 export function useUserLibrary(userId: string | undefined) {
-  return useQuery({
+  const queryClient = useQueryClient();
+  const query = useQuery({
     queryKey: ['library', userId],
     queryFn: () => (userId ? fetchUserLibrary(userId) : Promise.resolve([])),
     enabled: !!userId,
   });
+
+  // Active Metadata Healer: Scans library entries and heals missing posters/backdrops in background
+  useEffect(() => {
+    if (!query.data || query.data.length === 0 || !userId) return;
+
+    let active = true;
+    healLibraryBatch(query.data, userId, (healedTitleId, healedImages) => {
+      if (!active) return;
+      queryClient.setQueryData<UserLibraryItem[]>(['library', userId], (oldData) => {
+        if (!oldData) return oldData;
+        return oldData.map((item) => {
+          if (item.title_id === healedTitleId || item.title?.id === healedTitleId) {
+            return {
+              ...item,
+              title: {
+                ...item.title,
+                poster_url: healedImages.poster_url || item.title.poster_url,
+                backdrop_url: healedImages.backdrop_url || item.title.backdrop_url,
+              },
+            };
+          }
+          return item;
+        });
+      });
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [query.data?.length, userId, queryClient]);
+
+  return query;
 }
+
+export { updateLibraryItem };
 
 export function useUpsertLibrary() {
   const queryClient = useQueryClient();

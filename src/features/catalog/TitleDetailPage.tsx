@@ -25,6 +25,7 @@ import {
 } from './catalogService';
 import type { NormalizedCatalogItem } from '../../lib/validators';
 import { resolvePosterUrl, resolveBackdropUrl } from '../../lib/imageUtils';
+import { canHealTitle, healTitleMetadata } from './metadataHealer';
 import { MediaPosterCard } from '../../components/shared/MediaPosterCard';
 import { TmdbAttribution } from '../../components/shared/TmdbAttribution';
 import { useAuth } from '../auth/AuthContext';
@@ -40,6 +41,7 @@ import {
   calculateTotalEpisodes,
   calculateWatchedEpisodesCount,
   inferWatchedTrackingStatus,
+  updateLibraryItem,
 } from '../library/libraryService';
 import type { TrackingStatus, PrivacyLevel } from '../../types/database.types';
 import { StarRating } from '../../components/ui/StarRating';
@@ -152,7 +154,10 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     setLoading(true);
 
     async function loadData() {
-      const data = await getCatalogTitleById(titleId);
+      let data = await getCatalogTitleById(titleId);
+      if (!data && existingEntry?.title) {
+        data = existingEntry.title as any;
+      }
       const rels = await getRelatedWorks(titleId);
       const revs = await fetchReviewsForTitle(titleId);
       const fav = isTitleFavorite(activeUserId, titleId);
@@ -163,6 +168,31 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         setReviews(revs || []);
         setIsFavorited(fav);
         setLoading(false);
+      }
+
+      // Active Metadata Healer: If poster or backdrop is missing, heal from live API in background
+      if (data && canHealTitle(data, titleId)) {
+        healTitleMetadata(data, titleId).then((healed) => {
+          if (!mounted || !healed) return;
+          setTitle((prev: any) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              poster_url: healed.poster_url || prev.poster_url,
+              backdrop_url: healed.backdrop_url || prev.backdrop_url,
+              ...(healed.fullItem ? { coverImage: healed.fullItem.coverImage, bannerImage: healed.fullItem.bannerImage } : {}),
+            };
+          });
+
+          if (user?.id) {
+            updateLibraryItem({
+              userId: user.id,
+              titleId,
+              poster_url: healed.poster_url,
+              backdrop_url: healed.backdrop_url,
+            });
+          }
+        });
       }
     }
 

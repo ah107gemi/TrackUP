@@ -34,6 +34,7 @@ import {
   type UserLibraryItem,
 } from '../library/libraryService';
 import { MOCK_CATALOG_FIXTURES } from '../catalog/catalogService';
+import { healLibraryBatch } from '../catalog/metadataHealer';
 import type { TrackingStatus } from '../../types/database.types';
 
 interface PublicProfilePageProps {
@@ -289,6 +290,26 @@ export const PublicProfilePage: React.FC<PublicProfilePageProps> = ({
 
         // Only display public items to viewers
         setLibrary(userItems.filter((item) => !item.is_private));
+
+        // Active Metadata Healer for public profile library items
+        healLibraryBatch(userItems, resolvedProfile.id, (healedTitleId, healedImages) => {
+          if (!mounted) return;
+          setLibrary((prev) =>
+            prev.map((item) => {
+              if (item.title_id === healedTitleId || item.title?.id === healedTitleId) {
+                return {
+                  ...item,
+                  title: {
+                    ...item.title,
+                    poster_url: healedImages.poster_url || item.title.poster_url,
+                    backdrop_url: healedImages.backdrop_url || item.title.backdrop_url,
+                  },
+                };
+              }
+              return item;
+            })
+          );
+        });
       }
 
       setIsLoading(false);

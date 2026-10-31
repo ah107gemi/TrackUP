@@ -89,7 +89,182 @@ export async function fetchUserLibrary(userId: string): Promise<UserLibraryItem[
     saveStoredLibraries(all);
   }
 
-  return all.filter((item) => item.user_id === userId);
+  const localItems = all.filter((item) => item.user_id === userId);
+
+  // If Supabase is available, attempt to query public user_libraries joined with catalog_titles
+  if (supabase) {
+    try {
+      const isLocalSupabase =
+        !import.meta.env.VITE_SUPABASE_URL ||
+        import.meta.env.VITE_SUPABASE_URL.includes('127.0.0.1') ||
+        import.meta.env.VITE_SUPABASE_URL.includes('localhost');
+      const timeoutMs = isLocalSupabase ? 350 : 3500;
+
+      const q = supabase
+        .from('user_libraries')
+        .select(`
+          id,
+          user_id,
+          title_id,
+          status,
+          rating,
+          is_private,
+          personal_notes,
+          started_at,
+          completed_at,
+          last_progressed_at,
+          catalog_titles (
+            id,
+            media_type,
+            title,
+            original_title,
+            release_year,
+            synopsis,
+            poster_url,
+            backdrop_url,
+            genres,
+            total_episodes,
+            total_seasons,
+            total_chapters,
+            total_volumes,
+            runtime_minutes,
+            tmdb_id,
+            imdb_id,
+            anilist_id,
+            mal_id
+          )
+        `)
+        .eq('user_id', userId);
+
+      const res: any = await Promise.race([
+        q,
+        new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Timeout')), timeoutMs)),
+      ]);
+
+      if (!res?.error && res?.data && res.data.length > 0) {
+        const remoteItems: UserLibraryItem[] = res.data.map((row: any) => {
+          const cat = row.catalog_titles || {};
+          const titleItem: NormalizedCatalogItem = {
+            id: cat.id || row.title_id,
+            media_type: cat.media_type || 'movie',
+            title: cat.title || 'Untitled',
+            original_title: cat.original_title,
+            release_year: cat.release_year,
+            synopsis: cat.synopsis,
+            poster_url: cat.poster_url,
+            backdrop_url: cat.backdrop_url,
+            genres: cat.genres || [],
+            total_episodes: cat.total_episodes,
+            total_seasons: cat.total_seasons,
+            total_chapters: cat.total_chapters,
+            total_volumes: cat.total_volumes,
+            runtime_minutes: cat.runtime_minutes,
+            tmdb_id: cat.tmdb_id,
+            imdb_id: cat.imdb_id,
+            anilist_id: cat.anilist_id,
+            mal_id: cat.mal_id,
+          };
+
+          return {
+            id: row.id,
+            user_id: row.user_id,
+            title_id: row.title_id,
+            status: row.status,
+            rating: row.rating,
+            is_private: Boolean(row.is_private),
+            personal_notes: row.personal_notes,
+            started_at: row.started_at,
+            completed_at: row.completed_at,
+            last_progressed_at: row.last_progressed_at,
+            episodes_watched: [],
+            last_chapter_read: 0,
+            last_volume_read: 0,
+            title: titleItem,
+          };
+        });
+
+        const mergedMap = new Map<string, UserLibraryItem>();
+        remoteItems.forEach((r) => mergedMap.set(r.title_id, r));
+        localItems.forEach((l) => mergedMap.set(l.title_id, l));
+
+        return Array.from(mergedMap.values());
+      }
+    } catch {
+      // Fallback smoothly to localItems
+    }
+  }
+
+  return localItems;
+}
+
+/**
+ * Permanently updates a library item's metadata (e.g. poster_url and backdrop_url)
+ * in both the local storage and the Supabase database.
+ */
+export async function updateLibraryItem(params: {
+  userId: string;
+  titleId: string;
+  poster_url?: string;
+  backdrop_url?: string;
+  titleData?: Partial<NormalizedCatalogItem>;
+}): Promise<UserLibraryItem | null> {
+  const all = getStoredLibraries();
+  const index = all.findIndex(
+    (l) =>
+      l.user_id === params.userId &&
+      (l.title_id === params.titleId || l.title?.id === params.titleId)
+  );
+
+  let updatedItem: UserLibraryItem | null = null;
+  const now = new Date().toISOString();
+
+  if (index >= 0) {
+    const existing = all[index];
+    const updatedTitle: NormalizedCatalogItem = {
+      ...existing.title,
+      ...(params.titleData || {}),
+      poster_url: params.poster_url || params.titleData?.poster_url || existing.title.poster_url,
+      backdrop_url: params.backdrop_url || params.titleData?.backdrop_url || existing.title.backdrop_url,
+    };
+
+    updatedItem = {
+      ...existing,
+      title: updatedTitle,
+      last_progressed_at: existing.last_progressed_at || now,
+    };
+
+    all[index] = updatedItem;
+    saveStoredLibraries(all);
+  }
+
+  if (supabase) {
+    try {
+      const poster = params.poster_url || params.titleData?.poster_url;
+      const backdrop = params.backdrop_url || params.titleData?.backdrop_url;
+
+      if (poster || backdrop) {
+        const payload: Record<string, any> = { updated_at: now };
+        if (poster) payload.poster_url = poster;
+        if (backdrop) payload.backdrop_url = backdrop;
+
+        const effectiveTitleId = updatedItem?.title_id || params.titleId;
+
+        // 1. Update catalog_titles
+        await (supabase.from('catalog_titles') as any)
+          .update(payload)
+          .eq('id', effectiveTitleId);
+
+        // 2. Touch user_libraries
+        await (supabase.from('user_libraries') as any)
+          .update({ updated_at: now })
+          .match({ user_id: params.userId, title_id: effectiveTitleId });
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return updatedItem;
 }
 
 export async function upsertLibraryItem(params: {
