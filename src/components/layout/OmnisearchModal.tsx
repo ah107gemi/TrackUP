@@ -217,9 +217,14 @@ export const OmnisearchModal: React.FC<OmnisearchModalProps> = ({ onSelectTitle 
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-14 rounded-lg overflow-hidden bg-[#16161D] shrink-0 border border-surface-elevated">
-                      {item.poster_url ? (
+                      {item.poster_url || (item as any).poster_path ? (
                         <img
-                          src={item.poster_url}
+                          src={
+                            (item.poster_url || (item as any).poster_path).startsWith('http') ||
+                            (item.poster_url || (item as any).poster_path).startsWith('/assets/')
+                              ? item.poster_url || (item as any).poster_path
+                              : `https://image.tmdb.org/t/p/w500${(item.poster_url || (item as any).poster_path).startsWith('/') ? '' : '/'}${item.poster_url || (item as any).poster_path}`
+                          }
                           alt={item.title}
                           loading="lazy"
                           decoding="async"

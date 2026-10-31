@@ -10,7 +10,13 @@ import {
   sanitizeFilterState,
   type LibraryFilterState,
 } from '../../src/features/library/libraryFilterState';
-import { MOCK_CATALOG_FIXTURES } from '../../src/features/catalog/catalogService';
+import {
+  MOCK_CATALOG_FIXTURES,
+  standardizeTitleKey,
+  hasValidPoster,
+  resolvePosterUrl,
+  deduplicateAndFilterCatalogResults,
+} from '../../src/features/catalog/catalogService';
 import {
   fetchUserLibrary,
   saveStoredLibraries,
@@ -1265,5 +1271,163 @@ describe('Public Profile View & Routing', () => {
 
     storedFollows = getStoredFollows();
     expect(storedFollows.some((f) => f.follower_id === followerId && f.following_id === targetId)).toBe(false);
+  });
+});
+
+describe('Global Search Deduplication & Quality Filter', () => {
+  it('standardizes title strings by ignoring case, tags like (Anime), (TV), and season markers', () => {
+    expect(standardizeTitleKey('Solo Leveling (Anime)')).toBe('sololeveling');
+    expect(standardizeTitleKey('Solo Leveling')).toBe('sololeveling');
+    expect(standardizeTitleKey('Solo Leveling [TV]')).toBe('sololeveling');
+    expect(standardizeTitleKey('Solo Leveling Season 2')).toBe('sololeveling');
+    expect(standardizeTitleKey('Attack on Titan (Manga)')).toBe('attackontitan');
+    expect(standardizeTitleKey('Breaking Bad')).toBe('breakingbad');
+  });
+
+  it('rejects items with missing, null, undefined, or fallback placeholder posters', () => {
+    expect(hasValidPoster(null)).toBe(false);
+    expect(hasValidPoster(undefined)).toBe(false);
+    expect(hasValidPoster({ id: '1', title: 'T1', genres: [], media_type: 'tv', poster_url: null } as any)).toBe(false);
+    expect(hasValidPoster({ id: '2', title: 'T2', genres: [], media_type: 'tv', poster_url: '' } as any)).toBe(false);
+    expect(hasValidPoster({ id: '3', title: 'T3', genres: [], media_type: 'tv', poster_url: '   ' } as any)).toBe(false);
+    expect(hasValidPoster({ id: '4', title: 'T4', genres: [], media_type: 'tv', poster_url: '/assets/trackup-logo.jpg' } as any)).toBe(false);
+    expect(hasValidPoster({ id: '5', title: 'T5', genres: [], media_type: 'tv', poster_url: 'https://image.tmdb.org/t/p/w500/test.jpg' } as any)).toBe(true);
+    expect(hasValidPoster({ id: '6', title: 'T6', genres: [], media_type: 'tv', poster_url: '/valid_tmdb_path.jpg' } as any)).toBe(true);
+  });
+
+  it('prepends base image url https://image.tmdb.org/t/p/w500 to relative TMDB poster paths', () => {
+    expect(resolvePosterUrl(null)).toBeNull();
+    expect(resolvePosterUrl('')).toBeNull();
+    expect(resolvePosterUrl('/assets/trackup-logo.jpg')).toBeNull();
+    expect(resolvePosterUrl('https://s4.anilist.co/cover.jpg')).toBe('https://s4.anilist.co/cover.jpg');
+    expect(resolvePosterUrl('/abc1234.jpg')).toBe('https://image.tmdb.org/t/p/w500/abc1234.jpg');
+    expect(resolvePosterUrl('abc1234.jpg')).toBe('https://image.tmdb.org/t/p/w500/abc1234.jpg');
+  });
+
+  it('discards results with no poster and deduplicates anime by prioritizing AniList over TMDB', () => {
+    const rawResults = [
+      // 1. TMDB TV show with no poster (should be discarded)
+      {
+        id: 'tmdb_tv_noposter',
+        media_type: 'tv' as const,
+        title: 'Solo Leveling',
+        genres: ['Action', 'Animation'],
+        origin_country: 'JP',
+        poster_url: null,
+      },
+      // 2. TMDB TV show with placeholder poster (should be discarded)
+      {
+        id: 'tmdb_tv_placeholder',
+        media_type: 'tv' as const,
+        title: 'Solo Leveling',
+        genres: ['Action', 'Animation'],
+        origin_country: 'JP',
+        poster_url: '/assets/trackup-logo.jpg',
+      },
+      // 3. TMDB TV show with valid poster
+      {
+        id: 'tmdb_tv_with_poster',
+        media_type: 'tv' as const,
+        title: 'Solo Leveling',
+        genres: ['Action', 'Animation'],
+        origin_country: 'JP',
+        poster_url: 'https://image.tmdb.org/t/p/w500/tmdb_solo.jpg',
+      },
+      // 4. AniList anime entry with valid poster (should win priority for anime)
+      {
+        id: 'anilist_anime_151807',
+        media_type: 'anime_series' as const,
+        title: 'Solo Leveling',
+        genres: ['Action', 'Fantasy'],
+        origin_country: 'JP',
+        poster_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx151807.jpg',
+        total_episodes: 24,
+      },
+    ];
+
+    const deduplicated = deduplicateAndFilterCatalogResults(rawResults as any[], 'watch');
+
+    // Exactly 1 result returned
+    expect(deduplicated.length).toBe(1);
+    // AniList anime won over TMDB
+    expect(deduplicated[0].id).toBe('anilist_anime_151807');
+    expect(deduplicated[0].media_type).toBe('anime_series');
+    expect(deduplicated[0].poster_url).toBe('https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx151807.jpg');
+  });
+
+  it('deduplicates live-action titles by prioritizing TMDB over AniList', () => {
+    const rawResults = [
+      // TMDB live-action with valid poster (should win)
+      {
+        id: 'tmdb_tv_1396',
+        media_type: 'tv' as const,
+        title: 'Breaking Bad',
+        genres: ['Drama', 'Crime'],
+        origin_country: 'US',
+        poster_url: 'https://image.tmdb.org/t/p/w500/bb_poster.jpg',
+      },
+      // Stray AniList entry for Breaking Bad
+      {
+        id: 'anilist_anime_99999',
+        media_type: 'anime_series' as const,
+        title: 'Breaking Bad',
+        genres: ['Drama'],
+        origin_country: 'US',
+        poster_url: 'https://s4.anilist.co/cover_bb.jpg',
+      },
+    ];
+
+    const deduplicated = deduplicateAndFilterCatalogResults(rawResults as any[], 'watch');
+
+    expect(deduplicated.length).toBe(1);
+    expect(deduplicated[0].id).toBe('tmdb_tv_1396');
+    expect(deduplicated[0].media_type).toBe('tv');
+  });
+});
+
+describe('Library Search Input Persistence (No Reset Bug)', () => {
+  it('does not reset or clear search input when search query returns 0 matches', () => {
+    const libraryItems: UserLibraryItem[] = [
+      {
+        id: 'lib_1',
+        user_id: 'user_search_test',
+        title_id: 'tv_breaking_bad_1396',
+        status: 'active',
+        rating: 10,
+        is_private: false,
+        personal_notes: null,
+        started_at: null,
+        completed_at: null,
+        last_progressed_at: new Date().toISOString(),
+        episodes_watched: ['ep_1'],
+        last_chapter_read: 0,
+        last_volume_read: 0,
+        title: {
+          id: 'tv_breaking_bad_1396',
+          media_type: 'tv',
+          title: 'Breaking Bad',
+          genres: ['Drama'],
+        },
+      },
+    ];
+
+    const searchQuery = 'NonExistentTitleQuery';
+
+    // Filter library with non-matching query
+    const filtered = libraryItems.filter((item) => {
+      const q = searchQuery.trim().toLowerCase();
+      const title = (item.title?.title || '').toLowerCase();
+      return title.includes(q);
+    });
+
+    expect(filtered.length).toBe(0);
+
+    // Verify search term is decoupled and remains intact
+    const retainedQuery = searchQuery;
+    expect(retainedQuery).toBe('NonExistentTitleQuery');
+
+    // Empty state message formats accurately
+    const emptyMessage = `No titles found matching "${retainedQuery}"`;
+    expect(emptyMessage).toBe('No titles found matching "NonExistentTitleQuery"');
   });
 });

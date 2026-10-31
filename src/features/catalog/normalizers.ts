@@ -109,8 +109,21 @@ export function normalizeTmdbMovie(payload: TmdbMoviePayload): NormalizedCatalog
     ? parseInt(payload.release_date.split('-')[0], 10)
     : null;
 
-  const rawPoster = payload.poster_path || (payload as any).poster_url || (payload as any).poster;
-  const rawBackdrop = payload.backdrop_path || (payload as any).backdrop_url || (payload as any).backdrop;
+  const rawPoster =
+    payload.poster_path ||
+    (payload as any).poster_url ||
+    (payload as any).poster ||
+    (payload as any).coverImage?.extraLarge ||
+    (payload as any).coverImage?.large ||
+    (payload as any).coverImage?.medium ||
+    (payload as any).cover_image ||
+    null;
+  const rawBackdrop =
+    payload.backdrop_path ||
+    (payload as any).backdrop_url ||
+    (payload as any).backdrop ||
+    (payload as any).bannerImage ||
+    null;
 
   const poster = buildTmdbImageUrl(rawPoster, 'w500');
   const backdrop = buildTmdbImageUrl(rawBackdrop, 'w1280');
@@ -153,8 +166,21 @@ export function normalizeTmdbTv(payload: TmdbTvPayload): NormalizedCatalogItem {
     ? parseInt(payload.first_air_date.split('-')[0], 10)
     : null;
 
-  const rawPoster = payload.poster_path || (payload as any).poster_url || (payload as any).poster;
-  const rawBackdrop = payload.backdrop_path || (payload as any).backdrop_url || (payload as any).backdrop;
+  const rawPoster =
+    payload.poster_path ||
+    (payload as any).poster_url ||
+    (payload as any).poster ||
+    (payload as any).coverImage?.extraLarge ||
+    (payload as any).coverImage?.large ||
+    (payload as any).coverImage?.medium ||
+    (payload as any).cover_image ||
+    null;
+  const rawBackdrop =
+    payload.backdrop_path ||
+    (payload as any).backdrop_url ||
+    (payload as any).backdrop ||
+    (payload as any).bannerImage ||
+    null;
 
   const poster = buildTmdbImageUrl(rawPoster, 'w500');
   const backdrop = buildTmdbImageUrl(rawBackdrop, 'w1280');
@@ -260,7 +286,9 @@ export function normalizeAniListMedia(
       release_date: null,
       synopsis: null,
       poster_url: '/assets/trackup-logo.jpg',
+      poster_path: null,
       backdrop_url: null,
+      backdrop_path: null,
       genres: [],
       origin_country: preferredType === 'manhwa' ? 'KR' : 'JP',
       status: 'released',
@@ -334,23 +362,34 @@ export function normalizeAniListMedia(
 
   const rawCover =
     (typeof payload.coverImage === 'string' && payload.coverImage.trim()) ||
-    payload.coverImage?.extraLarge ||
-    payload.coverImage?.large ||
-    payload.coverImage?.medium ||
+    (typeof payload.coverImage?.extraLarge === 'string' && payload.coverImage.extraLarge.trim()) ||
+    (typeof payload.coverImage?.large === 'string' && payload.coverImage.large.trim()) ||
+    (typeof payload.coverImage?.medium === 'string' && payload.coverImage.medium.trim()) ||
     (typeof payload.cover_image === 'string' && payload.cover_image.trim()) ||
-    payload.cover_image?.extraLarge ||
-    payload.cover_image?.large ||
-    payload.cover_image?.medium ||
-    payload.poster_url ||
-    payload.poster ||
+    (typeof payload.cover_image?.extraLarge === 'string' && payload.cover_image.extraLarge.trim()) ||
+    (typeof payload.cover_image?.large === 'string' && payload.cover_image.large.trim()) ||
+    (typeof payload.cover_image?.medium === 'string' && payload.cover_image.medium.trim()) ||
+    (typeof payload.poster_url === 'string' && payload.poster_url.trim()) ||
+    (typeof payload.poster_path === 'string' && payload.poster_path.trim()) ||
+    (typeof payload.poster === 'string' && payload.poster.trim()) ||
     null;
 
-  const sanitizedCover = sanitizeUrl(rawCover);
-  const poster =
-    sanitizedCover ||
-    (typeof rawCover === 'string' && (rawCover.startsWith('http://') || rawCover.startsWith('https://'))
-      ? rawCover.trim()
-      : '/assets/trackup-logo.jpg');
+  let poster: string | null = null;
+  if (rawCover && typeof rawCover === 'string') {
+    const trimmedCover = rawCover.trim();
+    if (trimmedCover.startsWith('http://') || trimmedCover.startsWith('https://')) {
+      poster = sanitizeUrl(trimmedCover);
+    } else if (trimmedCover.startsWith('/') && !trimmedCover.startsWith('/assets/')) {
+      poster = buildTmdbImageUrl(trimmedCover, 'w500');
+    } else if (trimmedCover.startsWith('/assets/')) {
+      poster = trimmedCover;
+    }
+  }
+
+  if (!poster) {
+    poster = '/assets/trackup-logo.jpg';
+  }
+
   const backdrop = sanitizeUrl(payload.bannerImage);
 
   // Clean HTML tags from AniList synopsis if present

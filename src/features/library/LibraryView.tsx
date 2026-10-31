@@ -189,37 +189,24 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     return type ? domainMediaTypes.includes(type) : true;
   }).length;
 
-  // Auto-heal stuck/poisoned filter states:
-  // If the raw database array has items for this domain, but the filtered result is 0
-  // and filters are active or poisoned, forcefully reset filters to 'all'.
+  // Auto-heal truly poisoned filter states:
+  // If filter parameters contain corrupted/invalid types (e.g. malformed status or format),
+  // reset filters to safe defaults. Never clear valid user searches or active filters when 0 results match.
   useEffect(() => {
     if (isLoading) return;
-    const rawCount = (Array.isArray(library) ? library : []).filter((item) => {
-      if (!item || typeof item !== 'object') return false;
-      const type = item.title?.media_type;
-      return type ? domainMediaTypes.includes(type) : true;
-    }).length;
+    const isPoisoned =
+      !activeStatus ||
+      !VALID_STATUSES.has(activeStatus) ||
+      !selectedFormat ||
+      !VALID_FORMATS.has(selectedFormat) ||
+      typeof localSearchQuery !== 'string';
 
-    if (rawCount > 0 && filtered.length === 0) {
-      const isPoisoned =
-        !activeStatus ||
-        !VALID_STATUSES.has(activeStatus) ||
-        !selectedFormat ||
-        !VALID_FORMATS.has(selectedFormat) ||
-        typeof localSearchQuery !== 'string';
-
-      const hasActiveFilters =
-        activeStatus !== 'all' ||
-        selectedFormat !== 'all' ||
-        Boolean(localSearchQuery && localSearchQuery.trim());
-
-      if (isPoisoned || hasActiveFilters) {
-        const safeDefaults = { status: 'all' as const, format: 'all' as const, searchQuery: '' };
-        setFilters(safeDefaults);
-        persistLibraryFilters(safeDefaults, domain);
-      }
+    if (isPoisoned) {
+      const safeDefaults = { status: 'all' as const, format: 'all' as const, searchQuery: '' };
+      setFilters(safeDefaults);
+      persistLibraryFilters(safeDefaults, domain);
     }
-  }, [library?.length, domainTotalCount, filtered.length, isLoading, domain]);
+  }, [activeStatus, selectedFormat, localSearchQuery, isLoading, domain, setFilters]);
 
   const statuses: { id: TrackingStatus | 'all'; label: string }[] = [
     { id: 'all', label: 'All Statuses' },
@@ -594,9 +581,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           <Search className="w-10 h-10 text-text-muted/40 mx-auto" />
           <h3 className="text-sm font-bold text-text-primary">No matching titles in your library</h3>
           <p className="text-xs text-text-muted">
-            No tracked items match your search
-            {localSearchQuery ? ` for "${localSearchQuery}"` : ''}
-            {activeStatus !== 'all' ? ` with status "${activeStatus}"` : ''}.
+            {localSearchQuery
+              ? `No titles found matching "${localSearchQuery}"`
+              : `No tracked items match your filters${activeStatus !== 'all' ? ` with status "${activeStatus}"` : ''}.`}
           </p>
           <button
             type="button"

@@ -1,7 +1,8 @@
-import type { NormalizedCatalogItem } from '../../lib/validators';
+import { sanitizeUrl, type NormalizedCatalogItem } from '../../lib/validators';
 import type { MediaType, RelationshipType } from '../../types/database.types';
 import { searchAniList, fetchAniListMediaById } from './anilistClient';
 import { searchTmdb, fetchTmdbMediaById, isTmdbConfigured } from './tmdbClient';
+import { buildTmdbImageUrl } from './normalizers';
 
 export interface CatalogSeasonDetail {
   id: string;
@@ -590,6 +591,212 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
 
 export type SearchDomain = 'watch' | 'read';
 
+/**
+ * Standardizes title string for robust grouping & deduplication across providers.
+ * Strips bracketed/parenthetical format tags (e.g., "(Anime)", "[TV]") and season/cour markers,
+ * then strips punctuation and whitespace to allow fuzzy key matching.
+ */
+export function standardizeTitleKey(title: string): string {
+  if (!title || typeof title !== 'string') return '';
+  return title
+    .toLowerCase()
+    // Strip parenthetical/bracketed tags: (Anime), [Anime], (TV), (Series), (Movie), (Film), (Manga), (Manhwa), etc.
+    .replace(
+      /\s*[\(\[]\s*(anime\s*series|anime\s*film|anime|tv\s*show|tv\s*series|tv|series|movie|film|manga|manhwa|official|dub|sub)\s*[\)\]]/gi,
+      ''
+    )
+    // Strip season, part, cour, release markers
+    .replace(
+      /\b(season\s*\d+|part\s*\d+|cour\s*\d+|final season|2nd season|3rd season|4th season|music video|mv|special|teaser)\b/gi,
+      ''
+    )
+    // Strip non-alphanumeric characters
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Checks whether an item represents an anime (series or film).
+ */
+export function isAnimeItem(item: NormalizedCatalogItem): boolean {
+  if (item.media_type === 'anime_series' || item.media_type === 'anime_film') {
+    return true;
+  }
+  if (item.id.startsWith('anilist_') || item.id.startsWith('anime_') || !!item.anilist_id) {
+    return true;
+  }
+  const isAnimation = item.genres.some((g) => {
+    const lower = g.toLowerCase();
+    return lower === 'animation' || lower === 'anime';
+  });
+  const isEastAsianOrigin =
+    item.origin_country === 'JP' || item.origin_country === 'KR' || item.origin_country === 'CN';
+  if (isAnimation && isEastAsianOrigin) {
+    return true;
+  }
+  if (item.original_title && /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(item.original_title)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Checks if a catalog item has a valid, non-empty, non-placeholder poster URL or path.
+ */
+export function hasValidPoster(item: NormalizedCatalogItem | null | undefined): boolean {
+  if (!item) return false;
+  const rawPoster = item.poster_url || (item as any).poster_path;
+  if (!rawPoster || typeof rawPoster !== 'string') return false;
+  const trimmed = rawPoster.trim();
+  if (
+    !trimmed ||
+    trimmed === 'null' ||
+    trimmed === 'undefined' ||
+    trimmed === '/assets/trackup-logo.jpg'
+  ) {
+    return false;
+  }
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return true;
+  }
+  if (trimmed.startsWith('/') && !trimmed.startsWith('/assets/')) {
+    return trimmed.length > 3 && !trimmed.endsWith('/');
+  }
+  return false;
+}
+
+/**
+ * Resolves poster paths to fully qualified URLs by ensuring TMDB relative paths have the base image URL prepended.
+ */
+export function resolvePosterUrl(raw: string | null | undefined): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (
+    !trimmed ||
+    trimmed === 'null' ||
+    trimmed === 'undefined' ||
+    trimmed === '/assets/trackup-logo.jpg'
+  ) {
+    return null;
+  }
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return sanitizeUrl(trimmed);
+  }
+  if (trimmed.startsWith('/assets/')) {
+    return trimmed;
+  }
+  return buildTmdbImageUrl(trimmed, 'w500');
+}
+
+/**
+ * Calculates priority score for duplicate entries sharing the same title key:
+ * - Prioritizes valid poster
+ * - Prioritizes AniList for anime, TMDB for live-action
+ * - Prioritizes curated fixtures with rich episodes list
+ * - Prioritizes entries with total episodes/chapters count
+ */
+export function getItemPriorityScore(item: NormalizedCatalogItem, effectiveDomain: SearchDomain): number {
+  let score = 0;
+
+  if (hasValidPoster(item)) {
+    score += 1000;
+  }
+
+  const isAnime = isAnimeItem(item);
+  const isAniList = item.id.startsWith('anilist_') || item.id.startsWith('anime_') || !!item.anilist_id;
+  const isTmdb = item.id.startsWith('tmdb_') || !!item.tmdb_id;
+
+  if (effectiveDomain === 'watch') {
+    if (isAnime) {
+      if (isAniList) score += 500;
+      else if (isTmdb) score += 100;
+    } else {
+      // Live-action (movie or tv show)
+      if (isTmdb) score += 500;
+      else if (isAniList) score += 100;
+    }
+  } else {
+    // Reading domain (Manga / Manhwa)
+    if (isAniList) score += 500;
+  }
+
+  if (MOCK_CATALOG_FIXTURES.some((f) => f.id === item.id)) {
+    score += 250;
+  }
+
+  if (typeof item.total_episodes === 'number' && item.total_episodes > 0) {
+    score += 50;
+  }
+  if (typeof item.total_chapters === 'number' && item.total_chapters > 0) {
+    score += 50;
+  }
+  if (item.backdrop_url && item.backdrop_url !== '/assets/trackup-logo.jpg') {
+    score += 25;
+  }
+
+  return score;
+}
+
+/**
+ * Post-fetch quality check and deduplication:
+ * 1. Quality Check: Discard results with null, undefined, empty, or placeholder poster paths.
+ * 2. Ensure base image URL is correctly prepended.
+ * 3. Deduplication: Group results by standardized title string and keep the highest priority entry.
+ */
+export function deduplicateAndFilterCatalogResults(
+  items: NormalizedCatalogItem[],
+  effectiveDomain: SearchDomain
+): NormalizedCatalogItem[] {
+  // 1. Quality Check: discard any results missing a valid poster path
+  const qualityItems = items.filter((item) => {
+    if (!item || !item.id || !item.title) return false;
+    return hasValidPoster(item);
+  });
+
+  // 2. Prepend base image URL to any relative poster or backdrop paths
+  for (const item of qualityItems) {
+    const resolvedPoster = resolvePosterUrl(item.poster_url || (item as any).poster_path);
+    if (resolvedPoster) {
+      item.poster_url = resolvedPoster;
+      item.poster_path = resolvedPoster;
+    }
+    if (item.backdrop_path && (!item.backdrop_url || !item.backdrop_url.startsWith('http'))) {
+      const resolvedBackdrop = buildTmdbImageUrl(item.backdrop_path, 'w1280');
+      if (resolvedBackdrop) {
+        item.backdrop_url = resolvedBackdrop;
+        item.backdrop_path = resolvedBackdrop;
+      }
+    }
+  }
+
+  // 3. Group by standardized title
+  const groups = new Map<string, NormalizedCatalogItem[]>();
+  for (const item of qualityItems) {
+    const key = standardizeTitleKey(item.title) || item.id;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.push(item);
+    } else {
+      groups.set(key, [item]);
+    }
+  }
+
+  // 4. Select top-scoring item per group
+  const deduplicated: NormalizedCatalogItem[] = [];
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      deduplicated.push(group[0]);
+    } else {
+      group.sort(
+        (a, b) =>
+          getItemPriorityScore(b, effectiveDomain) - getItemPriorityScore(a, effectiveDomain)
+      );
+      deduplicated.push(group[0]);
+    }
+  }
+
+  return deduplicated;
+}
+
 export async function searchCatalog(
   query: string,
   mediaType: MediaType | 'all' = 'all',
@@ -597,10 +804,6 @@ export async function searchCatalog(
 ): Promise<NormalizedCatalogItem[]> {
   const normalizedQuery = query.trim().toLowerCase();
 
-  // Determine effective domain:
-  // If domain is explicitly passed, use it.
-  // Otherwise, if mediaType is manga or manhwa -> 'read'.
-  // Otherwise, default to 'watch' (strictly separating Reading from the main search).
   const effectiveDomain: SearchDomain =
     domain ||
     (mediaType === 'manga' || mediaType === 'manhwa' ? 'read' : 'watch');
@@ -624,138 +827,86 @@ export async function searchCatalog(
     );
   });
 
-  const seenIds = new Set<string>(localMatches.map((item) => item.id));
-  const results: NormalizedCatalogItem[] = [...localMatches];
+  const rawCandidates: NormalizedCatalogItem[] = [...localMatches];
 
-  // Only perform live external API queries if a search term of at least 2 characters is provided
-  if (normalizedQuery.length < 2) {
-    return results;
-  }
-
-  // 2. Query Live Providers based on strictly isolated domain
-  const promises: Promise<NormalizedCatalogItem[]>[] = [];
-
-  if (effectiveDomain === 'read') {
-    // DEDICATED READING DOMAIN:
-    // Queries ONLY AniList type: MANGA. Never touches TMDB video.
-    const readingType: MediaType = mediaType === 'manhwa' ? 'manhwa' : 'manga';
-    promises.push(searchAniList(query, readingType));
-  } else {
-    // DEDICATED WATCH DOMAIN:
-    // Queries TMDB (Movies / TV) and AniList Anime (Anime series / films).
-    // NEVER queries AniList type: MANGA.
-
-    // A. AniList Anime (Free, live, no API key needed)
-    const isAnime =
-      mediaType === 'all' ||
-      mediaType === 'anime_series' ||
-      mediaType === 'anime_film';
-
-    if (isAnime) {
-      const animeType = mediaType === 'anime_film' ? 'anime_film' : 'anime_series';
-      promises.push(searchAniList(query, animeType));
-    }
-
-    // B. TMDB: covers movie and tv (if API key / token configured)
-    const isMovieOrTv = mediaType === 'all' || mediaType === 'movie' || mediaType === 'tv';
-    if (isMovieOrTv && isTmdbConfigured()) {
-      const tmdbType = mediaType === 'all' ? 'all' : mediaType;
-      promises.push(searchTmdb(query, tmdbType));
-    }
-  }
-
-  if (promises.length > 0) {
-    try {
-      const settled = await Promise.allSettled(promises);
-      const liveItems: NormalizedCatalogItem[] = [];
-
-      for (const res of settled) {
-        if (res.status === 'fulfilled' && Array.isArray(res.value)) {
-          liveItems.push(...res.value);
-        }
-      }
-
-      // In Watch domain: strictly prioritize TMDB over AniList to prevent fake season/promo fragmentation
-      if (effectiveDomain === 'watch') {
-        liveItems.sort((a, b) => {
-          const aIsTmdb = a.id.startsWith('tmdb_') ? 1 : 0;
-          const bIsTmdb = b.id.startsWith('tmdb_') ? 1 : 0;
-          return bIsTmdb - aIsTmdb;
-        });
-      }
-
-      const cleanTitleKey = (t: string) =>
-        t
-          .toLowerCase()
-          .replace(/\b(season\s*\d+|part\s*\d+|cour\s*\d+|final season|2nd season|music video|mv|special|teaser)\b/gi, '')
-          .replace(/[^a-z0-9]/g, '');
-
-      const existingWatchTitles = new Set<string>(
-        results.map((r) => cleanTitleKey(r.title))
-      );
-
-      for (const item of liveItems) {
-        if (!item || !item.id) continue;
-
-        const isReadingItem = item.media_type === 'manga' || item.media_type === 'manhwa';
-
-        // Ensure absolute domain isolation:
-        // Watch domain must NEVER contain reading items
-        if (effectiveDomain === 'watch' && isReadingItem) continue;
-        // Read domain must NEVER contain watch items
-        if (effectiveDomain === 'read' && !isReadingItem) continue;
-
-        // In reading domain, ensure items are strictly mapped to 'manga' or 'manhwa' badges
-        if (effectiveDomain === 'read') {
-          if (mediaType === 'manhwa') {
-            item.media_type = 'manhwa';
-          } else if (mediaType === 'manga') {
-            item.media_type = 'manga';
-          } else if (item.origin_country === 'KR') {
-            item.media_type = 'manhwa';
-          } else {
-            item.media_type = 'manga';
-          }
-        }
-
-        // Anime Season & Promo Deduplication:
-        // If an authoritative TMDB item already exists for this title, drop overlapping AniList entries
-        if (effectiveDomain === 'watch' && item.id.startsWith('anilist_')) {
-          const titleKey = cleanTitleKey(item.title);
-          if (existingWatchTitles.has(titleKey)) {
-            continue;
-          }
-        }
-
-        // Ensure episodic total episode counts are preserved and never default to 0
-        if (item.media_type === 'tv' || item.media_type === 'anime_series') {
-          const epCount =
-            (typeof item.total_episodes === 'number' && item.total_episodes > 0)
-              ? item.total_episodes
-              : (typeof (item as any).episodes === 'number' && (item as any).episodes > 0)
-              ? (item as any).episodes
-              : null;
-          if (epCount) {
-            item.total_episodes = epCount;
-            item.episodes = epCount;
-          }
-        }
-
-        // Deduplicate by ID and register clean title
-        if (!seenIds.has(item.id)) {
-          seenIds.add(item.id);
-          existingWatchTitles.add(cleanTitleKey(item.title));
-          results.push(item);
-        }
-      }
-    } catch (err) {
-      console.warn('Error fetching live catalog results:', err);
-    }
-  }
-
-  // 3. Popularity & Relevance sorting: exact matches and prefix matches rank first
+  // 2. Query live providers if query is at least 2 characters
   if (normalizedQuery.length >= 2) {
-    results.sort((a, b) => {
+    const promises: Promise<NormalizedCatalogItem[]>[] = [];
+
+    if (effectiveDomain === 'read') {
+      const readingType: MediaType = mediaType === 'manhwa' ? 'manhwa' : 'manga';
+      promises.push(searchAniList(query, readingType));
+    } else {
+      const isAnime =
+        mediaType === 'all' ||
+        mediaType === 'anime_series' ||
+        mediaType === 'anime_film';
+
+      if (isAnime) {
+        const animeType = mediaType === 'anime_film' ? 'anime_film' : 'anime_series';
+        promises.push(searchAniList(query, animeType));
+      }
+
+      const isMovieOrTv = mediaType === 'all' || mediaType === 'movie' || mediaType === 'tv';
+      if (isMovieOrTv && isTmdbConfigured()) {
+        const tmdbType = mediaType === 'all' ? 'all' : mediaType;
+        promises.push(searchTmdb(query, tmdbType));
+      }
+    }
+
+    if (promises.length > 0) {
+      try {
+        const settled = await Promise.allSettled(promises);
+        for (const res of settled) {
+          if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+            for (const item of res.value) {
+              if (!item || !item.id) continue;
+              const isReadingItem = item.media_type === 'manga' || item.media_type === 'manhwa';
+              if (effectiveDomain === 'watch' && isReadingItem) continue;
+              if (effectiveDomain === 'read' && !isReadingItem) continue;
+
+              if (effectiveDomain === 'read') {
+                if (mediaType === 'manhwa') {
+                  item.media_type = 'manhwa';
+                } else if (mediaType === 'manga') {
+                  item.media_type = 'manga';
+                } else if (item.origin_country === 'KR') {
+                  item.media_type = 'manhwa';
+                } else {
+                  item.media_type = 'manga';
+                }
+              }
+
+              // Preserve episodic total episode counts
+              if (item.media_type === 'tv' || item.media_type === 'anime_series') {
+                const epCount =
+                  typeof item.total_episodes === 'number' && item.total_episodes > 0
+                    ? item.total_episodes
+                    : typeof (item as any).episodes === 'number' && (item as any).episodes > 0
+                    ? (item as any).episodes
+                    : null;
+                if (epCount) {
+                  item.total_episodes = epCount;
+                  item.episodes = epCount;
+                }
+              }
+
+              rawCandidates.push(item);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Error fetching live catalog results:', err);
+      }
+    }
+  }
+
+  // 3. Strict Post-Fetch Quality Filtering & Deduplication
+  const deduplicated = deduplicateAndFilterCatalogResults(rawCandidates, effectiveDomain);
+
+  // 4. Popularity & Relevance sorting: exact matches and prefix matches rank first
+  if (normalizedQuery.length >= 2) {
+    deduplicated.sort((a, b) => {
       const aTitle = a.title.toLowerCase();
       const bTitle = b.title.toLowerCase();
 
@@ -771,7 +922,7 @@ export async function searchCatalog(
     });
   }
 
-  return results;
+  return deduplicated;
 }
 
 export async function searchWatchCatalog(
