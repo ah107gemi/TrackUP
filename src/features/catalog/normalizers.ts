@@ -8,7 +8,7 @@ import type { MediaType } from '../../types/database.types';
 export function buildTmdbImageUrl(path: string | null | undefined, size: string = 'w500'): string | null {
   if (!path || typeof path !== 'string') return null;
   const trimmed = path.trim();
-  if (!trimmed) return null;
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed.startsWith('/assets/')) return null;
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     return sanitizeUrl(trimmed);
   }
@@ -117,6 +117,9 @@ export function normalizeTmdbMovie(payload: TmdbMoviePayload): NormalizedCatalog
     (payload as any).coverImage?.large ||
     (payload as any).coverImage?.medium ||
     (payload as any).cover_image ||
+    payload.backdrop_path ||
+    (payload as any).backdrop_url ||
+    (payload as any).backdrop ||
     null;
   const rawBackdrop =
     payload.backdrop_path ||
@@ -174,6 +177,9 @@ export function normalizeTmdbTv(payload: TmdbTvPayload): NormalizedCatalogItem {
     (payload as any).coverImage?.large ||
     (payload as any).coverImage?.medium ||
     (payload as any).cover_image ||
+    payload.backdrop_path ||
+    (payload as any).backdrop_url ||
+    (payload as any).backdrop ||
     null;
   const rawBackdrop =
     payload.backdrop_path ||
@@ -360,19 +366,29 @@ export function normalizeAniListMedia(
     (typeof rawTitle.romaji === 'string' && rawTitle.romaji.trim()) ||
     null;
 
-  const rawCover =
-    (typeof payload.coverImage === 'string' && payload.coverImage.trim()) ||
-    (typeof payload.coverImage?.extraLarge === 'string' && payload.coverImage.extraLarge.trim()) ||
-    (typeof payload.coverImage?.large === 'string' && payload.coverImage.large.trim()) ||
-    (typeof payload.coverImage?.medium === 'string' && payload.coverImage.medium.trim()) ||
-    (typeof payload.cover_image === 'string' && payload.cover_image.trim()) ||
-    (typeof payload.cover_image?.extraLarge === 'string' && payload.cover_image.extraLarge.trim()) ||
-    (typeof payload.cover_image?.large === 'string' && payload.cover_image.large.trim()) ||
-    (typeof payload.cover_image?.medium === 'string' && payload.cover_image.medium.trim()) ||
-    (typeof payload.poster_url === 'string' && payload.poster_url.trim()) ||
-    (typeof payload.poster_path === 'string' && payload.poster_path.trim()) ||
-    (typeof payload.poster === 'string' && payload.poster.trim()) ||
-    null;
+  // Explicitly extract coverImage.extraLarge or coverImage.large from AniList GraphQL response
+  const coverImageObj = payload.coverImage || (payload as any).cover_image || (payload as any).cover;
+  let rawCover: string | null = null;
+
+  if (coverImageObj && typeof coverImageObj === 'object') {
+    rawCover =
+      (typeof coverImageObj.extraLarge === 'string' && coverImageObj.extraLarge.trim()) ||
+      (typeof coverImageObj.large === 'string' && coverImageObj.large.trim()) ||
+      (typeof coverImageObj.medium === 'string' && coverImageObj.medium.trim()) ||
+      null;
+  } else if (typeof coverImageObj === 'string' && coverImageObj.trim()) {
+    rawCover = coverImageObj.trim();
+  }
+
+  if (!rawCover) {
+    rawCover =
+      (typeof payload.poster_url === 'string' && payload.poster_url.trim()) ||
+      (typeof payload.poster_path === 'string' && payload.poster_path.trim()) ||
+      (typeof payload.poster === 'string' && payload.poster.trim()) ||
+      (typeof payload.image === 'string' && payload.image.trim()) ||
+      (typeof payload.bannerImage === 'string' && payload.bannerImage.trim()) ||
+      null;
+  }
 
   let poster: string | null = null;
   if (rawCover && typeof rawCover === 'string') {
@@ -475,7 +491,8 @@ export function normalizeTMDBMedia(payload: TmdbMoviePayload | TmdbTvPayload | a
     payload.media_type === 'tv' ||
     payload.number_of_episodes !== undefined ||
     payload.number_of_seasons !== undefined ||
-    payload.name !== undefined
+    payload.name !== undefined ||
+    payload.first_air_date !== undefined
   ) {
     return normalizeTmdbTv(payload as TmdbTvPayload);
   }

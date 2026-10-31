@@ -118,6 +118,23 @@ describe('Security & Normalization Layer (Phase 2)', () => {
 
       const result = normalizeTmdbTv(payload);
       expect(result.poster_url).toBe('https://image.tmdb.org/t/p/w500/peNC0eyc3TQJa6x4TdKIIIRizUT.jpg');
+      expect(result.poster_path).toBe('https://image.tmdb.org/t/p/w500/peNC0eyc3TQJa6x4TdKIIIRizUT.jpg');
+      expect(result.backdrop_url).toBe('https://image.tmdb.org/t/p/w1280/7F1s2e5v0QJk5yU7Xw2s2zX.jpg');
+    });
+
+    it('safely falls back to backdrop_path when poster_path is missing for TV shows like Yellowstone', () => {
+      const payload: TmdbTvPayload = {
+        id: 73586,
+        name: 'Yellowstone',
+        poster_path: null,
+        backdrop_path: '/7F1s2e5v0QJk5yU7Xw2s2zX.jpg',
+        number_of_episodes: 53,
+        number_of_seasons: 5,
+      };
+
+      const result = normalizeTmdbTv(payload);
+      expect(result.poster_url).toBe('https://image.tmdb.org/t/p/w500/7F1s2e5v0QJk5yU7Xw2s2zX.jpg');
+      expect(result.poster_path).toBe('https://image.tmdb.org/t/p/w500/7F1s2e5v0QJk5yU7Xw2s2zX.jpg');
       expect(result.backdrop_url).toBe('https://image.tmdb.org/t/p/w1280/7F1s2e5v0QJk5yU7Xw2s2zX.jpg');
     });
 
@@ -296,6 +313,34 @@ describe('Security & Normalization Layer (Phase 2)', () => {
       expect(resultLarge.poster_url).toBe(
         'https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx154587-qQTzQnEJJ3oB.jpg'
       );
+    });
+
+    it('correctly maps AniList coverImage.extraLarge or coverImage.large to universal poster_url for Solo Leveling', () => {
+      const payload: AniListMediaPayload = {
+        id: 151807,
+        type: 'ANIME',
+        format: 'TV',
+        title: {
+          english: 'Solo Leveling',
+          romaji: 'Ore dake Level Up na Ken',
+        },
+        coverImage: {
+          extraLarge: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx151807-it355ZgzquUd.png',
+          large: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx151807-it355ZgzquUd.png',
+          medium: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/small/bx151807-it355ZgzquUd.png',
+        },
+        bannerImage: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/151807-37yfQA3ym8PA.jpg',
+        episodes: 12,
+      };
+
+      const result = normalizeAniListMedia(payload);
+      expect(result.id).toBe('anilist_151807');
+      expect(result.media_type).toBe('anime_series');
+      expect(result.title).toBe('Solo Leveling');
+      expect(result.poster_url).toBe('https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx151807-it355ZgzquUd.png');
+      expect(result.poster_path).toBe('https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx151807-it355ZgzquUd.png');
+      expect(result.total_episodes).toBe(12);
+      expect(result.episodes).toBe(12);
     });
   });
 });

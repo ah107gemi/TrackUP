@@ -1353,6 +1353,55 @@ describe('Global Search Deduplication & Quality Filter', () => {
     expect(deduplicated[0].id).toBe('anilist_anime_151807');
     expect(deduplicated[0].media_type).toBe('anime_series');
     expect(deduplicated[0].poster_url).toBe('https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx151807.jpg');
+    expect(deduplicated[0].total_episodes).toBe(24);
+  });
+
+  it('aggressively merges TMDB TV anime with AniList anime strictly prioritizing AniList format, episode count, and poster', () => {
+    const rawResults = [
+      // TMDB returns Anime as "TV Show" with 24 episodes and TMDB poster
+      {
+        id: 'tmdb_tv_202250',
+        media_type: 'tv' as const,
+        title: 'Solo Leveling',
+        genres: ['Action & Adventure', 'Sci-Fi & Fantasy'],
+        origin_country: 'JP',
+        poster_url: 'https://image.tmdb.org/t/p/w500/tmdb_sl_poster.jpg',
+        backdrop_url: 'https://image.tmdb.org/t/p/w1280/tmdb_sl_backdrop.jpg',
+        total_episodes: 24,
+        episodes: 24,
+        tmdb_id: 202250,
+      },
+      // AniList returns Anime with correct 12 episodes, AniList format, and AniList poster
+      {
+        id: 'anilist_151807',
+        media_type: 'anime_series' as const,
+        title: 'Solo Leveling (Anime)',
+        genres: ['Action', 'Fantasy'],
+        origin_country: 'JP',
+        poster_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx151807-it355ZgzquUd.png',
+        backdrop_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/151807-37yfQA3ym8PA.jpg',
+        total_episodes: 12,
+        episodes: 12,
+        anilist_id: 151807,
+      },
+    ];
+
+    const deduplicated = deduplicateAndFilterCatalogResults(rawResults as any[], 'watch');
+
+    expect(deduplicated.length).toBe(1);
+    const merged = deduplicated[0];
+    // Strips "(Anime)" tag
+    expect(merged.title).toBe('Solo Leveling');
+    // Strictly AniList format ("Anime Series")
+    expect(merged.media_type).toBe('anime_series');
+    // Strictly AniList episode count (12, not TMDB's 24)
+    expect(merged.total_episodes).toBe(12);
+    expect(merged.episodes).toBe(12);
+    // Strictly AniList poster
+    expect(merged.poster_url).toBe('https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx151807-it355ZgzquUd.png');
+    // Retains tmdb_id on merged object
+    expect(merged.tmdb_id).toBe(202250);
+    expect(merged.anilist_id).toBe(151807);
   });
 
   it('deduplicates live-action titles by prioritizing TMDB over AniList', () => {

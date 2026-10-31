@@ -618,13 +618,16 @@ export function standardizeTitleKey(title: string): string {
  * Checks whether an item represents an anime (series or film).
  */
 export function isAnimeItem(item: NormalizedCatalogItem): boolean {
+  if (item.media_type === 'manga' || item.media_type === 'manhwa') {
+    return false;
+  }
   if (item.media_type === 'anime_series' || item.media_type === 'anime_film') {
     return true;
   }
-  if (item.id.startsWith('anilist_') || item.id.startsWith('anime_') || !!item.anilist_id) {
+  if (item.id.startsWith('anime_')) {
     return true;
   }
-  const isAnimation = item.genres.some((g) => {
+  const isAnimation = (item.genres || []).some((g) => {
     const lower = g.toLowerCase();
     return lower === 'animation' || lower === 'anime';
   });
@@ -644,7 +647,12 @@ export function isAnimeItem(item: NormalizedCatalogItem): boolean {
  */
 export function hasValidPoster(item: NormalizedCatalogItem | null | undefined): boolean {
   if (!item) return false;
-  const rawPoster = item.poster_url || (item as any).poster_path;
+  const rawPoster =
+    item.poster_url ||
+    (item as any).poster_path ||
+    (item as any).poster ||
+    item.backdrop_url ||
+    (item as any).backdrop_path;
   if (!rawPoster || typeof rawPoster !== 'string') return false;
   const trimmed = rawPoster.trim();
   if (
@@ -780,17 +788,142 @@ export function deduplicateAndFilterCatalogResults(
     }
   }
 
-  // 4. Select top-scoring item per group
+  // 4. Select top-scoring item per group & merge when applicable
   const deduplicated: NormalizedCatalogItem[] = [];
   for (const group of groups.values()) {
     if (group.length === 1) {
-      deduplicated.push(group[0]);
-    } else {
+      const single = group[0];
+      if (effectiveDomain === 'read') {
+        if (single.media_type !== 'manhwa' && single.media_type !== 'manga') {
+          single.media_type = single.origin_country === 'KR' ? 'manhwa' : 'manga';
+        }
+      } else if (effectiveDomain === 'watch' && isAnimeItem(single) && single.media_type === 'tv') {
+        single.media_type = 'anime_series';
+      }
+      deduplicated.push(single);
+      continue;
+    }
+
+    if (effectiveDomain === 'read') {
       group.sort(
-        (a, b) =>
-          getItemPriorityScore(b, effectiveDomain) - getItemPriorityScore(a, effectiveDomain)
+        (a, b) => getItemPriorityScore(b, effectiveDomain) - getItemPriorityScore(a, effectiveDomain)
       );
-      deduplicated.push(group[0]);
+      const top = group[0];
+      if (top.media_type !== 'manhwa' && top.media_type !== 'manga') {
+        top.media_type = top.origin_country === 'KR' ? 'manhwa' : 'manga';
+      }
+      deduplicated.push(top);
+      continue;
+    }
+
+    // Watch domain: evaluate if the group represents an Anime or Live-Action
+    const isAnimeGroup =
+      group.some(
+        (i) =>
+          (i.media_type === 'anime_series' || i.media_type === 'anime_film' || isAnimeItem(i)) &&
+          i.origin_country !== 'US' &&
+          i.origin_country !== 'GB'
+      );
+
+    if (isAnimeGroup) {
+      // Find AniList items (sorted by priority score descending)
+      const anilistCandidates = group
+        .filter(
+          (i) =>
+            i.id.startsWith('anilist_') ||
+            i.id.startsWith('anime_') ||
+            Boolean(i.anilist_id) ||
+            i.media_type === 'anime_series' ||
+            i.media_type === 'anime_film'
+        )
+        .sort((a, b) => getItemPriorityScore(b, effectiveDomain) - getItemPriorityScore(a, effectiveDomain));
+
+      const tmdbCandidates = group
+        .filter((i) => i.id.startsWith('tmdb_') || Boolean(i.tmdb_id))
+        .sort((a, b) => getItemPriorityScore(b, effectiveDomain) - getItemPriorityScore(a, effectiveDomain));
+
+      const primary = anilistCandidates[0] || group[0];
+      const tmdb = tmdbCandidates[0];
+
+      // Format: strictly AniList format ("Anime Series" or "Anime Film")
+      const isFilm =
+        primary.media_type === 'anime_film' ||
+        (primary as any).format === 'MOVIE' ||
+        group.some((i) => i.media_type === 'anime_film');
+      const format: MediaType = isFilm ? 'anime_film' : 'anime_series';
+
+      // Episode count: strictly prioritize AniList episode count
+      const anilistEpCount =
+        (typeof primary.total_episodes === 'number' && primary.total_episodes > 0 ? primary.total_episodes : null) ||
+        (typeof primary.episodes === 'number' && primary.episodes > 0 ? primary.episodes : null) ||
+        (typeof (primary as any).number_of_episodes === 'number' && (primary as any).number_of_episodes > 0
+          ? (primary as any).number_of_episodes
+          : null);
+      const finalEpCount = anilistEpCount || tmdb?.total_episodes || tmdb?.episodes || null;
+
+      // Poster: strictly prioritize AniList poster
+      const anilistPoster = hasValidPoster(primary)
+        ? resolvePosterUrl(primary.poster_url || (primary as any).poster_path)
+        : null;
+      const tmdbPoster = tmdb && hasValidPoster(tmdb)
+        ? resolvePosterUrl(tmdb.poster_url || (tmdb as any).poster_path)
+        : null;
+      const finalPoster = anilistPoster || tmdbPoster || primary.poster_url;
+
+      // Backdrop: AniList first, then TMDB
+      const finalBackdrop =
+        primary.backdrop_url && primary.backdrop_url !== '/assets/trackup-logo.jpg'
+          ? primary.backdrop_url
+          : tmdb?.backdrop_url || primary.backdrop_url || null;
+
+      // Clean title if has (Anime) tag
+      const cleanTitle = primary.title.replace(/\s*(\(|\[)\s*anime\s*(\)|\])\s*/gi, '').trim() || primary.title;
+
+      const mergedAnime: NormalizedCatalogItem = {
+        ...primary,
+        title: cleanTitle,
+        media_type: format,
+        total_episodes: finalEpCount,
+        episodes: finalEpCount,
+        poster_url: finalPoster,
+        poster_path: finalPoster,
+        backdrop_url: finalBackdrop,
+        backdrop_path: finalBackdrop,
+        genres: Array.from(new Set([...(primary.genres || []), ...(tmdb?.genres || [])])),
+        tmdb_id: primary.tmdb_id || tmdb?.tmdb_id || null,
+        imdb_id: primary.imdb_id || tmdb?.imdb_id || null,
+        seasons: primary.seasons || tmdb?.seasons,
+      };
+
+      deduplicated.push(mergedAnime);
+    } else {
+      // Live-action (e.g. Yellowstone, Breaking Bad): strictly prioritize TMDB
+      const tmdbCandidates = group
+        .filter((i) => i.id.startsWith('tmdb_') || Boolean(i.tmdb_id))
+        .sort((a, b) => getItemPriorityScore(b, effectiveDomain) - getItemPriorityScore(a, effectiveDomain));
+
+      const primary = tmdbCandidates[0] || group[0];
+      const other = group.find((i) => i !== primary);
+
+      const tmdbPoster = hasValidPoster(primary)
+        ? resolvePosterUrl(primary.poster_url || (primary as any).poster_path)
+        : null;
+      const otherPoster = other && hasValidPoster(other)
+        ? resolvePosterUrl(other.poster_url || (other as any).poster_path)
+        : null;
+      const finalPoster = tmdbPoster || otherPoster || primary.poster_url;
+
+      const mergedLiveAction: NormalizedCatalogItem = {
+        ...primary,
+        poster_url: finalPoster,
+        poster_path: finalPoster,
+        backdrop_url: primary.backdrop_url || other?.backdrop_url || null,
+        backdrop_path: primary.backdrop_path || other?.backdrop_path || null,
+        seasons: primary.seasons || other?.seasons,
+        tmdb_id: primary.tmdb_id || other?.tmdb_id || null,
+      };
+
+      deduplicated.push(mergedLiveAction);
     }
   }
 

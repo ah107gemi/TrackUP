@@ -39,9 +39,13 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
     (item as any).chapters ||
     (item as any).number_of_chapters;
 
-  const rawPoster = item.poster_url || (item as any).poster_path;
+  const rawPoster =
+    item.poster_url ||
+    (item as any).poster_path ||
+    item.backdrop_url ||
+    (item as any).backdrop_path;
   const posterUrl = rawPoster
-    ? rawPoster.startsWith('http')
+    ? rawPoster.startsWith('http') || rawPoster.startsWith('/assets/')
       ? rawPoster
       : `https://image.tmdb.org/t/p/w500${rawPoster.startsWith('/') ? '' : '/'}${rawPoster}`
     : null;
