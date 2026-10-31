@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { NormalizedCatalogItem } from '../../lib/validators';
 import type { MediaType } from '../../types/database.types';
 import { formatReleaseDate, formatRuntime } from '../../lib/dateUtils';
+import { resolvePosterUrl } from '../../lib/imageUtils';
 
 interface MediaPosterCardProps {
   item: NormalizedCatalogItem;
@@ -20,49 +21,46 @@ const categoryLabels: Record<MediaType, { label: string; color: string }> = {
 /**
  * Evaluates poster src in aggressive fallback order:
  * item.poster_url -> item.poster_path (prepended with TMDB base URL) -> item.coverImage?.extraLarge -> item.coverImage?.large -> fallback logo
+ * Stale relative database posters starting with "/" are automatically repaired.
  */
 function getCardPosterSrc(item: any): string {
-  // 1. item.poster_url
-  if (item?.poster_url && typeof item.poster_url === 'string') {
-    const trimmed = item.poster_url.trim();
-    if (trimmed && trimmed !== 'null' && trimmed !== 'undefined' && trimmed !== '/assets/trackup-logo.jpg') {
-      if (trimmed.startsWith('http') || trimmed.startsWith('/assets/')) {
-        return trimmed;
-      }
-      return `https://image.tmdb.org/t/p/w500${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
-    }
+  // 1. Direct or nested poster_url / poster_path
+  const candidatePoster =
+    item?.poster_url ||
+    item?.title?.poster_url ||
+    item?.poster_path ||
+    item?.title?.poster_path;
+
+  if (candidatePoster && typeof candidatePoster === 'string') {
+    const resolved = resolvePosterUrl(candidatePoster, '');
+    if (resolved) return resolved;
   }
 
-  // 2. item.poster_path (prepended with TMDB base URL)
-  if (item?.poster_path && typeof item.poster_path === 'string') {
-    const trimmed = item.poster_path.trim();
-    if (trimmed && trimmed !== 'null' && trimmed !== 'undefined' && trimmed !== '/assets/trackup-logo.jpg') {
-      if (trimmed.startsWith('http') || trimmed.startsWith('/assets/')) {
-        return trimmed;
-      }
-      return `https://image.tmdb.org/t/p/w500${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
-    }
+  // 2. Cover image (AniList GraphQL format)
+  const candidateCover =
+    item?.coverImage?.extraLarge ||
+    item?.cover_image?.extraLarge ||
+    item?.title?.coverImage?.extraLarge ||
+    item?.title?.cover_image?.extraLarge ||
+    item?.coverImage?.large ||
+    item?.cover_image?.large ||
+    item?.title?.coverImage?.large ||
+    item?.title?.cover_image?.large ||
+    item?.coverImage?.medium ||
+    item?.cover_image?.medium ||
+    item?.title?.coverImage?.medium ||
+    item?.title?.cover_image?.medium;
+
+  if (candidateCover && typeof candidateCover === 'string' && candidateCover.trim()) {
+    const resolved = resolvePosterUrl(candidateCover, '');
+    if (resolved) return resolved;
   }
 
-  // 3. item.coverImage?.extraLarge
-  const extraLarge = item?.coverImage?.extraLarge || item?.cover_image?.extraLarge;
-  if (extraLarge && typeof extraLarge === 'string' && extraLarge.trim()) {
-    return extraLarge.trim();
-  }
-
-  // 4. item.coverImage?.large
-  const large = item?.coverImage?.large || item?.cover_image?.large;
-  if (large && typeof large === 'string' && large.trim()) {
-    return large.trim();
-  }
-
-  // 5. Raw medium or backdrop fallback
-  const medium = item?.coverImage?.medium || item?.cover_image?.medium;
-  if (medium && typeof medium === 'string' && medium.trim()) {
-    return medium.trim();
-  }
-  if (item?.backdrop_url && typeof item.backdrop_url === 'string' && item.backdrop_url.startsWith('http')) {
-    return item.backdrop_url;
+  // 3. Raw backdrop fallback
+  const candidateBackdrop = item?.backdrop_url || item?.title?.backdrop_url;
+  if (candidateBackdrop && typeof candidateBackdrop === 'string') {
+    const resolved = resolvePosterUrl(candidateBackdrop, '');
+    if (resolved) return resolved;
   }
 
   return '/assets/trackup-logo.jpg';

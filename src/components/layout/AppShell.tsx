@@ -30,6 +30,7 @@ import {
   Compass,
 } from 'lucide-react';
 import { formatRuntime } from '../../lib/dateUtils';
+import { resolvePosterUrl } from '../../lib/imageUtils';
 
 const EMPTY_LIBRARY: any[] = [];
 
@@ -204,11 +205,15 @@ export const AppShell: React.FC = () => {
                               className="p-3.5 rounded-2xl bg-surface border border-surface-elevated hover:border-accent/40 transition-all flex items-center gap-3.5 cursor-pointer group shadow hover:-translate-y-0.5"
                             >
                               <img
-                                src={item.title.poster_url || '/assets/trackup-logo.jpg'}
+                                src={resolvePosterUrl(item.title.poster_url)}
                                 alt={item.title.title}
                                 loading="lazy"
                                 decoding="async"
                                 className="w-14 h-20 rounded-xl object-cover shrink-0 bg-[#16161D]"
+                                onError={(e) => {
+                                  e.currentTarget.onerror = null;
+                                  e.currentTarget.src = '/assets/trackup-logo.jpg';
+                                }}
                               />
                               <div className="flex-1 min-w-0">
                                 <span className="text-[10px] font-bold uppercase text-accent tracking-wider">

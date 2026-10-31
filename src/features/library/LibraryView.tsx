@@ -26,6 +26,7 @@ import { searchReadingCatalog } from '../catalog/catalogService';
 import type { NormalizedCatalogItem } from '../../lib/validators';
 import type { TrackingStatus, MediaType } from '../../types/database.types';
 import { formatRuntime } from '../../lib/dateUtils';
+import { resolvePosterUrl } from '../../lib/imageUtils';
 import {
   readFiltersFromUrl,
   persistLibraryFilters,
@@ -409,9 +410,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <img
-                        src={item.poster_url || '/assets/trackup-logo.jpg'}
+                        src={resolvePosterUrl(item.poster_url)}
                         alt={item.title}
                         className="w-8 h-12 rounded-lg object-cover shrink-0 bg-[#16161D]"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = '/assets/trackup-logo.jpg';
+                        }}
                       />
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-text-primary truncate group-hover:text-accent transition-colors">
@@ -615,11 +620,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 >
                   <div className="relative aspect-[2/3] w-full bg-[#16161D] overflow-hidden">
                     <img
-                      src={item.title?.poster_url || (item.title as any)?.poster_path || '/assets/trackup-logo.jpg'}
+                      src={resolvePosterUrl(item.title?.poster_url || (item.title as any)?.poster_path)}
                       alt={item.title?.title || 'Unknown Title'}
                       loading="lazy"
                       decoding="async"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = '/assets/trackup-logo.jpg';
+                      }}
                     />
                     <div className="absolute top-2 left-2">
                       <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-background/80 text-accent border border-accent/20 backdrop-blur-md">
@@ -677,11 +686,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   className="flex items-center gap-3 p-2.5 bg-surface rounded-xl border border-surface-elevated hover:border-accent/40 transition-all cursor-pointer group"
                 >
                   <img
-                    src={item.title?.poster_url || (item.title as any)?.poster_path || '/assets/trackup-logo.jpg'}
+                    src={resolvePosterUrl(item.title?.poster_url || (item.title as any)?.poster_path)}
                     alt={item.title?.title || 'Unknown Title'}
                     loading="lazy"
                     decoding="async"
                     className="w-12 h-16 rounded-lg object-cover shrink-0 bg-[#16161D]"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = '/assets/trackup-logo.jpg';
+                    }}
                   />
                   <div className="flex-1 min-w-0">
                     <h4 className="text-xs font-bold text-text-primary truncate group-hover:text-accent">
@@ -745,11 +758,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     >
                       <td className="py-3 px-4 flex items-center gap-3">
                         <img
-                          src={item.title?.poster_url || (item.title as any)?.poster_path || '/assets/trackup-logo.jpg'}
+                          src={resolvePosterUrl(item.title?.poster_url || (item.title as any)?.poster_path)}
                           alt={item.title?.title || 'Unknown Title'}
                           loading="lazy"
                           decoding="async"
                           className="w-8 h-12 rounded object-cover shrink-0 bg-[#16161D]"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = '/assets/trackup-logo.jpg';
+                          }}
                         />
                         <div className="min-w-0">
                           <p className="font-bold text-text-primary group-hover:text-accent truncate">

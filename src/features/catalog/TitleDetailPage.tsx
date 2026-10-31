@@ -24,6 +24,7 @@ import {
   type CastMember,
 } from './catalogService';
 import type { NormalizedCatalogItem } from '../../lib/validators';
+import { resolvePosterUrl, resolveBackdropUrl } from '../../lib/imageUtils';
 import { MediaPosterCard } from '../../components/shared/MediaPosterCard';
 import { TmdbAttribution } from '../../components/shared/TmdbAttribution';
 import { useAuth } from '../auth/AuthContext';
@@ -620,7 +621,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         <div className="relative w-full h-[260px] md:h-[420px] bg-surface-elevated">
           {title.backdrop_url || (title as any).backdrop_path || (title as any).bannerImage ? (
             <img
-              src={title.backdrop_url || (title as any).backdrop_path || (title as any).bannerImage}
+              src={resolveBackdropUrl(title.backdrop_url || (title as any).backdrop_path || (title as any).bannerImage)}
               alt={title.title || 'Backdrop'}
               className="w-full h-full object-cover"
               onError={(e) => {
@@ -638,7 +639,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
           {/* Poster Card */}
           <div ref={heroRef} className="w-36 md:w-56 shrink-0 rounded-2xl overflow-hidden border-2 border-surface-elevated shadow-2xl bg-surface">
             <img
-              src={
+              src={resolvePosterUrl(
                 title.poster_url ||
                 (title as any).poster_path ||
                 (title as any).coverImage?.extraLarge ||
@@ -646,9 +647,8 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                 (title as any).coverImage?.medium ||
                 (title as any).cover_image ||
                 title.backdrop_url ||
-                (title as any).backdrop_path ||
-                '/assets/trackup-logo.jpg'
-              }
+                (title as any).backdrop_path
+              )}
               alt={title.title || 'Poster'}
               className="w-full aspect-[2/3] object-cover"
               onError={(e) => {

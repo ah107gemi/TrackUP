@@ -19,6 +19,7 @@ import { useAuth } from '../auth/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { isVideoBanner } from '../../lib/bannerUpload';
 import { formatWatchTime } from '../../lib/dateUtils';
+import { resolvePosterUrl } from '../../lib/imageUtils';
 import type { SocialProfile } from '../social/types';
 import {
   MOCK_COMMUNITY_PROFILES,
@@ -79,14 +80,20 @@ export const PublicProfilePage: React.FC<PublicProfilePageProps> = ({
           import.meta.env.VITE_SUPABASE_URL.includes('localhost');
         const timeoutMs = isLocalSupabase ? 350 : 3000;
 
-        const q = supabase
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanParam);
+
+        let q = supabase
           .from('profiles')
-          .select('id, username, display_name, full_name, avatar_url, banner_url, bio, library_visibility, activity_visibility, created_at')
-          .or(`username.eq.${cleanParam},id.eq.${cleanParam}`)
-          .single();
+          .select('id, username, display_name, full_name, avatar_url, banner_url, bio, library_visibility, activity_visibility, created_at');
+
+        if (isUuid) {
+          q = q.or(`id.eq.${cleanParam},username.ilike.${cleanParam}`);
+        } else {
+          q = q.ilike('username', cleanParam);
+        }
 
         const res: any = await Promise.race([
-          q,
+          q.maybeSingle(),
           new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Timeout')), timeoutMs)),
         ]);
 
@@ -747,10 +754,14 @@ export const PublicProfilePage: React.FC<PublicProfilePageProps> = ({
                       {/* Poster Image Container */}
                       <div className="relative aspect-[2/3] w-full overflow-hidden bg-[#16161D]">
                         <img
-                          src={item.title.poster_url || '/assets/trackup-logo.jpg'}
+                          src={resolvePosterUrl(item.title.poster_url || (item.title as any)?.poster_path)}
                           alt={item.title.title}
                           loading="lazy"
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = '/assets/trackup-logo.jpg';
+                          }}
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-transparent opacity-80 group-hover:opacity-90 transition-opacity" />
 

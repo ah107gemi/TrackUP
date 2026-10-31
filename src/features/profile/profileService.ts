@@ -197,3 +197,97 @@ export async function searchUsers(
       : false,
   }));
 }
+
+/**
+ * Retrieves a user profile by username or UUID using case-insensitive ilike matching.
+ * Falls back gracefully to mock community profiles and dynamically registered local profiles.
+ */
+export async function getProfileByUsername(
+  identifier: string
+): Promise<UserSearchResult | null> {
+  const cleanParam = identifier.trim().replace(/^@/, '');
+  if (!cleanParam) return null;
+
+  const isLocalSupabase =
+    !import.meta.env.VITE_SUPABASE_URL ||
+    import.meta.env.VITE_SUPABASE_URL.includes('127.0.0.1') ||
+    import.meta.env.VITE_SUPABASE_URL.includes('localhost');
+  const timeoutMs = isLocalSupabase ? 350 : 3000;
+
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanParam);
+
+  try {
+    let q = supabase
+      .from('profiles')
+      .select('id, username, display_name, full_name, avatar_url, bio');
+
+    if (isUuid) {
+      q = q.or(`id.eq.${cleanParam},username.ilike.${cleanParam}`);
+    } else {
+      q = q.ilike('username', cleanParam);
+    }
+
+    const res: any = await Promise.race([
+      q.maybeSingle(),
+      new Promise<any>((_, reject) =>
+        setTimeout(() => reject(new Error('Profile lookup timeout')), timeoutMs)
+      ),
+    ]);
+
+    if (!res?.error && res?.data) {
+      const p = res.data;
+      return {
+        id: p.id,
+        username: p.username || cleanParam,
+        display_name: p.display_name || p.full_name || p.username || cleanParam,
+        full_name: p.full_name || null,
+        avatar_url: p.avatar_url || null,
+        bio: p.bio || null,
+      };
+    }
+  } catch {
+    // Fallback
+  }
+
+  // Fallback to mock community profiles
+  const mockMatch = MOCK_COMMUNITY_PROFILES.find(
+    (p) =>
+      p.username.toLowerCase() === cleanParam.toLowerCase() ||
+      p.id.toLowerCase() === cleanParam.toLowerCase()
+  );
+  if (mockMatch) {
+    return {
+      id: mockMatch.id,
+      username: mockMatch.username,
+      display_name: mockMatch.display_name,
+      avatar_url: mockMatch.avatar_url || null,
+      bio: mockMatch.bio || null,
+    };
+  }
+
+  // Fallback to local storage registered users
+  try {
+    const dynamicProfiles: Record<string, any> = JSON.parse(
+      localStorage.getItem('trackup_mock_profiles') || '{}'
+    );
+    const found = Object.values(dynamicProfiles).find(
+      (p: any) =>
+        p.username?.toLowerCase() === cleanParam.toLowerCase() ||
+        p.id?.toLowerCase() === cleanParam.toLowerCase()
+    );
+    if (found) {
+      return {
+        id: found.id,
+        username: found.username,
+        display_name: found.display_name || found.full_name || found.username,
+        full_name: found.full_name || null,
+        avatar_url: found.avatar_url || null,
+        bio: found.bio || null,
+      };
+    }
+  } catch {
+    // ignore
+  }
+
+  return null;
+}

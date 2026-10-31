@@ -11,6 +11,7 @@ import { useUserLibrary, useUpsertLibrary } from '../library/useLibrary';
 import { getPersonalizedRecommendations } from '../recommendations/recommendationService';
 import type { RecommendationItem } from '../recommendations/types';
 import type { MediaType } from '../../types/database.types';
+import { resolvePosterUrl } from '../../lib/imageUtils';
 
 const EMPTY_LIBRARY: any[] = [];
 
@@ -138,9 +139,13 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
                       {rec.matchScore}% MATCH
                     </div>
                     <img
-                      src={rec.poster_url || '/assets/trackup-logo.jpg'}
+                      src={resolvePosterUrl(rec.poster_url)}
                       alt={rec.title}
                       className="w-20 h-28 rounded-xl object-cover shrink-0 shadow-md group-hover:scale-105 transition-transform"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = '/assets/trackup-logo.jpg';
+                      }}
                     />
                     <div className="flex-1 min-w-0 flex flex-col justify-between">
                       <div>
@@ -210,9 +215,13 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
                   >
                     <div className="flex gap-3">
                       <img
-                        src={rec.poster_url || '/assets/trackup-logo.jpg'}
+                        src={resolvePosterUrl(rec.poster_url)}
                         alt={rec.title}
                         className="w-16 h-24 rounded-xl object-cover shrink-0 shadow group-hover:scale-105 transition-transform"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = '/assets/trackup-logo.jpg';
+                        }}
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1">
@@ -284,9 +293,13 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
                   >
                     <div className="flex gap-3">
                       <img
-                        src={rec.poster_url || '/assets/trackup-logo.jpg'}
+                        src={resolvePosterUrl(rec.poster_url)}
                         alt={rec.title}
                         className="w-16 h-24 rounded-xl object-cover shrink-0 shadow group-hover:scale-105 transition-transform"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = '/assets/trackup-logo.jpg';
+                        }}
                       />
                       <div className="flex-1 min-w-0">
                         <span

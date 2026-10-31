@@ -15,6 +15,7 @@ import {
   formatAirDate,
 } from './calendarService';
 import type { MediaType } from '../../types/database.types';
+import { resolvePosterUrl } from '../../lib/imageUtils';
 
 const EMPTY_LIBRARY: any[] = [];
 
@@ -175,9 +176,13 @@ export const ReleaseCalendarView: React.FC<ReleaseCalendarViewProps> = ({
             >
               <div className="flex gap-3.5">
                 <img
-                  src={item.poster_url || '/assets/trackup-logo.jpg'}
+                  src={resolvePosterUrl(item.poster_url)}
                   alt={item.title_name}
                   className="w-16 h-24 rounded-xl object-cover shrink-0 shadow group-hover:scale-105 transition-transform"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = '/assets/trackup-logo.jpg';
+                  }}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">

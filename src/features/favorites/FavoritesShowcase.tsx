@@ -5,6 +5,7 @@ import {
   removeFavorite,
   type FavoriteItem,
 } from './favoritesService';
+import { resolvePosterUrl } from '../../lib/imageUtils';
 
 interface FavoritesShowcaseProps {
   userId: string;
@@ -75,9 +76,13 @@ export const FavoritesShowcase: React.FC<FavoritesShowcaseProps> = ({
               >
                 <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-surface">
                   <img
-                    src={fav.title.poster_url || '/assets/trackup-logo.jpg'}
+                    src={resolvePosterUrl(fav.title.poster_url)}
                     alt={fav.title.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = '/assets/trackup-logo.jpg';
+                    }}
                   />
                   <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-accent text-background">
                     {fav.title.media_type.replace('_', ' ')}
