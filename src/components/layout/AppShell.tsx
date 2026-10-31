@@ -102,12 +102,10 @@ export const AppShell: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [selectedTitleId, setSelectedTitleId]);
 
-  // Continue Watching / Currently Reading: Active media or where progress > 0
+  // Continue Watching / Currently Reading: ONLY display titles where user status is strictly active/watching/reading
   const continueItems = userLibrary.filter((item) => {
-    if (item.status === 'active') return true;
-    if (item.episodes_watched && item.episodes_watched.length > 0) return true;
-    if (item.last_chapter_read && item.last_chapter_read > 0) return true;
-    return false;
+    const s = (item.status as string)?.toLowerCase();
+    return s === 'active' || s === 'watching' || s === 'reading';
   });
 
   return (

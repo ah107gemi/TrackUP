@@ -17,6 +17,57 @@ const categoryLabels: Record<MediaType, { label: string; color: string }> = {
   manhwa: { label: 'MANHWA', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' },
 };
 
+/**
+ * Evaluates poster src in aggressive fallback order:
+ * item.poster_url -> item.poster_path (prepended with TMDB base URL) -> item.coverImage?.extraLarge -> item.coverImage?.large -> fallback logo
+ */
+function getCardPosterSrc(item: any): string {
+  // 1. item.poster_url
+  if (item?.poster_url && typeof item.poster_url === 'string') {
+    const trimmed = item.poster_url.trim();
+    if (trimmed && trimmed !== 'null' && trimmed !== 'undefined' && trimmed !== '/assets/trackup-logo.jpg') {
+      if (trimmed.startsWith('http') || trimmed.startsWith('/assets/')) {
+        return trimmed;
+      }
+      return `https://image.tmdb.org/t/p/w500${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+    }
+  }
+
+  // 2. item.poster_path (prepended with TMDB base URL)
+  if (item?.poster_path && typeof item.poster_path === 'string') {
+    const trimmed = item.poster_path.trim();
+    if (trimmed && trimmed !== 'null' && trimmed !== 'undefined' && trimmed !== '/assets/trackup-logo.jpg') {
+      if (trimmed.startsWith('http') || trimmed.startsWith('/assets/')) {
+        return trimmed;
+      }
+      return `https://image.tmdb.org/t/p/w500${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+    }
+  }
+
+  // 3. item.coverImage?.extraLarge
+  const extraLarge = item?.coverImage?.extraLarge || item?.cover_image?.extraLarge;
+  if (extraLarge && typeof extraLarge === 'string' && extraLarge.trim()) {
+    return extraLarge.trim();
+  }
+
+  // 4. item.coverImage?.large
+  const large = item?.coverImage?.large || item?.cover_image?.large;
+  if (large && typeof large === 'string' && large.trim()) {
+    return large.trim();
+  }
+
+  // 5. Raw medium or backdrop fallback
+  const medium = item?.coverImage?.medium || item?.cover_image?.medium;
+  if (medium && typeof medium === 'string' && medium.trim()) {
+    return medium.trim();
+  }
+  if (item?.backdrop_url && typeof item.backdrop_url === 'string' && item.backdrop_url.startsWith('http')) {
+    return item.backdrop_url;
+  }
+
+  return '/assets/trackup-logo.jpg';
+}
+
 export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
 
@@ -39,16 +90,7 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
     (item as any).chapters ||
     (item as any).number_of_chapters;
 
-  const rawPoster =
-    item.poster_url ||
-    (item as any).poster_path ||
-    item.backdrop_url ||
-    (item as any).backdrop_path;
-  const posterUrl = rawPoster
-    ? rawPoster.startsWith('http') || rawPoster.startsWith('/assets/')
-      ? rawPoster
-      : `https://image.tmdb.org/t/p/w500${rawPoster.startsWith('/') ? '' : '/'}${rawPoster}`
-    : null;
+  const posterUrl = getCardPosterSrc(item);
 
   return (
     <div
@@ -144,11 +186,15 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
               {totalEps} eps
             </span>
           ) : null}
-          {(mediaType === 'manga' || mediaType === 'manhwa') && totalChs && totalChs > 0 ? (
+          {(mediaType === 'manga' || mediaType === 'manhwa') && (
             <span className="font-mono text-[11px] text-accent">
-              {totalChs} chs
+              {totalChs && totalChs > 0
+                ? `${totalChs} chs`
+                : item.total_volumes
+                ? `${item.total_volumes} vols`
+                : 'Ongoing'}
             </span>
-          ) : null}
+          )}
         </div>
       </div>
     </div>

@@ -89,7 +89,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   const [localStatus, setLocalStatus] = useState<TrackingStatus>('planned');
   const [localRating, setLocalRating] = useState<number | null>(null);
   const [localChapter, setLocalChapter] = useState<number>(0);
-  const [localEpisodes, setLocalEpisodes] = useState<string[]>([]);
+  const [localEpisodes, setLocalEpisodes] = useState<string[] | null>(null);
   const [isFavorited, setIsFavorited] = useState(false);
   const [activeSeasonIndex, setActiveSeasonIndex] = useState(0);
   const [fractionalInput, setFractionalInput] = useState<string>('');
@@ -192,32 +192,41 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     );
   }
 
+  useEffect(() => {
+    if (existingEntry) {
+      setLocalEpisodes(existingEntry.episodes_watched || []);
+      setLocalStatus(existingEntry.status);
+      setLocalRating(existingEntry.rating);
+      setLocalChapter(existingEntry.last_chapter_read || 0);
+    }
+  }, [existingEntry?.id, existingEntry?.status, existingEntry?.episodes_watched?.length]);
+
   const isReading = title.media_type === 'manga' || title.media_type === 'manhwa';
   const isEpisodic = title.media_type === 'tv' || title.media_type === 'anime_series';
   const isSingleWatch = title.media_type === 'movie' || title.media_type === 'anime_film';
 
-  const currentStatus: TrackingStatus = existingEntry ? existingEntry.status : localStatus;
-  const currentRating: number | null = existingEntry ? existingEntry.rating : localRating;
-  const currentChapter: number = existingEntry ? existingEntry.last_chapter_read : localChapter;
-  const watchedEpisodesList: string[] = existingEntry ? existingEntry.episodes_watched : localEpisodes;
+  const currentStatus: TrackingStatus = localStatus || (existingEntry ? existingEntry.status : 'planned');
+  const currentRating: number | null = localRating !== null ? localRating : (existingEntry ? existingEntry.rating : null);
+  const currentChapter: number = localChapter || (existingEntry ? existingEntry.last_chapter_read : 0);
+  const watchedEpisodesList: string[] = localEpisodes !== null ? localEpisodes : (existingEntry ? existingEntry.episodes_watched : []);
 
   const totalEpCount = calculateTotalEpisodes(title) || null;
   const displayWatchedCount =
-    existingEntry?.status === 'completed' && watchedEpisodesList.length === 0 && totalEpCount
+    currentStatus === 'completed' && watchedEpisodesList.length === 0 && totalEpCount
       ? totalEpCount
       : calculateWatchedEpisodesCount(watchedEpisodesList, title);
 
   const isEpisodeWatched = (ep: { id: string; episode_number: number }) => {
     if (watchedEpisodesList.includes(ep.id)) return true;
     if (watchedEpisodesList.includes(`ep_${ep.episode_number}`)) return true;
-    if (existingEntry?.status === 'completed') return true;
     if (
-      watchedEpisodesList.length > 0 &&
-      (ep.episode_number <= watchedEpisodesList.length ||
-        watchedEpisodesList.some(
-          (id) => id === `ep_${ep.episode_number}` || id.endsWith(`_${ep.episode_number}`)
-        ))
+      watchedEpisodesList.some(
+        (id) => id === `ep_${ep.episode_number}` || id.endsWith(`_${ep.episode_number}`)
+      )
     ) {
+      return true;
+    }
+    if (currentStatus === 'completed' && watchedEpisodesList.length === 0) {
       return true;
     }
     return false;
@@ -306,17 +315,18 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     let updatedEpisodes: string[];
 
     if (isWatched) {
-      updatedEpisodes = watchedEpisodesList.filter(
-        (id) =>
-          id !== ep.id &&
-          id !== `ep_${ep.episode_number}` &&
-          !id.endsWith(`_${ep.episode_number}`)
-      );
-      if (existingEntry?.status === 'completed' && updatedEpisodes.length === 0) {
+      if (currentStatus === 'completed' && watchedEpisodesList.length === 0) {
         const allEps = title.seasons?.flatMap((s) => s.episodes) || [];
         updatedEpisodes = allEps
           .filter((e) => e.episode_number !== ep.episode_number && e.id !== ep.id)
           .map((e) => e.id);
+      } else {
+        updatedEpisodes = watchedEpisodesList.filter(
+          (id) =>
+            id !== ep.id &&
+            id !== `ep_${ep.episode_number}` &&
+            !id.endsWith(`_${ep.episode_number}`)
+        );
       }
     } else {
       updatedEpisodes = [...new Set([...watchedEpisodesList, ep.id, `ep_${ep.episode_number}`])];

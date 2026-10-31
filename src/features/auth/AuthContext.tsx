@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { Database } from '../../types/database.types';
 import { supabase } from '../../lib/supabase';
+import { resolveEmailFromUsername } from './authService';
 
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -291,7 +292,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         u.username.toLowerCase() === cleanUsername.toLowerCase()
     );
 
-    const targetEmail = isEmail ? cleanInput : (mockMatch?.email || null);
+    let targetEmail: string | null = isEmail ? cleanInput : (mockMatch?.email || null);
+    if (!targetEmail) {
+      targetEmail = await resolveEmailFromUsername(cleanUsername);
+    }
 
     // 1. Try Supabase Auth signInWithPassword if target email is available
     if (targetEmail) {
@@ -614,6 +618,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
+      // Explicitly fetch fresh session before updateUser to prevent "Auth session missing!" error
+      const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+      if (sessionErr || !sessionData?.session) {
+        const { data: refreshData } = await supabase.auth.refreshSession();
+        if (!refreshData?.session && !sessionData?.session) {
+          return applyMockPassword();
+        }
+      }
+
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) {
         if (error.message?.toLowerCase().includes('fetch') || !window.navigator.onLine) {
@@ -621,6 +634,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         return { error: error.message };
       }
+      applyMockPassword();
       return { error: null };
     } catch (err: any) {
       if (err?.message?.toLowerCase().includes('fetch') || !window.navigator.onLine) {

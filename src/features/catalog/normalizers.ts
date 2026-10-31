@@ -97,14 +97,12 @@ export interface AniListMediaPayload {
 }
 
 export function normalizeTmdbMovie(payload: TmdbMoviePayload): NormalizedCatalogItem {
-  const isAnimation =
+  const hasAnimationGenre =
     payload.genre_ids?.includes(16) ||
-    payload.genres?.some((g) => g.id === 16 || g.name.toLowerCase() === 'animation');
-  const isJapanese =
-    payload.original_language === 'ja' ||
-    payload.origin_country?.includes('JP');
+    payload.genres?.some((g) => g.id === 16 || g.name?.toLowerCase() === 'animation');
+  const isJapaneseLang = payload.original_language === 'ja';
 
-  const mediaType: MediaType = isAnimation && isJapanese ? 'anime_film' : 'movie';
+  const mediaType: MediaType = hasAnimationGenre && isJapaneseLang ? 'anime_film' : 'movie';
   const releaseYear = payload.release_date
     ? parseInt(payload.release_date.split('-')[0], 10)
     : null;
@@ -146,7 +144,7 @@ export function normalizeTmdbMovie(payload: TmdbMoviePayload): NormalizedCatalog
     backdrop_url: backdrop,
     backdrop_path: backdrop,
     genres,
-    origin_country: payload.origin_country?.[0] || (isJapanese ? 'JP' : 'US'),
+    origin_country: payload.origin_country?.[0] || (isJapaneseLang ? 'JP' : 'US'),
     status: 'released',
     runtime_minutes: payload.runtime || null,
     tmdb_id: payload.id,
@@ -157,14 +155,13 @@ export function normalizeTmdbMovie(payload: TmdbMoviePayload): NormalizedCatalog
 }
 
 export function normalizeTmdbTv(payload: TmdbTvPayload): NormalizedCatalogItem {
-  const isAnimation =
+  const hasAnimationGenre =
     payload.genre_ids?.includes(16) ||
-    payload.genres?.some((g) => g.id === 16 || g.name.toLowerCase() === 'animation');
-  const isJapanese =
-    payload.original_language === 'ja' ||
-    payload.origin_country?.includes('JP');
+    payload.genres?.some((g) => g.id === 16 || g.name?.toLowerCase() === 'animation');
+  const isJapaneseLang = payload.original_language === 'ja';
 
-  const mediaType: MediaType = isAnimation && isJapanese ? 'anime_series' : 'tv';
+  // Strictly TV Show unless genre_ids includes 16 (Animation) AND original_language is ja (Japanese)
+  const mediaType: MediaType = hasAnimationGenre && isJapaneseLang ? 'anime_series' : 'tv';
   const releaseYear = payload.first_air_date
     ? parseInt(payload.first_air_date.split('-')[0], 10)
     : null;
@@ -265,7 +262,7 @@ export function normalizeTmdbTv(payload: TmdbTvPayload): NormalizedCatalogItem {
     backdrop_url: backdrop,
     backdrop_path: backdrop,
     genres,
-    origin_country: payload.origin_country?.[0] || (isJapanese ? 'JP' : 'US'),
+    origin_country: payload.origin_country?.[0] || (isJapaneseLang ? 'JP' : 'US'),
     status: payload.status || 'released',
     total_episodes: episodesCount,
     episodes: episodesCount,

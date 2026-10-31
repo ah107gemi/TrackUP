@@ -643,7 +643,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       ) : (
                         <span className="font-mono text-accent">
                           Ch. {item.last_chapter_read || 0}
-                          {item.title?.total_chapters ? ` / ${item.title.total_chapters}` : ''}
+                          {item.title?.total_chapters
+                            ? ` / ${item.title.total_chapters}`
+                            : item.title?.total_volumes
+                            ? ` / ${item.title.total_volumes} vols`
+                            : ''}
                         </span>
                       )}
                       {item.rating && (
@@ -690,7 +694,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           ? getEpProgressDisplay(item)
                           : item.title?.media_type === 'movie' || item.title?.media_type === 'anime_film'
                           ? (formatRuntime(item.title?.runtime_minutes) || 'Feature')
-                          : `Ch. ${item.last_chapter_read || 0}`}
+                          : `Ch. ${item.last_chapter_read || 0}${
+                              item.title?.total_chapters
+                                ? ` / ${item.title.total_chapters}`
+                                : item.title?.total_volumes
+                                ? ` / ${item.title.total_volumes} vols`
+                                : ''
+                            }`}
                       </span>
                       {item.title?.media_type !== 'movie' && item.title?.media_type !== 'anime_film' && item.status !== 'completed' && (
                         <button
@@ -770,7 +780,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         ) : (
                           <span className="text-accent">
                             Ch. {item.last_chapter_read || 0}
-                            {item.title?.total_chapters ? ` / ${item.title.total_chapters}` : ''}
+                            {item.title?.total_chapters
+                              ? ` / ${item.title.total_chapters}`
+                              : item.title?.total_volumes
+                              ? ` / ${item.title.total_volumes} vols`
+                              : ''}
                           </span>
                         )}
                       </td>

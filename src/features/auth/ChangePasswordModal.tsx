@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Lock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import { supabase } from '../../lib/supabase';
 
 interface ChangePasswordModalProps {
   isOpen: boolean;
@@ -39,6 +40,13 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen
 
     setLoading(true);
     try {
+      // Explicitly fetch fresh session before updating password to prevent session drop
+      try {
+        await supabase.auth.getSession();
+      } catch {
+        // ignore
+      }
+
       const res = await updatePassword(newPassword);
       if (res.error) {
         setError(res.error);

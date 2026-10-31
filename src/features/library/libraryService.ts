@@ -378,7 +378,12 @@ export async function logEpisodeProgress(params: {
     });
     localStorage.setItem(LOCAL_STORAGE_WATCH_HISTORY_KEY, JSON.stringify(history));
   } else {
-    updatedEpisodes = updatedEpisodes.filter((id) => id !== params.episodeId);
+    updatedEpisodes = updatedEpisodes.filter(
+      (id) =>
+        id !== params.episodeId &&
+        id !== `ep_${params.episodeId}` &&
+        !id.endsWith(`_${params.episodeId}`)
+    );
   }
 
   const totalEpisodes = calculateTotalEpisodes(item.title);
@@ -424,6 +429,40 @@ export async function logEpisodeProgress(params: {
   }
 
   return updated;
+}
+
+/**
+ * Toggles an episode's watched status: if present in episodes_watched, it is filtered out (uncheck);
+ * if not present, it is added.
+ */
+export async function toggleEpisode(params: {
+  userId: string;
+  episodeId: string;
+  libraryId?: string;
+  titleId?: string;
+}): Promise<UserLibraryItem> {
+  const all = getStoredLibraries();
+  const index = all.findIndex(
+    (item) =>
+      item.user_id === params.userId &&
+      ((params.libraryId && item.id === params.libraryId) ||
+        (params.titleId && item.title_id === params.titleId))
+  );
+  if (index < 0) throw new Error('Library entry not found');
+
+  const item = all[index];
+  const isWatched =
+    item.episodes_watched.includes(params.episodeId) ||
+    item.episodes_watched.some(
+      (id) => id === `ep_${params.episodeId}` || id.endsWith(`_${params.episodeId}`)
+    );
+
+  return logEpisodeProgress({
+    libraryId: item.id,
+    userId: params.userId,
+    episodeId: params.episodeId,
+    watched: !isWatched,
+  });
 }
 
 export async function logBatchEpisodeProgress(params: {

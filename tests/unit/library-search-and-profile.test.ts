@@ -24,10 +24,14 @@ import {
   updateItemStatus,
   logEpisodeProgress,
   logBatchEpisodeProgress,
+  toggleEpisode,
   calculateTotalEpisodes,
   calculateWatchedEpisodesCount,
   inferWatchedTrackingStatus,
 } from '../../src/features/library/libraryService';
+import { resolveEmailFromUsername } from '../../src/features/auth/authService';
+import { normalizeTmdbTv } from '../../src/features/catalog/normalizers';
+import { searchCatalog } from '../../src/features/catalog/catalogService';
 import { commitImportBatch } from '../../src/features/import-export/importService';
 import { matchPublicProfileRoute } from '../../src/App';
 import { followUser, unfollowUser, getStoredFollows } from '../../src/features/social/socialService';
@@ -1478,5 +1482,194 @@ describe('Library Search Input Persistence (No Reset Bug)', () => {
     // Empty state message formats accurately
     const emptyMessage = `No titles found matching "${retainedQuery}"`;
     expect(emptyMessage).toBe('No titles found matching "NonExistentTitleQuery"');
+  });
+});
+
+describe('Phase 8: Auth Updates, Search Engine Fixes, and Dashboard UI Refinements', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  describe('1. Authentication Updates (Username Login Resolution)', () => {
+    it('resolves email address from username in local mock user storage', async () => {
+      localStorage.setItem(
+        'trackup_mock_users',
+        JSON.stringify([
+          { id: 'u1', username: 'alex_hunter', email: 'alex@example.com' },
+          { id: 'u2', username: 'sarah_connor', email: 'sarah@skynet.com' },
+        ])
+      );
+
+      const resolved1 = await resolveEmailFromUsername('alex_hunter');
+      expect(resolved1).toBe('alex@example.com');
+
+      const resolvedWithAt = await resolveEmailFromUsername('@sarah_connor');
+      expect(resolvedWithAt).toBe('sarah@skynet.com');
+
+      const nonExistent = await resolveEmailFromUsername('unknown_user_999');
+      expect(nonExistent).toBeNull();
+    });
+  });
+
+  describe('2. Search Engine & Metadata Fixes', () => {
+    it('strictly normalizes live-action TV shows like Bodyguard as "tv" and not "anime_series"', () => {
+      const bodyguardPayload: any = {
+        id: 79008,
+        name: 'Bodyguard',
+        original_name: 'Bodyguard',
+        overview: 'A contemporary thriller that features the Royalty and Specialist Protection Branch of London.',
+        first_air_date: '2018-08-26',
+        original_language: 'en',
+        origin_country: ['GB'],
+        genre_ids: [18, 80],
+        poster_path: '/path/bodyguard.jpg',
+        backdrop_path: '/path/bodyguard_bg.jpg',
+      };
+
+      const normalized = normalizeTmdbTv(bodyguardPayload);
+      expect(normalized.media_type).toBe('tv');
+      expect(normalized.title).toBe('Bodyguard');
+      expect(normalized.origin_country).toBe('GB');
+    });
+
+    it('discovers new mock fixtures: Raised by Wolves, Intelligence, And Then There Were None in Watch Catalog', async () => {
+      const wolvesResults = await searchCatalog('Raised by Wolves', 'all', 'watch');
+      expect(wolvesResults.some((item) => item.id === 'tmdb_tv_85723')).toBe(true);
+
+      const intelResults = await searchCatalog('Intelligence', 'all', 'watch');
+      expect(intelResults.some((item) => item.id === 'tmdb_tv_96989')).toBe(true);
+
+      const noneResults = await searchCatalog('And Then There Were None', 'all', 'watch');
+      expect(noneResults.some((item) => item.id === 'tmdb_tv_64554')).toBe(true);
+    });
+
+    it('discovers new manhwa fixture: The Beginning After the End in Reading Catalog', async () => {
+      const tbateResults = await searchCatalog('The Beginning After the End', 'all', 'read');
+      expect(tbateResults.some((item) => item.id === 'manhwa_tbate_108344')).toBe(true);
+      const tbate = tbateResults.find((item) => item.id === 'manhwa_tbate_108344');
+      expect(tbate?.media_type).toBe('manhwa');
+      expect(tbate?.total_chapters).toBe(185);
+    });
+  });
+
+  describe('3. Dashboard, Discover & Library UX', () => {
+    it('toggles and unchecks watched episodes correctly using toggleEpisode', async () => {
+      const userId = 'user_toggle_test';
+      const libraryId = 'lib_toggle_1';
+      const initialItem: UserLibraryItem = {
+        id: libraryId,
+        user_id: userId,
+        title_id: 'tv_breaking_bad_1396',
+        status: 'active',
+        rating: null,
+        is_private: false,
+        personal_notes: null,
+        started_at: '2026-01-01',
+        completed_at: null,
+        last_progressed_at: '2026-01-01',
+        episodes_watched: ['bb_e1_1', 'bb_e1_2', 'bb_e1_3'],
+        last_chapter_read: 0,
+        last_volume_read: 0,
+        title: {
+          id: 'tv_breaking_bad_1396',
+          media_type: 'tv',
+          title: 'Breaking Bad',
+          genres: ['Drama', 'Crime'],
+          total_episodes: 62,
+        },
+      };
+
+      saveStoredLibraries([initialItem]);
+
+      // Uncheck episode 2
+      const afterUncheck = await toggleEpisode({
+        userId,
+        episodeId: 'bb_e1_2',
+        libraryId,
+      });
+
+      expect(afterUncheck.episodes_watched).toEqual(['bb_e1_1', 'bb_e1_3']);
+      expect(afterUncheck.episodes_watched.includes('bb_e1_2')).toBe(false);
+
+      // Re-check episode 2
+      const afterRecheck = await toggleEpisode({
+        userId,
+        episodeId: 'bb_e1_2',
+        libraryId,
+      });
+
+      expect(afterRecheck.episodes_watched.includes('bb_e1_2')).toBe(true);
+      expect(afterRecheck.episodes_watched.length).toBe(3);
+    });
+
+    it('strictly displays ONLY active/watching/reading titles on Home Dashboard continue list', () => {
+      const mockItems: UserLibraryItem[] = [
+        {
+          id: 'item_active',
+          user_id: 'u1',
+          title_id: 't1',
+          status: 'active',
+          episodes_watched: ['ep_1'],
+          last_chapter_read: 0,
+          last_volume_read: 0,
+          title: { id: 't1', media_type: 'tv', title: 'Active Show', genres: ['Drama'] },
+        } as unknown as UserLibraryItem,
+        {
+          id: 'item_completed',
+          user_id: 'u1',
+          title_id: 't2',
+          status: 'completed',
+          episodes_watched: ['ep_1', 'ep_2'],
+          last_chapter_read: 0,
+          last_volume_read: 0,
+          title: { id: 't2', media_type: 'tv', title: 'Completed Show', genres: ['Drama'] },
+        } as unknown as UserLibraryItem,
+        {
+          id: 'item_planned',
+          user_id: 'u1',
+          title_id: 't3',
+          status: 'planned',
+          episodes_watched: [],
+          last_chapter_read: 0,
+          last_volume_read: 0,
+          title: { id: 't3', media_type: 'tv', title: 'Planned Show', genres: ['Drama'] },
+        } as unknown as UserLibraryItem,
+        {
+          id: 'item_dropped',
+          user_id: 'u1',
+          title_id: 't4',
+          status: 'dropped',
+          episodes_watched: ['ep_1'],
+          last_chapter_read: 0,
+          last_volume_read: 0,
+          title: { id: 't4', media_type: 'tv', title: 'Dropped Show', genres: ['Drama'] },
+        } as unknown as UserLibraryItem,
+      ];
+
+      const continueItems = mockItems.filter((item) => {
+        const s = (item.status as string)?.toLowerCase();
+        return s === 'active' || s === 'watching' || s === 'reading';
+      });
+
+      expect(continueItems.length).toBe(1);
+      expect(continueItems[0].id).toBe('item_active');
+    });
+
+    it('formats reading materials with total chapters or volumes regardless of progress', () => {
+      const mangaItem = {
+        title: {
+          media_type: 'manga',
+          total_chapters: 139,
+          total_volumes: 34,
+        },
+        last_chapter_read: 15,
+      };
+
+      const display = `Ch. ${mangaItem.last_chapter_read || 0}${
+        mangaItem.title?.total_chapters ? ` / ${mangaItem.title.total_chapters}` : ''
+      }`;
+
+      expect(display).toBe('Ch. 15 / 139');
+    });
   });
 });

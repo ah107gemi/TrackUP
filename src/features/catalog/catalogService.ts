@@ -298,6 +298,171 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     ],
   },
 
+  // 2c. TV SHOW (Raised by Wolves)
+  {
+    id: 'tmdb_tv_85723',
+    media_type: 'tv',
+    title: 'Raised by Wolves',
+    original_title: 'Raised by Wolves',
+    release_year: 2020,
+    release_date: '2020-09-03',
+    synopsis:
+      'Two androids are tasked with raising human children on a mysterious virgin planet. As the burgeoning colony of humans threatens to be torn apart by religious differences, the androids learn that controlling the beliefs of humans is a treacherous and difficult task.',
+    poster_url: 'https://image.tmdb.org/t/p/w500/mTvScZ0mqeox30Xk0mFq7P8vA9p.jpg',
+    poster_path: 'https://image.tmdb.org/t/p/w500/mTvScZ0mqeox30Xk0mFq7P8vA9p.jpg',
+    backdrop_url: 'https://image.tmdb.org/t/p/w1280/mTvScZ0mqeox30Xk0mFq7P8vA9p.jpg',
+    backdrop_path: 'https://image.tmdb.org/t/p/w1280/mTvScZ0mqeox30Xk0mFq7P8vA9p.jpg',
+    genres: ['Sci-Fi & Fantasy', 'Drama'],
+    origin_country: 'US',
+    status: 'ended',
+    total_seasons: 2,
+    total_episodes: 18,
+    episodes: 18,
+    tmdb_id: 85723,
+    imdb_id: 'tt8805678',
+    cast: [
+      { id: 'c_rbw1', name: 'Amanda Collin', character: 'Mother', profile_url: null },
+      { id: 'c_rbw2', name: 'Abubakar Salim', character: 'Father', profile_url: null },
+      { id: 'c_rbw3', name: 'Travis Fimmel', character: 'Marcus', profile_url: null },
+    ],
+    seasons: [
+      {
+        id: 'rbw_s1',
+        season_number: 1,
+        name: 'Season 1',
+        overview: 'Mother and Father establish a human settlement on Kepler-22b.',
+        episode_count: 10,
+        episodes: Array.from({ length: 10 }, (_, i) => ({
+          id: `rbw_e1_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'Raised by Wolves' : `Episode ${i + 1}`,
+          overview: 'Life begins anew on a barren alien world.',
+          runtime_minutes: 50,
+          air_date: '2020-09-03',
+        })),
+      },
+      {
+        id: 'rbw_s2',
+        season_number: 2,
+        name: 'Season 2',
+        overview: 'Mother and Father join a newly formed atheistic collective.',
+        episode_count: 8,
+        episodes: Array.from({ length: 8 }, (_, i) => ({
+          id: `rbw_e2_${i + 1}`,
+          episode_number: i + 1,
+          name: `Episode ${i + 1}`,
+          overview: 'Mysterious entities challenge the tropical zone.',
+          runtime_minutes: 48,
+          air_date: '2022-02-03',
+        })),
+      },
+    ],
+  },
+
+  // 2d. TV SHOW (Intelligence)
+  {
+    id: 'tmdb_tv_96989',
+    media_type: 'tv',
+    title: 'Intelligence',
+    original_title: 'Intelligence',
+    release_year: 2020,
+    release_date: '2020-02-21',
+    synopsis:
+      'An arrogant, maverick NSA agent is assigned to act as liaison to the cyber crimes unit in the UK Government Communications Headquarters, quickly creating tension with the team.',
+    poster_url: 'https://image.tmdb.org/t/p/w500/w79Qj9U8e0w5K98e98E23r1y4u.jpg',
+    poster_path: 'https://image.tmdb.org/t/p/w500/w79Qj9U8e0w5K98e98E23r1y4u.jpg',
+    backdrop_url: 'https://image.tmdb.org/t/p/w1280/w79Qj9U8e0w5K98e98E23r1y4u.jpg',
+    backdrop_path: 'https://image.tmdb.org/t/p/w1280/w79Qj9U8e0w5K98e98E23r1y4u.jpg',
+    genres: ['Comedy'],
+    origin_country: 'GB',
+    status: 'ended',
+    total_seasons: 2,
+    total_episodes: 12,
+    episodes: 12,
+    tmdb_id: 96989,
+    cast: [
+      { id: 'c_intel1', name: 'David Schwimmer', character: 'Jerry Bernstein', profile_url: null },
+      { id: 'c_intel2', name: 'Nick Mohammed', character: 'Joseph Harries', profile_url: null },
+    ],
+    seasons: [
+      {
+        id: 'intel_s1',
+        season_number: 1,
+        name: 'Season 1',
+        overview: 'Jerry Bernstein arrives at GCHQ to shaken-up operations.',
+        episode_count: 6,
+        episodes: Array.from({ length: 6 }, (_, i) => ({
+          id: `intel_e1_${i + 1}`,
+          episode_number: i + 1,
+          name: `Episode ${i + 1}`,
+          overview: 'The team tackles cyber threats and bureaucratic absurdities.',
+          runtime_minutes: 22,
+          air_date: '2020-02-21',
+        })),
+      },
+      {
+        id: 'intel_s2',
+        season_number: 2,
+        name: 'Season 2',
+        overview: 'Cyber chaos escalates at GCHQ.',
+        episode_count: 6,
+        episodes: Array.from({ length: 6 }, (_, i) => ({
+          id: `intel_e2_${i + 1}`,
+          episode_number: i + 1,
+          name: `Episode ${i + 1}`,
+          overview: 'The agents must prevent nuclear disaster.',
+          runtime_minutes: 22,
+          air_date: '2021-06-08',
+        })),
+      },
+    ],
+  },
+
+  // 2e. TV SHOW (And Then There Were None)
+  {
+    id: 'tmdb_tv_64554',
+    media_type: 'tv',
+    title: 'And Then There Were None',
+    original_title: 'And Then There Were None',
+    release_year: 2015,
+    release_date: '2015-12-26',
+    synopsis:
+      'Ten strangers are invited to Soldier Island by an absent host. Cut off from the mainland, with their generous hosts mysteriously absent, they are each accused of a terrible crime and start getting murdered one by one.',
+    poster_url: 'https://image.tmdb.org/t/p/w500/p4rWqQ5zG08o5U4q8a1z4u3s0v.jpg',
+    poster_path: 'https://image.tmdb.org/t/p/w500/p4rWqQ5zG08o5U4q8a1z4u3s0v.jpg',
+    backdrop_url: 'https://image.tmdb.org/t/p/w1280/p4rWqQ5zG08o5U4q8a1z4u3s0v.jpg',
+    backdrop_path: 'https://image.tmdb.org/t/p/w1280/p4rWqQ5zG08o5U4q8a1z4u3s0v.jpg',
+    genres: ['Drama', 'Mystery', 'Crime'],
+    origin_country: 'GB',
+    status: 'ended',
+    total_seasons: 1,
+    total_episodes: 3,
+    episodes: 3,
+    tmdb_id: 64554,
+    cast: [
+      { id: 'c_attwn1', name: 'Maeve Dermody', character: 'Vera Claythorne', profile_url: null },
+      { id: 'c_attwn2', name: 'Charles Dance', character: 'Judge Lawrence Wargrave', profile_url: null },
+      { id: 'c_attwn3', name: 'Aidan Turner', character: 'Philip Lombard', profile_url: null },
+    ],
+    seasons: [
+      {
+        id: 'attwn_s1',
+        season_number: 1,
+        name: 'Miniseries',
+        overview: 'The complete Agatha Christie mystery miniseries.',
+        episode_count: 3,
+        episodes: Array.from({ length: 3 }, (_, i) => ({
+          id: `attwn_e1_${i + 1}`,
+          episode_number: i + 1,
+          name: `Episode ${i + 1}`,
+          overview: 'The guests on Soldier Island realize none will escape.',
+          runtime_minutes: 58,
+          air_date: '2015-12-26',
+        })),
+      },
+    ],
+  },
+
   // 3. ANIME SERIES
   {
     id: 'anilist_anime_154587',
@@ -516,6 +681,28 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     ],
   },
 
+  // 6b. MANHWA (The Beginning After the End)
+  {
+    id: 'manhwa_tbate_108344',
+    media_type: 'manhwa',
+    title: 'The Beginning After the End',
+    original_title: 'The Beginning After the End',
+    release_year: 2018,
+    release_date: '2018-07-07',
+    synopsis:
+      'King Grey has unrivaled strength, wealth, and prestige in a world governed by martial ability. However, solitude lingers closely behind those with great power. Reincarnated into a new world filled with magic and monsters, the king has a second chance to relive his life and correct the mistakes of his past.',
+    poster_url: 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx108344-9B05p7nFp3M3.jpg',
+    poster_path: 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx108344-9B05p7nFp3M3.jpg',
+    backdrop_url: 'https://s4.anilist.co/file/anilistcdn/media/manga/banner/108344-Yh3800m9e9G.jpg',
+    backdrop_path: 'https://s4.anilist.co/file/anilistcdn/media/manga/banner/108344-Yh3800m9e9G.jpg',
+    genres: ['Action', 'Adventure', 'Fantasy'],
+    origin_country: 'KR',
+    status: 'releasing',
+    total_chapters: 185,
+    total_volumes: 6,
+    anilist_id: 108344,
+  },
+
   // 7. POPULAR ANIME SERIES (Solo Leveling Anime)
   {
     id: 'anime_solo_leveling_151807',
@@ -624,21 +811,26 @@ export function isAnimeItem(item: NormalizedCatalogItem): boolean {
   if (item.media_type === 'anime_series' || item.media_type === 'anime_film') {
     return true;
   }
-  if (item.id.startsWith('anime_')) {
+  if (item.id.startsWith('anime_') || item.id.startsWith('anilist_') || !!item.anilist_id) {
     return true;
   }
-  const isAnimation = (item.genres || []).some((g) => {
-    const lower = g.toLowerCase();
-    return lower === 'animation' || lower === 'anime';
-  });
-  const isEastAsianOrigin =
-    item.origin_country === 'JP' || item.origin_country === 'KR' || item.origin_country === 'CN';
-  if (isAnimation && isEastAsianOrigin) {
+  const isAnimation =
+    (item.genres || []).some((g) => {
+      const lower = g.toLowerCase();
+      return lower === 'animation' || lower === 'anime';
+    }) ||
+    ((item as any).genre_ids &&
+      Array.isArray((item as any).genre_ids) &&
+      (item as any).genre_ids.includes(16));
+
+  const isJapanese =
+    (item as any).original_language === 'ja' ||
+    item.origin_country === 'JP';
+
+  if (isAnimation && isJapanese) {
     return true;
   }
-  if (item.original_title && /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(item.original_title)) {
-    return true;
-  }
+
   return false;
 }
 

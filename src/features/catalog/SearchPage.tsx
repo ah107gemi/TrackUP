@@ -1,17 +1,23 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Compass, SlidersHorizontal, Info, X, Film, BookOpen } from 'lucide-react';
+import { Search, Compass, SlidersHorizontal, Info, X, Film, BookOpen, Sparkles } from 'lucide-react';
 import { searchCatalog, type SearchDomain } from './catalogService';
 import { isTmdbConfigured } from './tmdbClient';
 import type { NormalizedCatalogItem } from '../../lib/validators';
 import type { MediaType } from '../../types/database.types';
 import { MediaPosterCard } from '../../components/shared/MediaPosterCard';
 import { TmdbAttribution } from '../../components/shared/TmdbAttribution';
+import { useAuth } from '../auth/AuthContext';
+import { useUserLibrary } from '../library/useLibrary';
 
 interface SearchPageProps {
   onSelectTitle: (id: string) => void;
 }
 
 export const SearchPage: React.FC<SearchPageProps> = ({ onSelectTitle }) => {
+  const { user } = useAuth();
+  const activeUserId = user?.id || 'demo_user';
+  const { data: userLibrary = [] } = useUserLibrary(activeUserId);
+
   const [domain, setDomain] = useState<SearchDomain>('watch');
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<MediaType | 'all'>('all');
@@ -23,7 +29,32 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onSelectTitle }) => {
     setLoading(true);
 
     const timer = setTimeout(async () => {
-      const items = await searchCatalog(query, activeCategory, domain);
+      let items = await searchCatalog(query, activeCategory, domain);
+
+      // On mount or when query is empty, personalize suggestions based on genres of titles in user's library
+      if (!query.trim() && userLibrary.length > 0) {
+        const genreCounts: Record<string, number> = {};
+        for (const entry of userLibrary) {
+          const genres = entry.title?.genres || [];
+          for (const g of genres) {
+            const key = g.toLowerCase();
+            genreCounts[key] = (genreCounts[key] || 0) + 1;
+          }
+        }
+
+        items = [...items].sort((a, b) => {
+          const scoreA = (a.genres || []).reduce(
+            (acc, g) => acc + (genreCounts[g.toLowerCase()] || 0),
+            0
+          );
+          const scoreB = (b.genres || []).reduce(
+            (acc, g) => acc + (genreCounts[g.toLowerCase()] || 0),
+            0
+          );
+          return scoreB - scoreA;
+        });
+      }
+
       if (mounted) {
         setResults(items);
         setLoading(false);
@@ -34,7 +65,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onSelectTitle }) => {
       mounted = false;
       clearTimeout(timer);
     };
-  }, [query, activeCategory, domain]);
+  }, [query, activeCategory, domain, userLibrary]);
 
   const watchCategories: { id: MediaType | 'all'; label: string }[] = [
     { id: 'all', label: 'All Watch Categories' },
@@ -175,6 +206,22 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onSelectTitle }) => {
           <span>
             <strong className="text-text-primary">Dedicated Reading Catalog:</strong> Live AniList search strictly isolated for Japanese Manga and South Korean Manhwa. Reading titles are kept independent from television and film trackers.
           </span>
+        </div>
+      )}
+
+      {/* Suggestions / Results Header */}
+      {!loading && (
+        <div className="flex items-center justify-between pt-1">
+          <h2 className="text-xs font-bold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+            {!query.trim() ? (
+              <>
+                <Sparkles className="w-3.5 h-3.5 text-accent" />
+                <span>Suggested For You</span>
+              </>
+            ) : (
+              <span>Search Results ({results.length})</span>
+            )}
+          </h2>
         </div>
       )}
 

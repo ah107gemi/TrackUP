@@ -65,13 +65,13 @@ query ($search: String, $type: MediaType, $format_in: [MediaFormat], $format: Me
  * format_in, or status restrictions.
  */
 const SEARCH_MANGA_QUERY = `
-query ($search: String, $type: MediaType, $page: Int, $perPage: Int) {
+query ($search: String, $type: MediaType, $format_in: [MediaFormat], $page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
     pageInfo {
       total
       hasNextPage
     }
-    media(search: $search, type: $type, sort: [POPULARITY_DESC]) {
+    media(search: $search, type: $type, format_in: $format_in, sort: [POPULARITY_DESC]) {
       id
       idMal
       type
@@ -232,6 +232,7 @@ export async function searchAniList(
     variables = {
       search: query.trim() || undefined,
       type: 'MANGA',
+      format_in: ['MANGA', 'NOVEL', 'ONE_SHOT'],
       page,
       perPage,
     };
