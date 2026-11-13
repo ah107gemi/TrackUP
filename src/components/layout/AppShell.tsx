@@ -1,6 +1,7 @@
 import React from 'react';
 import { DesktopSidebar } from './DesktopSidebar';
 import { TopUtilityBar } from './TopUtilityBar';
+import { BottomNavBar } from './BottomNavBar';
 import { OmnisearchModal } from './OmnisearchModal';
 import { AuthModal } from '../../features/auth/AuthModal';
 import { ProfileModal } from '../../features/auth/ProfileModal';
@@ -121,7 +122,7 @@ export const AppShell: React.FC = () => {
         <TopUtilityBar />
 
         {/* Scrollable Viewport */}
-        <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6 pb-8">
+        <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6 pb-24 md:pb-8">
           {selectedTitleId ? (
             <ErrorBoundary
               fallbackTitle="Error loading title data"
@@ -346,6 +347,9 @@ export const AppShell: React.FC = () => {
       <OmnisearchModal onSelectTitle={handleSelectTitle} />
       <AuthModal />
       <ProfileModal onSelectTitle={handleSelectTitle} />
+
+      {/* Mobile Bottom Navigation Bar */}
+      <BottomNavBar />
     </div>
   );
 };

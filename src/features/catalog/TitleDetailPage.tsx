@@ -648,7 +648,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
       {/* Cinematic Backdrop Hero */}
       <div className="relative rounded-3xl overflow-hidden bg-surface border border-surface-elevated shadow-2xl">
-        <div className="relative w-full h-[260px] md:h-[420px] bg-surface-elevated">
+        <div className="relative w-full h-[200px] sm:h-[260px] md:h-[420px] bg-surface-elevated">
           {title.backdrop_url || (title as any).backdrop_path || (title as any).bannerImage ? (
             <img
               src={resolveBackdropUrl(title.backdrop_url || (title as any).backdrop_path || (title as any).bannerImage)}
@@ -665,9 +665,9 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         </div>
 
         {/* Content Floating over Backdrop */}
-        <div className="relative -mt-36 md:-mt-48 px-4 sm:px-6 md:px-10 pb-8 flex flex-col md:flex-row gap-6 md:gap-8 items-start">
+        <div className="relative -mt-28 sm:-mt-36 md:-mt-48 px-4 sm:px-6 md:px-10 pb-8 flex flex-col md:flex-row gap-6 md:gap-8 items-start">
           {/* Poster Card */}
-          <div ref={heroRef} className="w-36 md:w-56 shrink-0 rounded-2xl overflow-hidden border-2 border-surface-elevated shadow-2xl bg-surface">
+          <div ref={heroRef} className="w-28 sm:w-36 md:w-56 shrink-0 rounded-2xl overflow-hidden border-2 border-surface-elevated shadow-2xl bg-surface">
             <img
               src={resolvePosterUrl(
                 title.poster_url ||
@@ -798,10 +798,11 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                   setReviewModalOpen(true);
                 }}
                 data-testid="open-review-modal-button"
+                aria-label={userReview ? 'Edit Review' : 'Write Review'}
                 className="px-3 py-1.5 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-xs font-semibold text-text-primary flex items-center gap-1.5 transition-colors"
               >
                 <MessageSquare className="w-3.5 h-3.5 text-accent" />
-                <span>{userReview ? 'Edit Review' : 'Write Review'}</span>
+                <span className="hidden sm:inline">{userReview ? 'Edit Review' : 'Write Review'}</span>
               </button>
             </div>
           </div>
@@ -845,10 +846,11 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
               <button
                 onClick={handleBatchMarkSeasonWatched}
                 data-testid="mark-season-watched-btn"
+                aria-label="Mark Season Watched"
                 className="px-3 py-1 rounded-lg bg-surface-elevated hover:bg-accent hover:text-background border border-surface-elevated text-xs font-semibold text-text-secondary transition-colors flex items-center gap-1.5"
               >
                 <CheckCheck className="w-3.5 h-3.5" />
-                <span>Mark Season Watched</span>
+                <span className="hidden sm:inline">Mark Season Watched</span>
               </button>
             </div>
           </div>

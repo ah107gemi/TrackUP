@@ -545,7 +545,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
       {/* Library Content */}
       {isLoading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-4">
           {[...Array(6)].map((_, i) => (
             <div
               key={i}
@@ -609,7 +609,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           {libraryViewMode === 'grid' && (
             <div
               data-testid="library-poster-grid"
-              className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4"
+              className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-4"
             >
               {filtered.map((item) => (
                 <div
@@ -636,7 +636,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       </span>
                     </div>
                   </div>
-                  <div className="p-3">
+                  <div className="p-2.5 sm:p-3">
                     <h3 className="font-semibold text-xs text-text-primary truncate group-hover:text-accent transition-colors">
                       {item.title?.title || 'Unknown Title'}
                     </h3>
