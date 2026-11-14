@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { Database } from '../../types/database.types';
 import { supabase } from '../../lib/supabase';
-import { resolveEmailFromUsername } from './authService';
+import { resolveEmailFromUsername, isEmailIdentifier } from './authService';
 
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -281,10 +281,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signIn = async (identifier: string, password: string): Promise<{ error: string | null }> => {
     setLoading(true);
     const cleanInput = identifier.trim();
-    const cleanUsername = cleanInput.startsWith('@') ? cleanInput.slice(1).trim() : cleanInput;
-    const isEmail = cleanInput.includes('@') && cleanInput.includes('.');
+    if (!cleanInput) {
+      setLoading(false);
+      return { error: 'Please enter your email or username.' };
+    }
 
-    // Lookup user in local storage to support username-based login
+    const isEmail = isEmailIdentifier(cleanInput);
+    const cleanUsername = cleanInput.startsWith('@') ? cleanInput.slice(1).trim() : cleanInput;
+
+    // Lookup user in local storage to support offline / test mocks
     const users: MockUserRecord[] = JSON.parse(localStorage.getItem(LOCAL_STORAGE_USERS_KEY) || '[]');
     const mockMatch = users.find(
       (u) =>
@@ -292,9 +297,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         u.username.toLowerCase() === cleanUsername.toLowerCase()
     );
 
-    let targetEmail: string | null = isEmail ? cleanInput : (mockMatch?.email || null);
-    if (!targetEmail) {
-      targetEmail = await resolveEmailFromUsername(cleanUsername);
+    // If it IS an email, bypass the profile lookup entirely and directly use cleanInput
+    let targetEmail: string | null = null;
+    if (isEmail) {
+      targetEmail = cleanInput;
+    } else {
+      // If it is NOT an email, proceed with username lookup
+      targetEmail = (await resolveEmailFromUsername(cleanUsername)) || mockMatch?.email || null;
     }
 
     // 1. Try Supabase Auth signInWithPassword if target email is available
@@ -408,13 +417,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return { error: null };
         }
 
-        if (error && !mockMatch) {
-          setLoading(false);
-          return { error: error.message };
+        if (error) {
+          if (!mockMatch || mockMatch.passwordHash !== password) {
+            setLoading(false);
+            return { error: error.message };
+          }
         }
       } catch {
         // Offline / network failure -> proceed to mock auth fallback
       }
+    }
+
+    // If identifier was a username that could not be resolved and no mock user exists
+    if (!targetEmail && !mockMatch) {
+      setLoading(false);
+      return { error: `No account found with username "${cleanInput}".` };
     }
 
     // 2. Mock auth fallback (supports username or email)

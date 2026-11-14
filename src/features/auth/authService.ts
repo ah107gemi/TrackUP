@@ -2,12 +2,7 @@ import { supabase } from '../../lib/supabase';
 
 const LOCAL_STORAGE_USERS_KEY = 'trackup_mock_users';
 
-const isLocalSupabase =
-  !import.meta.env.VITE_SUPABASE_URL ||
-  import.meta.env.VITE_SUPABASE_URL.includes('127.0.0.1') ||
-  import.meta.env.VITE_SUPABASE_URL.includes('localhost');
-
-const timeoutMs = isLocalSupabase ? 350 : 3000;
+const timeoutMs = 4000;
 
 const executeWithTimeout = async <T>(thenable: PromiseLike<T>, ms: number): Promise<T> => {
   return Promise.race([
@@ -19,14 +14,25 @@ const executeWithTimeout = async <T>(thenable: PromiseLike<T>, ms: number): Prom
 };
 
 /**
+ * Accurately determines if an identifier is an email address.
+ * Robust check: contains '@', does not start with '@' (which denotes a username),
+ * and has non-empty local-part and domain segments.
+ */
+export function isEmailIdentifier(identifier: string): boolean {
+  const clean = identifier.trim();
+  if (!clean || clean.startsWith('@')) return false;
+  return clean.includes('@') && /^[^\s@]+@[^\s@]+$/i.test(clean);
+}
+
+/**
  * Resolves an email address from a given username by querying the Supabase `profiles` table.
- * Falls back to local mock user storage if Supabase query fails or in offline/test mode.
+ * Uses ILIKE for case-insensitive matching and falls back to local mock user storage if needed.
  */
 export async function resolveEmailFromUsername(username: string): Promise<string | null> {
-  const cleanUsername = username.trim().replace(/^@/, '').toLowerCase();
+  const cleanUsername = username.trim().replace(/^@/, '');
   if (!cleanUsername) return null;
 
-  // 1. Query Supabase profiles table
+  // 1. Query Supabase profiles table using ILIKE for case-insensitive matching
   try {
     const query = (supabase.from('profiles') as any)
       .select('id, username, email')
@@ -48,7 +54,7 @@ export async function resolveEmailFromUsername(username: string): Promise<string
       localStorage.getItem(LOCAL_STORAGE_USERS_KEY) || '[]'
     );
     const match = users.find(
-      (u) => u.username.toLowerCase() === cleanUsername
+      (u) => u.username.toLowerCase() === cleanUsername.toLowerCase()
     );
     if (match?.email) {
       return match.email;
@@ -62,7 +68,8 @@ export async function resolveEmailFromUsername(username: string): Promise<string
 
 /**
  * Authenticates with Supabase using either an Email address or a Username.
- * If a username is supplied, it is resolved to its associated email address first.
+ * If the identifier is an email, it bypasses profile lookup entirely and directly calls signInWithPassword.
+ * If it is NOT an email, it proceeds with username-to-email resolution first.
  */
 export async function signInWithIdentifier(
   identifier: string,
@@ -73,20 +80,35 @@ export async function signInWithIdentifier(
     return { error: 'Please enter your email or username.' };
   }
 
-  const isEmail = cleanInput.includes('@') && cleanInput.includes('.');
-  let targetEmail = cleanInput;
+  // 1. If it IS an email, bypass profile lookup entirely and directly authenticate
+  if (isEmailIdentifier(cleanInput)) {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanInput,
+        password,
+      });
 
-  if (!isEmail) {
-    const resolved = await resolveEmailFromUsername(cleanInput);
-    if (!resolved) {
-      return { error: `No account found with username "${cleanInput}".` };
+      if (error) {
+        return { error: error.message };
+      }
+
+      return { data, error: null, resolvedEmail: cleanInput };
+    } catch (err: any) {
+      return { error: err?.message || 'Failed to authenticate.' };
     }
-    targetEmail = resolved;
+  }
+
+  // 2. If it is NOT an email, proceed with the username lookup
+  const cleanUsername = cleanInput.startsWith('@') ? cleanInput.slice(1).trim() : cleanInput;
+  const resolvedEmail = await resolveEmailFromUsername(cleanUsername);
+
+  if (!resolvedEmail) {
+    return { error: `No account found with username "${cleanInput}".` };
   }
 
   try {
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: targetEmail,
+      email: resolvedEmail,
       password,
     });
 
@@ -94,7 +116,7 @@ export async function signInWithIdentifier(
       return { error: error.message };
     }
 
-    return { data, error: null, resolvedEmail: targetEmail };
+    return { data, error: null, resolvedEmail };
   } catch (err: any) {
     return { error: err?.message || 'Failed to authenticate.' };
   }
