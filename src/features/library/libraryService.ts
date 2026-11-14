@@ -466,6 +466,7 @@ export function calculateTotalEpisodes(title?: NormalizedCatalogItem | null): nu
 
 /**
  * Calculates how many distinct episodes are watched, matching season episodes by ID or number if available.
+ * Respects exact season and episode boundaries to prevent cross-season pollution.
  */
 export function calculateWatchedEpisodesCount(
   watchedEpisodes: string[],
@@ -475,16 +476,38 @@ export function calculateWatchedEpisodesCount(
     return 0;
   }
   if (title?.seasons && Array.isArray(title.seasons) && title.seasons.length > 0) {
-    const allSeasonEpisodes = title.seasons.flatMap((s) => s.episodes || []);
-    if (allSeasonEpisodes.length > 0) {
-      const matched = allSeasonEpisodes.filter((e) =>
-        watchedEpisodes.includes(e.id) ||
-        watchedEpisodes.includes(`ep_${e.episode_number}`) ||
-        watchedEpisodes.some((id) => id === `ep_${e.episode_number}` || id.endsWith(`_${e.episode_number}`))
-      );
-      if (matched.length > 0) {
-        return matched.length;
+    let matchedCount = 0;
+    let globalOffset = 0;
+    const hasMultipleSeasons = title.seasons.length > 1;
+
+    for (const season of title.seasons) {
+      const sNum = season.season_number ?? 1;
+      const episodes = season.episodes || [];
+      for (const ep of episodes) {
+        const epNum = ep.episode_number;
+        const globalEpNum = globalOffset + epNum;
+        const isWatched =
+          watchedEpisodes.includes(ep.id) ||
+          watchedEpisodes.includes(`ep_${globalEpNum}`) ||
+          (!hasMultipleSeasons && sNum === 1 && watchedEpisodes.includes(`ep_${epNum}`)) ||
+          watchedEpisodes.some((id) => {
+            if (typeof id !== 'string') return false;
+            if (id === ep.id) return true;
+            if (new RegExp(`(^|[_.-])s(?:eason)?0*${sNum}[_.-]?(?:ep?|e)0*${epNum}$`, 'i').test(id)) return true;
+            if (new RegExp(`(^|[_.-])e0*${sNum}[_.-]0*${epNum}$`, 'i').test(id)) return true;
+            if (new RegExp(`[_.-]0*${sNum}[_.-]0*${epNum}$`).test(id)) return true;
+            return false;
+          });
+
+        if (isWatched) {
+          matchedCount++;
+        }
       }
+      globalOffset += (season.episode_count || episodes.length || 0);
+    }
+
+    if (matchedCount > 0) {
+      return matchedCount;
     }
   }
   return watchedEpisodes.length;
@@ -556,8 +579,7 @@ export async function logEpisodeProgress(params: {
     updatedEpisodes = updatedEpisodes.filter(
       (id) =>
         id !== params.episodeId &&
-        id !== `ep_${params.episodeId}` &&
-        !id.endsWith(`_${params.episodeId}`)
+        id !== `ep_${params.episodeId}`
     );
   }
 

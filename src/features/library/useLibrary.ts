@@ -178,8 +178,7 @@ export function useIncrementEpisode() {
               : item.episodes_watched.filter(
                   (id) =>
                     id !== variables.episodeId &&
-                    id !== `ep_${variables.episodeId}` &&
-                    !id.endsWith(`_${variables.episodeId}`)
+                    id !== `ep_${variables.episodeId}`
                 );
 
             const totalEpisodes = calculateTotalEpisodes(item.title);

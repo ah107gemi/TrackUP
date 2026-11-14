@@ -11,6 +11,7 @@ import {
   Plus,
   Minus,
   CheckCheck,
+  RotateCcw,
   MessageSquare,
   Clock,
   Trash2,
@@ -24,6 +25,7 @@ import {
   type CastMember,
 } from './catalogService';
 import type { NormalizedCatalogItem } from '../../lib/validators';
+import { supabase } from '../../lib/supabase';
 import { resolvePosterUrl, resolveBackdropUrl } from '../../lib/imageUtils';
 import { canHealTitle, healTitleMetadata } from './metadataHealer';
 import { MediaPosterCard } from '../../components/shared/MediaPosterCard';
@@ -98,7 +100,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   const [activeSeasonIndex, setActiveSeasonIndex] = useState(0);
   const [fractionalInput, setFractionalInput] = useState<string>('');
   const [catchUpPrompt, setCatchUpPrompt] = useState<{
-    targetEp: { id: string; episode_number: number; name: string };
+    targetEp: { id: string; episode_number: number; name: string; season_number?: number };
     previousEpIds: string[];
   } | null>(null);
 
@@ -252,21 +254,55 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       ? totalEpCount
       : calculateWatchedEpisodesCount(watchedEpisodesList, title);
 
-  const isEpisodeWatched = (ep: { id: string; episode_number: number }) => {
+  const isEpisodeWatched = (
+    ep: { id: string; episode_number: number; season_number?: number },
+    seasonNumber?: number
+  ): boolean => {
     if (!ep || !Array.isArray(watchedEpisodesList)) return false;
-    if (watchedEpisodesList.includes(ep.id)) return true;
-    if (watchedEpisodesList.includes(`ep_${ep.episode_number}`)) return true;
-    if (
-      watchedEpisodesList.some(
-        (id) => typeof id === 'string' && (id === `ep_${ep.episode_number}` || id.endsWith(`_${ep.episode_number}`))
-      )
-    ) {
-      return true;
-    }
     if (currentStatus === 'completed' && watchedEpisodesList.length === 0) {
       return true;
     }
-    return false;
+
+    const sNum =
+      seasonNumber ??
+      ep.season_number ??
+      title?.seasons?.[activeSeasonIndex]?.season_number ??
+      1;
+    const epNum = ep.episode_number;
+
+    // 1. Direct ID match
+    if (watchedEpisodesList.includes(ep.id)) return true;
+
+    // 2. Global / Single-season offset check
+    const hasMultipleSeasons = (title?.seasons?.length || 0) > 1;
+    let globalOffset = 0;
+    if (hasMultipleSeasons && Array.isArray(title?.seasons)) {
+      for (const s of title.seasons) {
+        const thisSNum = s.season_number ?? 1;
+        if (thisSNum < sNum) {
+          globalOffset += (s.episode_count || s.episodes?.length || 0);
+        }
+      }
+    }
+    const globalEpNum = globalOffset + epNum;
+
+    // Global alias (e.g. ep_8 for S2E1 when S1 had 7 episodes)
+    if (watchedEpisodesList.includes(`ep_${globalEpNum}`)) return true;
+
+    // Single season fallback for legacy ep_1, ep_2 imports
+    if (!hasMultipleSeasons && sNum === 1 && watchedEpisodesList.includes(`ep_${epNum}`)) {
+      return true;
+    }
+
+    // 3. Strict season + episode boundary matching
+    return watchedEpisodesList.some((id) => {
+      if (typeof id !== 'string') return false;
+      if (id === ep.id) return true;
+      if (new RegExp(`(^|[_.-])s(?:eason)?0*${sNum}[_.-]?(?:ep?|e)0*${epNum}$`, 'i').test(id)) return true;
+      if (new RegExp(`(^|[_.-])e0*${sNum}[_.-]0*${epNum}$`, 'i').test(id)) return true;
+      if (new RegExp(`[_.-]0*${sNum}[_.-]0*${epNum}$`).test(id)) return true;
+      return false;
+    });
   };
 
   const handleStatusChange = (newStatus: TrackingStatus) => {
@@ -347,25 +383,61 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     setReviews((prev) => prev.filter((r) => r.id !== reviewId));
   };
 
-  const handleToggleEpisode = async (ep: { id: string; episode_number: number }) => {
+  const toggleEpisodeWatched = async (
+    ep: { id: string; episode_number: number; season_number?: number },
+    targetSeasonNumber?: number
+  ) => {
     if (!ep || !title) return;
-    const isWatched = isEpisodeWatched(ep);
+    const sNum =
+      targetSeasonNumber ??
+      ep.season_number ??
+      title?.seasons?.[activeSeasonIndex]?.season_number ??
+      1;
+    const isWatched = isEpisodeWatched(ep, sNum);
     let updatedEpisodes: string[];
     const currentWatched = Array.isArray(watchedEpisodesList) ? watchedEpisodesList : [];
 
+    const hasMultipleSeasons = (title?.seasons?.length || 0) > 1;
+    let globalOffset = 0;
+    if (hasMultipleSeasons && Array.isArray(title?.seasons)) {
+      for (const s of title.seasons) {
+        const thisSNum = s.season_number ?? 1;
+        if (thisSNum < sNum) {
+          globalOffset += (s.episode_count || s.episodes?.length || 0);
+        }
+      }
+    }
+    const globalEpNum = globalOffset + ep.episode_number;
+
+    const isThisEpisodeId = (id: string) => {
+      if (typeof id !== 'string') return false;
+      if (id === ep.id) return true;
+      if (id === `ep_${globalEpNum}`) return true;
+      if (!hasMultipleSeasons && sNum === 1 && id === `ep_${ep.episode_number}`) return true;
+      if (new RegExp(`(^|[_.-])s(?:eason)?0*${sNum}[_.-]?(?:ep?|e)0*${ep.episode_number}$`, 'i').test(id)) return true;
+      if (new RegExp(`(^|[_.-])e0*${sNum}[_.-]0*${ep.episode_number}$`, 'i').test(id)) return true;
+      if (new RegExp(`[_.-]0*${sNum}[_.-]0*${ep.episode_number}$`).test(id)) return true;
+      return false;
+    };
+
     if (isWatched) {
       if (currentStatus === 'completed' && currentWatched.length === 0) {
-        const allEps = title?.seasons?.flatMap((s) => s.episodes || []) || [];
-        updatedEpisodes = allEps
-          .filter((e) => e && e.episode_number !== ep.episode_number && e.id !== ep.id)
+        const allSeasonEps =
+          title?.seasons?.flatMap((s) =>
+            (s.episodes || []).map((e) => ({
+              ...e,
+              season_number: s.season_number ?? 1,
+            }))
+          ) || [];
+        updatedEpisodes = allSeasonEps
+          .filter(
+            (e) =>
+              !(e.season_number === sNum && e.episode_number === ep.episode_number) &&
+              e.id !== ep.id
+          )
           .map((e) => e.id);
       } else {
-        updatedEpisodes = currentWatched.filter(
-          (id) =>
-            id !== ep.id &&
-            id !== `ep_${ep.episode_number}` &&
-            (typeof id !== 'string' || !id.endsWith(`_${ep.episode_number}`))
-        );
+        updatedEpisodes = currentWatched.filter((id) => !isThisEpisodeId(id));
       }
     } else {
       updatedEpisodes = [...new Set([...currentWatched, ep.id])];
@@ -400,41 +472,84 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       });
       libId = created.id;
     }
+
     episodeMutation.mutate({
       libraryId: libId,
       userId: activeUserId,
       episodeId: ep.id,
       watched: !isWatched,
     });
+
+    // Supabase direct backend sync ensuring exact season boundary and progress table sync
+    if (supabase) {
+      try {
+        if (!isWatched) {
+          await (supabase.from('user_episode_progress') as any).upsert(
+            {
+              user_id: activeUserId,
+              library_id: libId,
+              episode_id: ep.id,
+              watched: true,
+              watched_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id,episode_id' }
+          );
+        } else {
+          await supabase
+            .from('user_episode_progress')
+            .delete()
+            .match({ user_id: activeUserId, library_id: libId, episode_id: ep.id });
+        }
+      } catch {
+        // silent fallback
+      }
+
+      try {
+        await (supabase.from('user_libraries') as any)
+          .update({
+            episodes_watched: updatedEpisodes,
+            status: targetStatus,
+            completed_at: targetStatus === 'completed' ? (existingEntry?.completed_at || new Date().toISOString()) : null,
+            last_progressed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .match({ user_id: activeUserId, id: libId });
+      } catch {
+        // silent fallback
+      }
+    }
   };
 
-  const handleEpisodeClick = (ep: { id: string; episode_number: number; name: string }) => {
+  const handleToggleEpisode = toggleEpisodeWatched;
+
+  const handleEpisodeClick = (ep: { id: string; episode_number: number; name: string; season_number?: number }) => {
     if (!ep || !title) return;
-    const isWatched = isEpisodeWatched(ep);
+    const activeSeason = title?.seasons?.[activeSeasonIndex];
+    const sNum = ep.season_number ?? activeSeason?.season_number ?? 1;
+    const isWatched = isEpisodeWatched(ep, sNum);
     if (isWatched) {
-      handleToggleEpisode(ep);
+      handleToggleEpisode(ep, sNum);
       return;
     }
 
     // Inspect active season to see if previous episodes are unmarked
-    const activeSeason = title?.seasons?.[activeSeasonIndex];
     const previousEpisodes = (activeSeason?.episodes || []).filter(
       (e) => e && e.episode_number < ep.episode_number
     );
 
     const unmarkedPrevious = previousEpisodes
-      .filter((e) => !isEpisodeWatched(e))
+      .filter((e) => !isEpisodeWatched(e, sNum))
       .map((e) => e.id);
 
     if (unmarkedPrevious.length > 0) {
       setCatchUpPrompt({
-        targetEp: ep,
+        targetEp: { ...ep, season_number: sNum },
         previousEpIds: unmarkedPrevious,
       });
       return;
     }
 
-    handleToggleEpisode(ep);
+    handleToggleEpisode(ep, sNum);
   };
 
   const handleConfirmCatchUp = async () => {
@@ -443,9 +558,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     setCatchUpPrompt(null);
 
     const currentWatched = Array.isArray(watchedEpisodesList) ? watchedEpisodesList : [];
-    const updatedEpisodes = [
-      ...new Set([...currentWatched, ...allToMark, `ep_${catchUpPrompt.targetEp.episode_number}`]),
-    ];
+    const updatedEpisodes = [...new Set([...currentWatched, ...allToMark])];
     setLocalEpisodes(updatedEpisodes);
 
     const totalCount = calculateTotalEpisodes(title);
@@ -483,13 +596,45 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       episodeIds: allToMark,
       watched: true,
     });
+
+    if (supabase) {
+      try {
+        const rows = allToMark.map((epId) => ({
+          user_id: activeUserId,
+          library_id: libId,
+          episode_id: epId,
+          watched: true,
+          watched_at: new Date().toISOString(),
+        }));
+        await (supabase.from('user_episode_progress') as any).upsert(
+          rows,
+          { onConflict: 'user_id,episode_id' }
+        );
+      } catch {
+        // silent fallback
+      }
+
+      try {
+        await (supabase.from('user_libraries') as any)
+          .update({
+            episodes_watched: updatedEpisodes,
+            status: targetStatus,
+            completed_at: targetStatus === 'completed' ? (existingEntry?.completed_at || new Date().toISOString()) : null,
+            last_progressed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .match({ user_id: activeUserId, id: libId });
+      } catch {
+        // silent fallback
+      }
+    }
   };
 
   const handleCancelCatchUp = () => {
     if (!catchUpPrompt?.targetEp) return;
     const targetEp = catchUpPrompt.targetEp;
     setCatchUpPrompt(null);
-    handleToggleEpisode(targetEp);
+    handleToggleEpisode(targetEp, targetEp.season_number);
   };
 
   const handleBatchMarkSeasonWatched = async () => {
@@ -537,6 +682,150 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       episodeIds: allEpIds,
       watched: true,
     });
+
+    if (supabase) {
+      try {
+        const rows = allEpIds.map((epId) => ({
+          user_id: activeUserId,
+          library_id: libId,
+          episode_id: epId,
+          watched: true,
+          watched_at: new Date().toISOString(),
+        }));
+        await (supabase.from('user_episode_progress') as any).upsert(
+          rows,
+          { onConflict: 'user_id,episode_id' }
+        );
+      } catch {
+        // silent fallback
+      }
+
+      try {
+        await (supabase.from('user_libraries') as any)
+          .update({
+            episodes_watched: updatedEpisodes,
+            status: targetStatus,
+            completed_at: targetStatus === 'completed' ? (existingEntry?.completed_at || new Date().toISOString()) : null,
+            last_progressed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .match({ user_id: activeUserId, id: libId });
+      } catch {
+        // silent fallback
+      }
+    }
+  };
+
+  const handleBatchUnmarkSeason = async () => {
+    if (!title) return;
+    const activeSeason = title?.seasons?.[activeSeasonIndex];
+    if (!activeSeason || !Array.isArray(activeSeason.episodes)) return;
+    const activeSeasonNum = activeSeason.season_number ?? (activeSeasonIndex + 1);
+
+    const hasMultipleSeasons = (title?.seasons?.length || 0) > 1;
+    let globalOffset = 0;
+    if (hasMultipleSeasons && Array.isArray(title?.seasons)) {
+      for (const s of title.seasons) {
+        const thisSNum = s.season_number ?? 1;
+        if (thisSNum < activeSeasonNum) {
+          globalOffset += (s.episode_count || s.episodes?.length || 0);
+        }
+      }
+    }
+
+    const currentWatched = Array.isArray(watchedEpisodesList) ? watchedEpisodesList : [];
+    const seasonEpIds = activeSeason.episodes.map((e) => e.id);
+
+    const isFromThisSeason = (id: string) => {
+      if (typeof id !== 'string') return false;
+      if (seasonEpIds.includes(id)) return true;
+
+      return activeSeason.episodes.some((e) => {
+        const globalEpNum = globalOffset + e.episode_number;
+        if (id === e.id) return true;
+        if (id === `ep_${globalEpNum}`) return true;
+        if (!hasMultipleSeasons && activeSeasonNum === 1 && id === `ep_${e.episode_number}`) return true;
+        if (new RegExp(`(^|[_.-])s(?:eason)?0*${activeSeasonNum}[_.-]?(?:ep?|e)0*${e.episode_number}$`, 'i').test(id)) return true;
+        if (new RegExp(`(^|[_.-])e0*${activeSeasonNum}[_.-]0*${e.episode_number}$`, 'i').test(id)) return true;
+        if (new RegExp(`[_.-]0*${activeSeasonNum}[_.-]0*${e.episode_number}$`).test(id)) return true;
+        return false;
+      });
+    };
+
+    let updatedEpisodes: string[];
+    if (currentStatus === 'completed' && currentWatched.length === 0) {
+      // If completed with empty watched array, expand all other seasons only
+      const otherSeasonsEpisodes = (title?.seasons || [])
+        .filter((s) => (s.season_number ?? 0) !== activeSeasonNum)
+        .flatMap((s) => (s.episodes || []).map((e) => e.id));
+      updatedEpisodes = otherSeasonsEpisodes;
+    } else {
+      updatedEpisodes = currentWatched.filter((id) => !isFromThisSeason(id));
+    }
+
+    setLocalEpisodes(updatedEpisodes);
+
+    const totalCount = calculateTotalEpisodes(title);
+    const newWatchedCount = calculateWatchedEpisodesCount(updatedEpisodes, title);
+    const targetStatus = inferWatchedTrackingStatus({
+      currentStatus,
+      watchedCount: newWatchedCount,
+      totalEpisodes: totalCount,
+    });
+
+    setLocalStatus(targetStatus);
+    if (existingEntry && existingEntry.status !== targetStatus) {
+      upsertMutation.mutate({
+        userId: activeUserId,
+        titleId: title.id,
+        status: targetStatus,
+        titleData: title,
+      });
+    }
+
+    let libId = existingEntry?.id;
+    if (!libId) {
+      const created = await upsertMutation.mutateAsync({
+        userId: activeUserId,
+        titleId: title.id,
+        status: targetStatus,
+        titleData: title,
+      });
+      libId = created.id;
+    }
+
+    batchEpisodeMutation.mutate({
+      libraryId: libId,
+      userId: activeUserId,
+      episodeIds: seasonEpIds,
+      watched: false,
+    });
+
+    if (supabase) {
+      try {
+        await supabase
+          .from('user_episode_progress')
+          .delete()
+          .match({ user_id: activeUserId, library_id: libId })
+          .in('episode_id', seasonEpIds);
+      } catch {
+        // silent fallback
+      }
+
+      try {
+        await (supabase.from('user_libraries') as any)
+          .update({
+            episodes_watched: updatedEpisodes,
+            status: targetStatus,
+            completed_at: targetStatus === 'completed' ? (existingEntry?.completed_at || new Date().toISOString()) : null,
+            last_progressed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .match({ user_id: activeUserId, id: libId });
+      } catch {
+        // silent fallback
+      }
+    }
   };
 
   const handleStepChapter = async (delta: number) => {
@@ -837,7 +1126,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                 Episodes & Season Tracker
               </h2>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               {totalEpCount ? (
                 <span className="text-xs font-mono text-text-muted">
                   {displayWatchedCount} / {totalEpCount} Watched
@@ -851,6 +1140,15 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
               >
                 <CheckCheck className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Mark Season Watched</span>
+              </button>
+              <button
+                onClick={handleBatchUnmarkSeason}
+                data-testid="unmark-season-btn"
+                aria-label="Unmark Season"
+                className="px-3 py-1 rounded-lg bg-surface-elevated hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/40 border border-surface-elevated text-xs font-semibold text-text-secondary transition-colors flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Unmark Season</span>
               </button>
             </div>
           </div>
@@ -902,15 +1200,37 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
               {/* Current Season Info Header */}
               {title.seasons[activeSeasonIndex] && (
-                <div className="flex items-center justify-between text-xs text-text-muted px-1">
-                  <span className="font-medium text-text-secondary">
-                    {title.seasons[activeSeasonIndex].name} — {title.seasons[activeSeasonIndex].episode_count || title.seasons[activeSeasonIndex].episodes?.length || 0} Episodes
-                  </span>
-                  {title.seasons[activeSeasonIndex].overview && (
-                    <span className="text-[11px] text-text-muted italic hidden md:inline truncate max-w-md">
-                      {title.seasons[activeSeasonIndex].overview}
+                <div className="flex flex-wrap items-center justify-between text-xs text-text-muted px-1 gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-semibold text-text-secondary">
+                      {title.seasons[activeSeasonIndex].name} — {title.seasons[activeSeasonIndex].episode_count || title.seasons[activeSeasonIndex].episodes?.length || 0} Episodes
                     </span>
-                  )}
+                    {title.seasons[activeSeasonIndex].overview && (
+                      <span className="text-[11px] text-text-muted italic hidden md:inline truncate max-w-sm">
+                        {title.seasons[activeSeasonIndex].overview}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={handleBatchMarkSeasonWatched}
+                      data-testid={`season-header-mark-${title.seasons[activeSeasonIndex].season_number}`}
+                      aria-label="Mark Season Watched"
+                      className="px-2.5 py-1 rounded-lg bg-surface-elevated hover:bg-accent hover:text-background border border-surface-elevated text-[11px] font-semibold text-text-secondary transition-colors flex items-center gap-1"
+                    >
+                      <CheckCheck className="w-3 h-3" />
+                      <span>Mark Season</span>
+                    </button>
+                    <button
+                      onClick={handleBatchUnmarkSeason}
+                      data-testid={`season-header-unmark-${title.seasons[activeSeasonIndex].season_number}`}
+                      aria-label="Unmark Season"
+                      className="px-2.5 py-1 rounded-lg bg-surface-elevated hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/40 border border-surface-elevated text-[11px] font-semibold text-text-secondary transition-colors flex items-center gap-1"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Unmark Season</span>
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -920,7 +1240,9 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                 className="max-h-96 overflow-y-auto pr-1.5 space-y-2 focus:outline-none"
               >
                 {(title.seasons[activeSeasonIndex]?.episodes || []).map((ep) => {
-                  const isWatched = isEpisodeWatched(ep);
+                  const activeSeason = title.seasons?.[activeSeasonIndex];
+                  const currentSeasonNum = activeSeason?.season_number ?? 1;
+                  const isWatched = isEpisodeWatched(ep, currentSeasonNum);
                   const countdown = getAirDateCountdown(ep.air_date);
                   const formattedAirDate = formatReleaseDate(ep.air_date);
                   const displayAirDate =
@@ -932,13 +1254,18 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                   return (
                     <div
                       key={ep.id}
-                      onClick={() => handleEpisodeClick(ep)}
+                      onClick={() => handleEpisodeClick({ ...ep, season_number: currentSeasonNum })}
                       data-testid={`episode-row-${ep.episode_number}`}
                       className="flex items-center justify-between p-3 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 transition-colors cursor-pointer border border-transparent hover:border-surface-elevated gap-3 group"
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <button
                           type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleEpisode({ ...ep, season_number: currentSeasonNum }, currentSeasonNum);
+                          }}
+                          aria-label={isWatched ? `Mark Episode ${ep.episode_number} Unwatched` : `Mark Episode ${ep.episode_number} Watched`}
                           className={`w-6 h-6 rounded-md border flex items-center justify-center transition-colors shrink-0 ${
                             isWatched
                               ? 'bg-accent border-accent text-background'
