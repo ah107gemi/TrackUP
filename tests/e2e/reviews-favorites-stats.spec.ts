@@ -120,14 +120,9 @@ test.describe('TrackUp Phase 4: Ratings, Reviews, Favorites & Dashboard Stats', 
 
     await expect(page.locator('[data-testid="dashboard-view"]')).toBeVisible();
 
-    // Verify Dashboard Analytics Stats reflect the rated/completed movie
+    // Verify Dashboard Analytics & Overview section is completely removed from the UI
     const statsSection = page.locator('[data-testid="dashboard-stats-section"]');
-    await expect(statsSection).toBeVisible();
-
-    const avgRatingStat = page.locator('[data-testid="stat-average-rating"]');
-    await expect(avgRatingStat).toContainText('4.5 ★');
-
-    const movieDistChip = page.locator('[data-testid="distribution-chip-movie"]');
-    await expect(movieDistChip).toContainText('1');
+    await expect(statsSection).not.toBeAttached();
+    await expect(page.locator('text=Analytics & Overview')).not.toBeAttached();
   });
 });

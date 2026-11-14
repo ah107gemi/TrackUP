@@ -10,7 +10,6 @@ import { SearchPage } from '../../features/catalog/SearchPage';
 import { TitleDetailPage } from '../../features/catalog/TitleDetailPage';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
 import { LibraryView } from '../../features/library/LibraryView';
-import { DashboardStats } from '../../features/dashboard/DashboardStats';
 import { HistoryTimeline } from '../../features/history/HistoryTimeline';
 import { ImportExportView } from '../../features/import-export/ImportExportView';
 import { FriendsPage } from '../../features/social/FriendsPage';
@@ -311,9 +310,6 @@ export const AppShell: React.FC = () => {
                     )}
                     </div>
                   </section>
-
-                  {/* Dashboard Statistics & Analytics Overview */}
-                  <DashboardStats userLibrary={userLibrary} />
                 </div>
               )}
 

@@ -23,6 +23,7 @@
     *   "Unmark Season" button implemented and deployed across season headers in `TitleDetailPage.tsx`.
     *   Public Profile Viewing fixed: `ProfilePage` dynamically resolves target user ID from URL parameters (`#/user/:param`, `#/profile/:param`, `?user=:id`, `?userId=:id`), fetching `user_libraries` data via `effectiveUserId` rather than `useAuth().user.id`. Includes full public library showcase with privacy filtering.
     *   More Navigation Panel cleaned: "Tracking History", "For You", and "Release Calendar" links completely removed from `MobileNavDrawer.tsx`.
+    *   Dashboard cleanup: Completely removed the "Analytics & Overview" section (`<DashboardStats />`) from the Home/Dashboard view in `AppShell.tsx` and updated e2e test suite assertions accordingly.
 *   **Current Active Task:**
     *   Verification, stability monitoring, and test maintenance.
 
