@@ -77,12 +77,12 @@ test.describe('TrackUp UI Quality Audit & Mobile Polish', () => {
     await expect(page.locator('[data-testid="discover-page"]')).toBeVisible();
 
     await hamburger.click();
-    await page.locator('[data-testid="mobile-nav-calendar"]').click();
-    await expect(page.locator('[data-testid="release-calendar-view"]')).toBeVisible();
+    await page.locator('[data-testid="mobile-nav-import"]').click();
+    await expect(page.locator('[data-testid="import-export-view"]')).toBeVisible();
 
     await hamburger.click();
-    await page.locator('[data-testid="mobile-nav-recommendations"]').click();
-    await expect(page.locator('[data-testid="recommendations-view"]')).toBeVisible();
+    await page.locator('[data-testid="mobile-nav-watch"]').click();
+    await expect(page.locator('[data-testid="watch-library-view"]')).toBeVisible();
 
     // Verify narrow phone (320x568) has no horizontal layout overflow
     await page.setViewportSize({ width: 320, height: 568 });

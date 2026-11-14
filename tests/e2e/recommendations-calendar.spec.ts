@@ -31,8 +31,7 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-recommendations"]').click();
     } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-recommendations"]').click();
+      await page.evaluate(() => { window.location.hash = '#/recommendations'; });
     }
 
     await expect(page.locator('[data-testid="recommendations-view"]')).toBeVisible();
@@ -59,8 +58,7 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-recommendations"]').click();
     } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-recommendations"]').click();
+      await page.evaluate(() => { window.location.hash = '#/recommendations'; });
     }
     await expect(page.locator('[data-testid="recommendations-view"]')).toBeVisible();
 
@@ -78,8 +76,7 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-calendar"]').click();
     } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-calendar"]').click();
+      await page.evaluate(() => { window.location.hash = '#/calendar'; });
     }
     await expect(page.locator('[data-testid="release-calendar-view"]')).toBeVisible();
 
@@ -113,8 +110,8 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
       await expect(page.locator('[data-testid="desktop-sidebar"]')).toBeHidden();
       await expect(page.locator('[data-testid="mobile-hamburger-trigger"]')).toBeVisible();
       await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await expect(page.locator('[data-testid="mobile-nav-calendar"]')).toBeVisible();
-      await expect(page.locator('[data-testid="mobile-nav-recommendations"]')).toBeVisible();
+      await expect(page.locator('[data-testid="mobile-nav-profile-link"]')).toBeVisible();
+      await expect(page.locator('[data-testid="mobile-nav-import"]')).toBeVisible();
     }
   });
 });

@@ -17,7 +17,6 @@ import { FriendsPage } from '../../features/social/FriendsPage';
 import { RecommendationsView } from '../../features/catalog/RecommendationsView';
 import { ReleaseCalendarView } from '../../features/calendar/ReleaseCalendarView';
 import { ProfilePage } from '../../features/profile/ProfilePage';
-import { PublicProfilePage } from '../../features/profile/PublicProfilePage';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../features/auth/AuthContext';
 import {
@@ -66,22 +65,57 @@ export const AppShell: React.FC = () => {
 
   const handleBackFromPublicProfile = () => {
     setViewingPublicUser(null);
-    if (typeof window !== 'undefined' && window.location.hash.includes('/user/')) {
-      window.location.hash = '#/social';
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash || '';
+      if (hash.includes('/user/') || hash.includes('/profile/') || hash.includes('user=') || hash.includes('userId=')) {
+        window.location.hash = '#/social';
+      }
     }
   };
 
-  // Route listener for #/user/:username and #/user/:userId
+  // Route listener for #/user/:param, #/profile/:param, ?user=:id, ?userId=:id
   React.useEffect(() => {
     const handleUrlChange = () => {
       if (typeof window === 'undefined') return;
       const hash = window.location.hash || '';
       const pathname = window.location.pathname || '';
+      const search = window.location.search || '';
       const target = hash.startsWith('#') ? hash.slice(1) : pathname;
-      const match = target.match(/\/user\/([^/?#]+)/i);
+
+      // 1. Search params from window.location.search (?user=..., ?userId=...)
+      const searchParams = new URLSearchParams(search);
+      const queryUser = searchParams.get('user') || searchParams.get('userId');
+
+      // 2. Hash query parameters (#/profile?user=...)
+      let hashQueryUser: string | null = null;
+      if (hash.includes('?')) {
+        const hashParams = new URLSearchParams(hash.slice(hash.indexOf('?')));
+        hashQueryUser = hashParams.get('user') || hashParams.get('userId');
+      }
+
+      // 3. Hash/Path route: /user/:param or /profile/:param
+      const routeClean = target.split('?')[0];
+      const match = routeClean.match(/\/(?:user|profile)\/([^/?#]+)/i);
+      let routeUser: string | null = null;
       if (match && match[1]) {
-        setViewingPublicUser(decodeURIComponent(match[1]));
-      } else if (viewingPublicUser && !target.includes('/user/')) {
+        const candidate = decodeURIComponent(match[1]);
+        if (!['favorites', 'settings', 'edit'].includes(candidate.toLowerCase())) {
+          routeUser = candidate;
+        }
+      }
+
+      const foundUser = queryUser || hashQueryUser || routeUser;
+      if (foundUser) {
+        setViewingPublicUser(foundUser);
+      } else if (
+        viewingPublicUser &&
+        !target.includes('/user/') &&
+        !target.includes('/profile/') &&
+        !search.includes('user=') &&
+        !search.includes('userId=') &&
+        !hash.includes('user=') &&
+        !hash.includes('userId=')
+      ) {
         setViewingPublicUser(null);
       }
     };
@@ -139,7 +173,7 @@ export const AppShell: React.FC = () => {
               fallbackTitle="Error loading profile data"
               onReset={handleBackFromPublicProfile}
             >
-              <PublicProfilePage
+              <ProfilePage
                 userParam={viewingPublicUser}
                 onBack={handleBackFromPublicProfile}
                 onSelectTitle={handleSelectTitle}

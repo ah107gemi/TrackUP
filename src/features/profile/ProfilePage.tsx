@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
   User,
   Camera,
@@ -17,6 +17,12 @@ import {
   ChevronRight,
   Upload,
   Image as ImageIcon,
+  Star,
+  Search,
+  ArrowLeft,
+  UserPlus,
+  UserCheck,
+  UserMinus,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useUIStore } from '../../stores/uiStore';
@@ -34,18 +40,78 @@ import {
 } from '../favorites/favoritesService';
 import { CategoryFavoritesView } from '../favorites/CategoryFavoritesView';
 import { formatWatchTime } from '../../lib/dateUtils';
+import { resolvePosterUrl } from '../../lib/imageUtils';
 import { supabase } from '../../lib/supabase';
 import { clearUserLibrary } from '../library/libraryService';
 import { ChangePasswordModal } from '../auth/ChangePasswordModal';
-import { getStoredFollows, MOCK_COMMUNITY_PROFILES } from '../social/socialService';
+import {
+  getStoredFollows,
+  followUser,
+  unfollowUser,
+  MOCK_COMMUNITY_PROFILES,
+} from '../social/socialService';
+import type { SocialProfile } from '../social/types';
+import type { TrackingStatus } from '../../types/database.types';
 
-interface ProfilePageProps {
+export interface ProfilePageProps {
+  userId?: string;
+  userParam?: string;
   onSelectTitle?: (titleId: string) => void;
+  onBack?: () => void;
 }
 
-export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
+/**
+ * Extracts visited user identifier from URL parameters:
+ *  - Query parameters: ?user=:id or ?userId=:id (from window.location.search or hash query)
+ *  - Route patterns: #/user/:param or #/profile/:param or /user/:param or /profile/:param
+ */
+function extractUserFromUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+
+  // 1. Search params from window.location.search (?user=..., ?userId=...)
+  const searchParams = new URLSearchParams(window.location.search);
+  const queryUser = searchParams.get('user') || searchParams.get('userId');
+  if (queryUser) return queryUser.trim();
+
+  // 2. Hash query parameters (#/profile?user=..., #/user?user=...)
+  const hash = window.location.hash || '';
+  if (hash.includes('?')) {
+    const hashParams = new URLSearchParams(hash.slice(hash.indexOf('?')));
+    const hashUser = hashParams.get('user') || hashParams.get('userId');
+    if (hashUser) return hashUser.trim();
+  }
+
+  // 3. Hash route segment: #/user/:param or #/profile/:param
+  const hashClean = hash.startsWith('#') ? hash.slice(1).split('?')[0] : hash.split('?')[0];
+  const userMatch = hashClean.match(/^\/(?:user|profile)\/([^/?#]+)/i);
+  if (userMatch && userMatch[1]) {
+    const seg = decodeURIComponent(userMatch[1]).trim();
+    if (!['favorites', 'settings', 'edit'].includes(seg.toLowerCase())) {
+      return seg;
+    }
+  }
+
+  // 4. Pathname route segment: /user/:param or /profile/:param
+  const pathname = window.location.pathname || '';
+  const pathMatch = pathname.match(/^\/(?:user|profile)\/([^/?#]+)/i);
+  if (pathMatch && pathMatch[1]) {
+    const seg = decodeURIComponent(pathMatch[1]).trim();
+    if (!['favorites', 'settings', 'edit'].includes(seg.toLowerCase())) {
+      return seg;
+    }
+  }
+
+  return null;
+}
+
+export const ProfilePage: React.FC<ProfilePageProps> = ({
+  userId: propUserId,
+  userParam: propUserParam,
+  onSelectTitle,
+  onBack,
+}) => {
   const { user, profile, updateProfile, signOut } = useAuth();
-  const { setProfileModalOpen } = useUIStore();
+  const { setProfileModalOpen, setAuthModalOpen } = useUIStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -64,6 +130,175 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   const [bannerUploading, setBannerUploading] = useState(false);
   const [bannerUploadError, setBannerUploadError] = useState<string | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement>(null);
+
+  // URL route & parameter tracking
+  const [urlUserParam, setUrlUserParam] = useState<string | null>(() => extractUserFromUrl());
+
+  useEffect(() => {
+    const handleUrlChange = () => {
+      setUrlUserParam(extractUserFromUrl());
+    };
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
+  }, []);
+
+  const rawTargetParam = propUserParam || propUserId || urlUserParam;
+  const cleanTargetParam = rawTargetParam ? rawTargetParam.trim().replace(/^@/, '') : null;
+
+  // Determine if viewing own profile
+  const isOwnProfile = useMemo(() => {
+    if (!cleanTargetParam) return true;
+    if (!user) return false;
+    const targetLower = cleanTargetParam.toLowerCase();
+    if (user.id.toLowerCase() === targetLower) return true;
+    if (user.username && user.username.toLowerCase() === targetLower) return true;
+    if (profile?.username && profile.username.toLowerCase() === targetLower) return true;
+    return false;
+  }, [cleanTargetParam, user, profile?.username]);
+
+  // Visited profile state
+  const [visitedProfile, setVisitedProfile] = useState<SocialProfile | null>(null);
+  const [isResolvingProfile, setIsResolvingProfile] = useState<boolean>(!isOwnProfile);
+  const [profileNotFound, setProfileNotFound] = useState<boolean>(false);
+
+  // Resolve visited public user profile
+  useEffect(() => {
+    if (isOwnProfile) {
+      setVisitedProfile(null);
+      setIsResolvingProfile(false);
+      setProfileNotFound(false);
+      return;
+    }
+
+    if (!cleanTargetParam) {
+      setIsResolvingProfile(false);
+      return;
+    }
+
+    let active = true;
+    setIsResolvingProfile(true);
+    setProfileNotFound(false);
+
+    const resolveProfile = async () => {
+      let resolved: SocialProfile | null = null;
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanTargetParam);
+
+      // 1. Supabase live profile query
+      try {
+        const isLocalSupabase =
+          !import.meta.env.VITE_SUPABASE_URL ||
+          import.meta.env.VITE_SUPABASE_URL.includes('127.0.0.1') ||
+          import.meta.env.VITE_SUPABASE_URL.includes('localhost');
+        const timeoutMs = isLocalSupabase ? 400 : 3000;
+
+        let q = supabase
+          .from('profiles')
+          .select('id, username, display_name, full_name, avatar_url, banner_url, bio, library_visibility, activity_visibility, created_at');
+
+        if (isUuid) {
+          q = q.or(`id.eq.${cleanTargetParam},username.ilike.${cleanTargetParam}`);
+        } else {
+          q = q.ilike('username', cleanTargetParam);
+        }
+
+        const res: any = await Promise.race([
+          q.maybeSingle(),
+          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Timeout')), timeoutMs)),
+        ]);
+
+        if (!res?.error && res?.data) {
+          const p = res.data;
+          resolved = {
+            id: p.id,
+            username: p.username || cleanTargetParam,
+            display_name: p.display_name || p.full_name || p.username || cleanTargetParam,
+            avatar_url: p.avatar_url || null,
+            banner_url: p.banner_url || null,
+            bio: p.bio || null,
+            library_visibility: p.library_visibility || 'public',
+            activity_visibility: p.activity_visibility || 'public',
+            follower_count: 0,
+            following_count: 0,
+          };
+        }
+      } catch {
+        // Fallback to local fixtures
+      }
+
+      // 2. Curated mock community profiles
+      if (!resolved) {
+        const mockMatch = MOCK_COMMUNITY_PROFILES.find(
+          (p) =>
+            p.username.toLowerCase() === cleanTargetParam.toLowerCase() ||
+            p.id.toLowerCase() === cleanTargetParam.toLowerCase()
+        );
+        if (mockMatch) {
+          resolved = { ...mockMatch };
+        }
+      }
+
+      // 3. Dynamically registered browser profiles from localStorage
+      if (!resolved) {
+        try {
+          const dynamicProfiles: Record<string, any> = JSON.parse(
+            localStorage.getItem('trackup_mock_profiles') || '{}'
+          );
+          const found = Object.values(dynamicProfiles).find(
+            (p: any) =>
+              p.username?.toLowerCase() === cleanTargetParam.toLowerCase() ||
+              p.id?.toLowerCase() === cleanTargetParam.toLowerCase()
+          );
+          if (found) {
+            resolved = {
+              id: found.id,
+              username: found.username,
+              display_name: found.display_name || found.full_name || found.username,
+              avatar_url: found.avatar_url || null,
+              banner_url: found.banner_url || null,
+              bio: found.bio || null,
+              library_visibility: found.library_visibility || 'public',
+              activity_visibility: found.activity_visibility || 'public',
+              follower_count: 0,
+              following_count: 0,
+            };
+          }
+        } catch {}
+      }
+
+      if (!active) return;
+
+      if (resolved) {
+        setVisitedProfile(resolved);
+        setProfileNotFound(false);
+      } else {
+        setProfileNotFound(true);
+      }
+      setIsResolvingProfile(false);
+    };
+
+    resolveProfile();
+
+    return () => {
+      active = false;
+    };
+  }, [cleanTargetParam, isOwnProfile]);
+
+  // Target User identity resolution: Uses visited user's ID for public viewing!
+  const effectiveUserId = isOwnProfile
+    ? user?.id
+    : (visitedProfile?.id || (cleanTargetParam && /^[0-9a-f-]{36}$/i.test(cleanTargetParam) ? cleanTargetParam : undefined));
+  const effectiveProfile = isOwnProfile ? profile : visitedProfile;
+  const effectiveDisplayName = isOwnProfile
+    ? (profile?.display_name || user?.username || 'Tracker')
+    : (visitedProfile?.display_name || visitedProfile?.username || cleanTargetParam || 'Tracker');
+  const effectiveUsername = isOwnProfile
+    ? (user?.username || profile?.username || '')
+    : (visitedProfile?.username || cleanTargetParam || '');
+  const effectiveBio = isOwnProfile ? profile?.bio : visitedProfile?.bio;
 
   // Cached banner retrieval for resilient hydration on mobile browsers / hard-refreshes
   const getCachedBanner = (): string | null => {
@@ -93,6 +328,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   });
 
   useEffect(() => {
+    if (!isOwnProfile) return;
     if (profile?.banner_url) {
       setActiveBannerUrl(profile.banner_url);
       try {
@@ -113,11 +349,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
         setActiveBannerUrl(cached);
       }
     }
-  }, [profile?.banner_url, profile, user?.id]);
+  }, [profile?.banner_url, profile, user?.id, isOwnProfile]);
 
-  const effectiveBanner = activeBannerUrl || profile?.banner_url || getCachedBanner();
+  const effectiveBanner = isOwnProfile
+    ? (activeBannerUrl || profile?.banner_url || getCachedBanner())
+    : (visitedProfile?.banner_url || null);
 
-  // Cached avatar retrieval for resilient hydration on mobile browsers / hard-refreshes
+  // Cached avatar retrieval for resilient hydration
   const getCachedAvatar = (): string | null => {
     try {
       if (typeof window === 'undefined') return null;
@@ -144,7 +382,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
     return profile?.avatar_url || getCachedAvatar();
   });
 
-  // Defensive avatar state setter that explicitly rejects null/undefined updates if a valid URL is already painted on screen
   const setSafeAvatarUrl = (nextUrl: string | null | ((prev: string | null) => string | null)) => {
     setActiveAvatarUrl((prev) => {
       const resolved = typeof nextUrl === 'function' ? nextUrl(prev) : nextUrl;
@@ -156,6 +393,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   };
 
   useEffect(() => {
+    if (!isOwnProfile) return;
     if (profile?.avatar_url) {
       setSafeAvatarUrl(profile.avatar_url);
       try {
@@ -167,7 +405,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
       const cached = getCachedAvatar();
       if (cached) {
         setSafeAvatarUrl(cached);
-        // Silent background DB healing if incoming profile has null avatar but valid local cache exists
         if (user?.id && profile && !profile.avatar_url) {
           (async () => {
             try {
@@ -183,26 +420,35 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
         }
       }
     }
-  }, [profile?.avatar_url, profile, user?.id]);
+  }, [profile?.avatar_url, profile, user?.id, isOwnProfile]);
 
-  const effectiveAvatar = activeAvatarUrl || profile?.avatar_url || getCachedAvatar();
+  const effectiveAvatar = isOwnProfile
+    ? (activeAvatarUrl || profile?.avatar_url || getCachedAvatar())
+    : (visitedProfile?.avatar_url || null);
 
   // Social metrics state (Followers & Following counts)
   const [socialStats, setSocialStats] = useState<{ followers: number; following: number }>({
     followers: 0,
     following: 0,
   });
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [isHoveringFollow, setIsHoveringFollow] = useState(false);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!effectiveUserId) return;
+    const currentUserId = user?.id || 'guest_user';
     const loadSocial = async () => {
       try {
         const follows = getStoredFollows();
-        let followers = follows.filter((f) => f.following_id === user.id).length;
-        let following = follows.filter((f) => f.follower_id === user.id).length;
+        let followers = follows.filter((f) => f.following_id === effectiveUserId).length;
+        let following = follows.filter((f) => f.follower_id === effectiveUserId).length;
+        const amFollowing = follows.some(
+          (f) => f.follower_id === currentUserId && f.following_id === effectiveUserId
+        );
+        setIsFollowing(amFollowing);
 
         const mockP = MOCK_COMMUNITY_PROFILES.find(
-          (p) => p.id === user.id || p.username.toLowerCase() === user.username.toLowerCase()
+          (p) => p.id === effectiveUserId || p.username.toLowerCase() === effectiveUsername.toLowerCase()
         );
         if (mockP) {
           followers = Math.max(followers, mockP.follower_count || 0);
@@ -211,8 +457,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
 
         try {
           const [fRes, gRes] = await Promise.all([
-            supabase.from('user_follows').select('id', { count: 'exact', head: true }).eq('following_id', user.id),
-            supabase.from('user_follows').select('id', { count: 'exact', head: true }).eq('follower_id', user.id),
+            supabase.from('user_follows').select('id', { count: 'exact', head: true }).eq('following_id', effectiveUserId),
+            supabase.from('user_follows').select('id', { count: 'exact', head: true }).eq('follower_id', effectiveUserId),
           ]);
           if (fRes.count !== null && fRes.count !== undefined) followers = Math.max(followers, fRes.count);
           if (gRes.count !== null && gRes.count !== undefined) following = Math.max(following, gRes.count);
@@ -222,7 +468,28 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
       } catch {}
     };
     loadSocial();
-  }, [user?.id, user?.username]);
+  }, [effectiveUserId, effectiveUsername, user?.id]);
+
+  const handleToggleFollow = async () => {
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
+    if (!effectiveUserId) return;
+    try {
+      if (isFollowing) {
+        await unfollowUser(user.id, effectiveUserId);
+        setIsFollowing(false);
+        setSocialStats((prev) => ({ ...prev, followers: Math.max(0, prev.followers - 1) }));
+      } else {
+        await followUser(user.id, effectiveUserId);
+        setIsFollowing(true);
+        setSocialStats((prev) => ({ ...prev, followers: prev.followers + 1 }));
+      }
+    } catch (err) {
+      console.error('Follow toggle error:', err);
+    }
+  };
 
   // Dedicated Library Selector & Image Cropper state
   const [isLibrarySelectorOpen, setIsLibrarySelectorOpen] = useState(false);
@@ -243,10 +510,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
 
   useEffect(() => {
-    if (user?.id) {
-      fetchUserFavorites(user.id).then(setFavorites);
+    if (effectiveUserId) {
+      fetchUserFavorites(effectiveUserId).then(setFavorites);
     }
-  }, [user?.id]);
+  }, [effectiveUserId]);
 
   useEffect(() => {
     const parseUrlCategory = () => {
@@ -278,19 +545,122 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   const handleBackFromFavorites = () => {
     setSelectedFavoriteCategory(null);
     window.history.pushState({}, '', '#/profile');
-    if (user?.id) {
-      fetchUserFavorites(user.id).then(setFavorites);
+    if (effectiveUserId) {
+      fetchUserFavorites(effectiveUserId).then(setFavorites);
     }
   };
 
-  const { data: library = [] } = useUserLibrary(user?.id);
+  // FETCH USER LIBRARY: Fetches user_libraries data using the VISITED user's ID, NOT useAuth().user.id!
+  const { data: rawLibrary = [] } = useUserLibrary(effectiveUserId);
 
-  if (!user) return null;
+  // Filter out private items when viewing someone else's profile
+  const library = useMemo(() => {
+    if (isOwnProfile) return rawLibrary;
+    return rawLibrary.filter((item) => !item.is_private);
+  }, [isOwnProfile, rawLibrary]);
 
-  if (selectedFavoriteCategory) {
+  // Filter state for the Watched Shows & Movies showcase section
+  const [libraryCategory, setLibraryCategory] = useState<'all' | 'watch' | 'read'>('all');
+  const [libraryStatus, setLibraryStatus] = useState<TrackingStatus | 'all'>('all');
+  const [librarySearchQuery, setLibrarySearchQuery] = useState('');
+
+  // Category segregation
+  const tvSeriesItems = library.filter((i) => i.title.media_type === 'tv');
+  const movieItems = library.filter((i) => i.title.media_type === 'movie');
+  const animeItems = library.filter(
+    (i) => i.title.media_type === 'anime_series' || i.title.media_type === 'anime_film'
+  );
+  const readingItems = library.filter(
+    (i) => i.title.media_type === 'manga' || i.title.media_type === 'manhwa'
+  );
+
+  // Filtered titles for the public library showcase
+  const filteredLibrary = useMemo(() => {
+    return library.filter((item) => {
+      if (!item || !item.title) return false;
+      const type = item.title.media_type;
+
+      if (libraryCategory === 'watch') {
+        if (!['tv', 'movie', 'anime_series', 'anime_film'].includes(type)) return false;
+      } else if (libraryCategory === 'read') {
+        if (!['manga', 'manhwa'].includes(type)) return false;
+      }
+
+      if (libraryStatus !== 'all' && item.status !== libraryStatus) return false;
+
+      if (librarySearchQuery.trim()) {
+        const q = librarySearchQuery.toLowerCase().trim();
+        const matchTitle = item.title.title?.toLowerCase().includes(q);
+        const matchGenre = item.title.genres?.some((g) => g.toLowerCase().includes(q));
+        if (!matchTitle && !matchGenre) return false;
+      }
+
+      return true;
+    });
+  }, [library, libraryCategory, libraryStatus, librarySearchQuery]);
+
+  // Loading state when resolving public profile
+  if (!isOwnProfile && isResolvingProfile) {
+    return (
+      <div data-testid="public-profile-loading" className="max-w-6xl mx-auto space-y-8 animate-pulse p-4">
+        <div className="w-full h-56 rounded-3xl bg-surface-elevated/40" />
+        <div className="space-y-4 px-4">
+          <div className="w-32 h-32 rounded-full bg-surface-elevated -mt-16 border-4 border-background" />
+          <div className="w-48 h-6 rounded bg-surface-elevated" />
+          <div className="w-32 h-4 rounded bg-surface-elevated" />
+        </div>
+      </div>
+    );
+  }
+
+  // Not found state when visited profile doesn't exist
+  if (!isOwnProfile && profileNotFound) {
+    return (
+      <div data-testid="public-profile-not-found" className="max-w-2xl mx-auto text-center py-16 space-y-4">
+        <div className="w-16 h-16 rounded-3xl bg-surface-elevated border border-surface-elevated flex items-center justify-center mx-auto text-accent">
+          <User className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-text-primary">User Profile Not Found</h2>
+        <p className="text-xs text-text-secondary max-w-sm mx-auto">
+          The user &quot;{cleanTargetParam}&quot; could not be located in the community directory.
+        </p>
+        <button
+          onClick={onBack || (() => { window.location.hash = '#/social'; })}
+          data-testid="public-profile-back-btn"
+          className="px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs transition-all shadow inline-flex items-center gap-1.5 cursor-pointer"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Return to Friends & Social</span>
+        </button>
+      </div>
+    );
+  }
+
+  // Unauthenticated fallback when viewing own profile without an active session
+  if (isOwnProfile && !user) {
+    return (
+      <div data-testid="profile-page" className="max-w-4xl mx-auto py-20 text-center space-y-4">
+        <div className="w-16 h-16 rounded-3xl bg-surface-elevated border border-surface-elevated flex items-center justify-center mx-auto text-accent">
+          <User className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-text-primary">Sign In Required</h2>
+        <p className="text-xs text-text-secondary max-w-sm mx-auto">
+          Please sign in to view your profile, manage your tracking showcase, and update your personal settings.
+        </p>
+        <button
+          onClick={() => setAuthModalOpen(true)}
+          className="px-5 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs transition-all shadow-md inline-flex items-center gap-2 cursor-pointer"
+        >
+          <span>Sign In to TrackUp</span>
+        </button>
+      </div>
+    );
+  }
+
+  if (selectedFavoriteCategory && effectiveUserId) {
     return (
       <CategoryFavoritesView
-        userId={user.id}
+        userId={effectiveUserId}
         category={selectedFavoriteCategory}
         onBack={handleBackFromFavorites}
         onSelectTitle={onSelectTitle}
@@ -299,6 +669,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   }
 
   const handleDeleteAccount = async () => {
+    if (!user) return;
     const confirmed = window.confirm(
       'Are you sure you want to permanently delete your account? All your tracked data, reviews, and library will be erased. This action cannot be undone.'
     );
@@ -328,15 +699,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   };
 
   const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!user) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Reset input value so user can re-select the same file if needed
     e.target.value = '';
-
     setUploadError(null);
 
-    // Enforce 10MB limit
     if (file.size > 10 * 1024 * 1024) {
       setUploadError('Avatar file size must be under 10MB');
       return;
@@ -349,6 +718,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   };
 
   const handleConfirmAvatarCrop = async (croppedFile: File) => {
+    if (!user) return;
     setUploading(true);
     setUploadError(null);
 
@@ -382,6 +752,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   };
 
   const handleOpenEditProfile = () => {
+    if (!user) return;
     setEditName(profile?.display_name || profile?.full_name || user.username || '');
     setEditUsername(profile?.username || user.username || '');
     setEditBannerUrl(effectiveBanner || null);
@@ -392,15 +763,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   };
 
   const handleBannerFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!user) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Reset input value so user can re-select the same file if needed
     e.target.value = '';
-
     setBannerUploadError(null);
 
-    // Enforce 10MB limit
     if (file.size > 10 * 1024 * 1024) {
       setBannerUploadError('Banner file size must be under 10MB');
       return;
@@ -430,7 +799,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
       return;
     }
 
-    // Static image / GIF: open interactive cropper modal
     const objectUrl = URL.createObjectURL(file);
     setCropperImageSrc(objectUrl);
     setPendingCropFile(file);
@@ -438,6 +806,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   };
 
   const handleConfirmCrop = async (croppedFile: File) => {
+    if (!user) return;
     setBannerUploading(true);
     setBannerUploadError(null);
 
@@ -473,6 +842,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   };
 
   const handleSelectBackdropUrl = async (url: string) => {
+    if (!user) return;
     setEditBannerUrl(url);
     setActiveBannerUrl(url);
     try {
@@ -482,6 +852,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
   };
 
   const handleRemoveBanner = async () => {
+    if (!user) return;
     setEditBannerUrl(null);
     setActiveBannerUrl(null);
     try {
@@ -492,6 +863,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
     setEditError(null);
 
     const cleanName = editName.trim();
@@ -548,16 +920,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
     }
   };
 
-  // Category segregation
-  const tvSeriesItems = library.filter((i) => i.title.media_type === 'tv');
-  const movieItems = library.filter((i) => i.title.media_type === 'movie');
-  const animeItems = library.filter(
-    (i) => i.title.media_type === 'anime_series' || i.title.media_type === 'anime_film'
-  );
-  const readingItems = library.filter(
-    (i) => i.title.media_type === 'manga' || i.title.media_type === 'manhwa'
-  );
-
   // 1. TV Series Metrics
   const tvCompletedCount = tvSeriesItems.filter((i) => i.status === 'completed').length;
   const tvActiveCount = tvSeriesItems.filter((i) => i.status === 'active').length;
@@ -588,7 +950,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
     return sum;
   }, 0);
 
-  // 3. Anime Metrics (Anime Series & Anime Films)
+  // 3. Anime Metrics
   const animeCompletedCount = animeItems.filter((i) => i.status === 'completed').length;
   const animeActiveCount = animeItems.filter((i) => i.status === 'active').length;
   const animeEpisodesWatched = animeItems.reduce((sum, item) => {
@@ -621,21 +983,22 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
     (sum, item) => sum + (item.last_chapter_read || 0),
     0
   );
-  // Average reading time ~6 minutes per chapter
   const readingTimeMinutes = Math.round(totalChaptersRead * 6);
 
-  // Total aggregate metrics for hero header
+  // Aggregate metrics
   const totalEpisodesWatched = tvEpisodesWatched + animeEpisodesWatched;
   const combinedWatchTimeMinutes = tvWatchTimeMinutes + animeWatchTimeMinutes;
 
+  const isPrivateLibrary = !isOwnProfile && effectiveProfile?.library_visibility === 'private';
+
   return (
     <div data-testid="profile-page" className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-200">
-      {/* Profile Hero Header - Pro Max Left-Aligned Aesthetic */}
+      {/* Profile Hero Header */}
       <div
         data-testid="profile-hero-header"
         className="relative rounded-3xl overflow-hidden bg-surface border border-surface-elevated shadow-xl"
       >
-        {/* 1. Distinct Full-Width Top Banner Block (Crisp image/video without heavy dark gradient) */}
+        {/* Full-Width Top Banner Block */}
         <div className="relative w-full h-48 sm:h-56 md:h-64 overflow-hidden bg-surface-elevated/40">
           {effectiveBanner ? (
             isVideoBanner(effectiveBanner) ? (
@@ -669,11 +1032,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
           )}
         </div>
 
-        {/* 2. Hero Content Section with Overlapping Avatar */}
+        {/* Hero Content Section with Overlapping Avatar */}
         <div className="px-4 sm:px-8 pb-6 sm:pb-8">
-          {/* Avatar and Action Controls Row */}
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-12 sm:-mt-16 mb-4">
-            {/* Left-Aligned Overlapping Circular Avatar */}
+            {/* Circular Avatar */}
             <div className="relative group shrink-0 ml-1 sm:ml-0">
               <div
                 data-testid="profile-avatar-container"
@@ -682,80 +1044,137 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                 {effectiveAvatar ? (
                   <img
                     src={effectiveAvatar}
-                    alt={profile?.display_name || user.username}
+                    alt={effectiveDisplayName}
                     className="w-full h-full object-cover"
                   />
                 ) : (
                   <User className="w-12 h-12 sm:w-16 sm:h-16 text-accent" />
                 )}
 
-                {/* Hover upload overlay */}
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  data-testid="avatar-upload-trigger"
-                  aria-label="Upload profile picture"
-                  className="absolute inset-0 bg-background/70 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-accent font-semibold text-xs gap-1 cursor-pointer rounded-full"
-                >
-                  <Camera className="w-5 h-5 sm:w-6 sm:h-6" />
-                  <span className="text-[10px] sm:text-xs">{uploading ? 'Uploading...' : 'Change Photo'}</span>
-                </button>
+                {/* Owner-only hover upload overlay */}
+                {isOwnProfile && user && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    data-testid="avatar-upload-trigger"
+                    aria-label="Upload profile picture"
+                    className="absolute inset-0 bg-background/70 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-accent font-semibold text-xs gap-1 cursor-pointer rounded-full"
+                  >
+                    <Camera className="w-5 h-5 sm:w-6 sm:h-6" />
+                    <span className="text-[10px] sm:text-xs">{uploading ? 'Uploading...' : 'Change Photo'}</span>
+                  </button>
+                )}
               </div>
 
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                data-testid="avatar-file-input"
-                className="hidden"
-                onChange={handleAvatarFileChange}
-              />
+              {isOwnProfile && user && (
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  data-testid="avatar-file-input"
+                  className="hidden"
+                  onChange={handleAvatarFileChange}
+                />
+              )}
             </div>
 
-            {/* Top-Right Action Buttons */}
+            {/* Action Buttons: Owner actions OR Public follow/back actions */}
             <div className="flex flex-wrap items-center gap-2 self-start sm:self-end">
-              <button
-                type="button"
-                onClick={handleOpenEditProfile}
-                data-testid="edit-profile-btn"
-                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs transition-all shadow-md cursor-pointer"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>Edit Profile</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsChangePasswordOpen(true)}
-                data-testid="change-password-btn"
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-xs font-semibold text-text-secondary hover:text-text-primary transition-all shadow-sm cursor-pointer"
-                title="Change Password"
-              >
-                <Lock className="w-3.5 h-3.5 text-accent" />
-                <span>Change Password</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setProfileModalOpen(true)}
-                data-testid="open-settings-btn"
-                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-xs font-semibold text-text-secondary hover:text-text-primary transition-all shadow-sm cursor-pointer"
-                title="Preferences & Settings"
-              >
-                <span>Settings</span>
-              </button>
+              {isOwnProfile && user ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleOpenEditProfile}
+                    data-testid="edit-profile-btn"
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs transition-all shadow-md cursor-pointer"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Edit Profile</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsChangePasswordOpen(true)}
+                    data-testid="change-password-btn"
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-xs font-semibold text-text-secondary hover:text-text-primary transition-all shadow-sm cursor-pointer"
+                    title="Change Password"
+                  >
+                    <Lock className="w-3.5 h-3.5 text-accent" />
+                    <span>Change Password</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProfileModalOpen(true)}
+                    data-testid="open-settings-btn"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-xs font-semibold text-text-secondary hover:text-text-primary transition-all shadow-sm cursor-pointer"
+                    title="Preferences & Settings"
+                  >
+                    <span>Settings</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  {onBack && (
+                    <button
+                      type="button"
+                      onClick={onBack}
+                      data-testid="public-profile-back-btn"
+                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated text-xs font-semibold text-text-secondary hover:text-text-primary transition-all cursor-pointer shadow-sm"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Back</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleToggleFollow}
+                    onMouseEnter={() => setIsHoveringFollow(true)}
+                    onMouseLeave={() => setIsHoveringFollow(false)}
+                    data-testid="follow-toggle-btn"
+                    className={`inline-flex items-center justify-center gap-2 px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer ${
+                      isFollowing
+                        ? isHoveringFollow
+                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                          : 'bg-surface-elevated text-text-primary border border-surface-elevated'
+                        : 'bg-accent hover:bg-accent-hover text-background font-bold'
+                    }`}
+                  >
+                    {isFollowing ? (
+                      isHoveringFollow ? (
+                        <>
+                          <UserMinus className="w-3.5 h-3.5" />
+                          <span>Unfollow</span>
+                        </>
+                      ) : (
+                        <>
+                          <UserCheck className="w-3.5 h-3.5 text-accent" />
+                          <span>Following</span>
+                        </>
+                      )
+                    ) : (
+                      <>
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>Follow</span>
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
-          {/* 3. User Details: Left-aligned Display Name and @username */}
+          {/* User Details */}
           <div className="text-left space-y-1">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight">
-              {profile?.display_name || user.username}
+              {effectiveDisplayName}
             </h1>
-            <p className="text-sm font-mono text-accent">@{user.username}</p>
+            {effectiveUsername && (
+              <p className="text-sm font-mono text-accent">@{effectiveUsername}</p>
+            )}
 
-            {profile?.bio && (
+            {effectiveBio && (
               <p className="text-sm text-text-secondary mt-2 max-w-2xl leading-relaxed">
-                {profile.bio}
+                {effectiveBio}
               </p>
             )}
 
@@ -764,7 +1183,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
             )}
           </div>
 
-          {/* 4. Social Metrics: Followers & Following in a clean, left-aligned horizontal row */}
+          {/* Social Metrics */}
           <div className="flex flex-wrap items-center gap-5 sm:gap-6 mt-4 text-sm">
             <div className="flex items-center gap-1.5" data-testid="profile-followers-count">
               <span className="font-extrabold text-text-primary">{socialStats.followers}</span>
@@ -780,7 +1199,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
             </div>
           </div>
 
-          {/* 5. Premium Stat Cards: Watch Time, Episodes, Library, Chapters */}
+          {/* Stat Cards: Watch Time, Episodes, Library, Chapters */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-6 pt-6 border-t border-surface-elevated/70">
             {/* Watch Time Card */}
             <div className="p-4 rounded-2xl bg-surface-elevated/40 border border-surface-elevated/80 hover:border-accent/30 transition-all shadow-sm">
@@ -815,7 +1234,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
               <p className="text-lg sm:text-xl font-extrabold text-text-primary font-mono">
                 {library.length.toLocaleString()}
               </p>
-              <p className="text-[10px] text-text-muted mt-0.5">Tracked titles</p>
+              <p className="text-[10px] text-text-muted mt-0.5">{isOwnProfile ? 'Tracked titles' : 'Public titles'}</p>
             </div>
 
             {/* Chapters Read Card */}
@@ -833,7 +1252,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
         </div>
       </div>
 
-      {/* TV Time-Style Tracking Sections Groundwork */}
+      {/* Tracking Overview & Showcases */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -841,7 +1260,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
               Tracking Overview & Showcases
             </h2>
             <p className="text-xs text-text-secondary mt-0.5">
-              Personalized breakdown for Series, Movies, Anime, and Manga/Manhwa.
+              Breakdown for Series, Movies, Anime, and Manga/Manhwa.
             </p>
           </div>
         </div>
@@ -862,7 +1281,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
               </span>
             </div>
 
-            {/* Watch Time Badge */}
             <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-surface-elevated/80 border border-surface-elevated">
               <Clock className="w-4 h-4 text-purple-400 shrink-0" />
               <div>
@@ -904,7 +1322,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
               </span>
             </div>
 
-            {/* Watch Time Badge */}
             <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-surface-elevated/80 border border-surface-elevated">
               <Clock className="w-4 h-4 text-blue-400 shrink-0" />
               <div>
@@ -946,7 +1363,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
               </span>
             </div>
 
-            {/* Watch Time Badge */}
             <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-surface-elevated/80 border border-surface-elevated">
               <Clock className="w-4 h-4 text-accent shrink-0" />
               <div>
@@ -988,7 +1404,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
               </span>
             </div>
 
-            {/* Reading Time Badge */}
             <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-surface-elevated/80 border border-surface-elevated">
               <Clock className="w-4 h-4 text-rose-400 shrink-0" />
               <div>
@@ -1025,7 +1440,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
               Favorite Collections
             </h2>
             <p className="text-xs text-text-muted mt-0.5">
-              Explore your top pinned titles across specialized media categories
+              Explore top pinned titles across specialized media categories
             </p>
           </div>
           <span className="text-xs font-mono text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-lg">
@@ -1153,34 +1568,251 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
         </div>
       </div>
 
-      {/* Account Settings & Danger Zone */}
-      <div className="p-6 rounded-2xl bg-surface border border-rose-500/20 space-y-4">
-        <div className="flex items-center gap-2 text-rose-500">
-          <AlertTriangle className="w-5 h-5" />
-          <h3 className="text-base font-bold text-text-primary">Danger Zone</h3>
-        </div>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
+      {/* Watched Shows, Movies & Reading Library Showcase */}
+      <section data-testid="profile-library-section" className="space-y-6 pt-4 border-t border-surface-elevated/70">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-surface-elevated">
           <div>
-            <p className="text-sm font-semibold text-text-primary">Delete Account</p>
+            <h2 className="text-xl font-extrabold text-text-primary tracking-tight">
+              {isOwnProfile ? 'My Library & Watched Titles' : `${effectiveDisplayName}'s Watched Titles & Library`}
+            </h2>
             <p className="text-xs text-text-muted mt-0.5">
-              Permanently erase your account, tracked media progress, reviews, and library history.
+              {isOwnProfile
+                ? 'All tracked movies, TV shows, anime, and manga in your collection.'
+                : `Browse movies, TV shows, anime, and manga tracked by @${effectiveUsername}.`}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleDeleteAccount}
-            disabled={isDeleting}
-            data-testid="delete-account-btn"
-            className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-50 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-colors shrink-0 shadow cursor-pointer"
-          >
-            <Trash2 className="w-4 h-4" />
-            <span>{isDeleting ? 'Deleting...' : 'Delete Account'}</span>
-          </button>
+
+          {/* Category Switcher */}
+          {!isPrivateLibrary && (
+            <div className="inline-flex items-center gap-1 p-1 bg-surface rounded-xl border border-surface-elevated text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setLibraryCategory('all')}
+                data-testid="public-library-filter-all"
+                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  libraryCategory === 'all'
+                    ? 'bg-accent text-background font-bold shadow-sm'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                All ({library.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setLibraryCategory('watch')}
+                data-testid="public-library-filter-watch"
+                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  libraryCategory === 'watch'
+                    ? 'bg-accent text-background font-bold shadow-sm'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                Watch ({tvSeriesItems.length + movieItems.length + animeItems.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setLibraryCategory('read')}
+                data-testid="public-library-filter-read"
+                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  libraryCategory === 'read'
+                    ? 'bg-accent text-background font-bold shadow-sm'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                Read ({readingItems.length})
+              </button>
+            </div>
+          )}
         </div>
-      </div>
+
+        {/* Private Library State */}
+        {isPrivateLibrary ? (
+          <div
+            data-testid="public-profile-private-notice"
+            className="p-10 rounded-3xl bg-surface border border-surface-elevated text-center space-y-3 shadow-lg"
+          >
+            <div className="w-12 h-12 rounded-2xl bg-surface-elevated border border-surface-elevated flex items-center justify-center mx-auto text-text-muted">
+              <Lock className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-text-primary">This Library is Private</h3>
+            <p className="text-xs text-text-secondary max-w-sm mx-auto">
+              @{effectiveUsername} has set their library visibility to private. Only approved activity is shared.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Filter Toolbar: Status tabs & Search Input */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              {/* Status Tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 text-xs font-medium">
+                {(['all', 'active', 'completed', 'planned'] as const).map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setLibraryStatus(st)}
+                    data-testid={`public-status-filter-${st}`}
+                    className={`px-3 py-1.5 rounded-xl border transition-all cursor-pointer capitalize shrink-0 ${
+                      libraryStatus === st
+                        ? 'bg-accent/15 border-accent text-accent font-bold shadow-sm'
+                        : 'bg-surface border-surface-elevated text-text-muted hover:text-text-primary'
+                    }`}
+                  >
+                    {st === 'active' ? 'Watching / Reading' : st}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search Within Library */}
+              <div className="relative min-w-[200px] sm:min-w-[240px]">
+                <Search className="w-3.5 h-3.5 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={librarySearchQuery}
+                  onChange={(e) => setLibrarySearchQuery(e.target.value)}
+                  placeholder="Filter watched titles..."
+                  data-testid="public-library-search"
+                  className="w-full pl-8 pr-3 py-1.5 bg-surface border border-surface-elevated focus:border-accent rounded-xl text-xs text-text-primary focus:outline-none transition-colors"
+                />
+              </div>
+            </div>
+
+            {/* Empty State */}
+            {filteredLibrary.length === 0 ? (
+              <div
+                data-testid="public-library-empty"
+                className="p-10 rounded-3xl bg-surface border border-surface-elevated text-center space-y-3 shadow-md"
+              >
+                <div className="w-12 h-12 rounded-2xl bg-surface-elevated flex items-center justify-center mx-auto text-text-muted">
+                  <Film className="w-6 h-6" />
+                </div>
+                <h3 className="text-sm font-bold text-text-primary">No Titles Found</h3>
+                <p className="text-xs text-text-muted max-w-sm mx-auto">
+                  {librarySearchQuery || libraryStatus !== 'all' || libraryCategory !== 'all'
+                    ? 'No tracked titles match your active filters.'
+                    : 'No public titles tracked in this library yet.'}
+                </p>
+              </div>
+            ) : (
+              /* Media Poster Grid */
+              <div
+                data-testid="public-library-grid"
+                className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"
+              >
+                {filteredLibrary.map((item) => {
+                  const isEpisodic =
+                    item.title.media_type === 'tv' || item.title.media_type === 'anime_series';
+                  const isReading =
+                    item.title.media_type === 'manga' || item.title.media_type === 'manhwa';
+
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => onSelectTitle?.(item.title_id)}
+                      data-testid={`public-media-card-${item.id}`}
+                      className="group relative rounded-2xl overflow-hidden bg-surface border border-surface-elevated hover:border-accent/40 transition-all duration-200 cursor-pointer shadow-md hover:-translate-y-1 flex flex-col"
+                    >
+                      {/* Poster Image Container */}
+                      <div className="relative aspect-[2/3] w-full overflow-hidden bg-[#16161D]">
+                        <img
+                          src={resolvePosterUrl(item.title.poster_url || (item.title as any)?.poster_path) || '/assets/trackup-logo.jpg'}
+                          alt={item.title.title}
+                          loading="lazy"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = '/assets/trackup-logo.jpg';
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-transparent opacity-80 group-hover:opacity-90 transition-opacity" />
+
+                        {/* Top Status & Type Badges */}
+                        <div className="absolute top-2 left-2 right-2 flex items-center justify-between gap-1 pointer-events-none">
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-background/80 backdrop-blur-md text-text-primary border border-surface-elevated">
+                            {item.title.media_type.replace('_', ' ')}
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full backdrop-blur-md ${
+                              item.status === 'completed'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : item.status === 'active'
+                                ? 'bg-accent/20 text-accent border border-accent/30'
+                                : 'bg-surface-elevated text-text-muted border border-surface-elevated'
+                            }`}
+                          >
+                            {item.status}
+                          </span>
+                        </div>
+
+                        {/* Bottom Rating and Progress */}
+                        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-xs font-semibold pointer-events-none">
+                          {item.rating !== null && item.rating !== undefined ? (
+                            <span className="flex items-center gap-1 text-amber-300 font-mono text-[11px] bg-background/80 backdrop-blur-md px-1.5 py-0.5 rounded-md border border-surface-elevated">
+                              <Star className="w-3 h-3 fill-amber-300 text-amber-300" />
+                              <span>{item.rating}/10</span>
+                            </span>
+                          ) : (
+                            <span />
+                          )}
+
+                          <span className="text-[10px] font-mono text-text-secondary bg-background/80 backdrop-blur-md px-1.5 py-0.5 rounded-md border border-surface-elevated">
+                            {isEpisodic && (item.status === 'completed' ? `${item.title.total_episodes || item.episodes_watched?.length || 1} eps` : `${item.episodes_watched?.length || 0} eps`)}
+                            {isReading && `Ch. ${item.last_chapter_read || 0}`}
+                            {!isEpisodic && !isReading && item.status}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Title Info */}
+                      <div className="p-3 flex-1 flex flex-col justify-between">
+                        <h4 className="text-xs font-bold text-text-primary truncate group-hover:text-accent transition-colors">
+                          {item.title.title}
+                        </h4>
+                        <div className="flex items-center justify-between mt-1 text-[11px] text-text-muted">
+                          <span>{item.title.release_year || '—'}</span>
+                          {item.title.genres && item.title.genres[0] && (
+                            <span className="truncate max-w-[90px]">{item.title.genres[0]}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+      </section>
+
+      {/* Account Settings & Danger Zone (Owner Only) */}
+      {isOwnProfile && user && (
+        <div className="p-6 rounded-2xl bg-surface border border-rose-500/20 space-y-4">
+          <div className="flex items-center gap-2 text-rose-500">
+            <AlertTriangle className="w-5 h-5" />
+            <h3 className="text-base font-bold text-text-primary">Danger Zone</h3>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
+            <div>
+              <p className="text-sm font-semibold text-text-primary">Delete Account</p>
+              <p className="text-xs text-text-muted mt-0.5">
+                Permanently erase your account, tracked media progress, reviews, and library history.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleDeleteAccount}
+              disabled={isDeleting}
+              data-testid="delete-account-btn"
+              className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-50 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-colors shrink-0 shadow cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>{isDeleting ? 'Deleting...' : 'Delete Account'}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Edit Profile Modal (Name & Username) */}
-      {isEditingProfile && (
+      {isOwnProfile && isEditingProfile && (
         <div
           data-testid="edit-profile-modal"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200"
@@ -1378,7 +2010,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                   </button>
                 </div>
 
-                {/* Option A: Upload Media (Images, GIFs, Videos with Pan & Zoom Cropping) */}
+                {/* Option A: Upload Media */}
                 {bannerTab === 'upload' && (
                   <div className="space-y-2">
                     <input
@@ -1416,7 +2048,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
                   </div>
                 )}
 
-                {/* Option B: Choose from Library (Dedicated Full-Screen Selection Window) */}
+                {/* Option B: Choose from Library */}
                 {bannerTab === 'library' && (
                   <div className="space-y-3">
                     <div className="p-4 rounded-2xl bg-surface-elevated/40 border border-surface-elevated space-y-3">
@@ -1472,39 +2104,49 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onSelectTitle }) => {
       )}
 
       {/* Dedicated Library Backdrop Selector Window */}
-      <BannerLibrarySelector
-        isOpen={isLibrarySelectorOpen}
-        onClose={() => setIsLibrarySelectorOpen(false)}
-        onSelectBackdrop={handleSelectBackdropUrl}
-        library={library}
-        selectedBannerUrl={editBannerUrl}
-      />
+      {isOwnProfile && (
+        <BannerLibrarySelector
+          isOpen={isLibrarySelectorOpen}
+          onClose={() => setIsLibrarySelectorOpen(false)}
+          onSelectBackdrop={handleSelectBackdropUrl}
+          library={library}
+          selectedBannerUrl={editBannerUrl}
+        />
+      )}
 
       {/* Image Cropper Modal */}
-      <BannerCropperModal
-        isOpen={isCropperOpen}
-        imageSrc={cropperImageSrc}
-        fileName={pendingCropFile?.name}
-        fileType={pendingCropFile?.type}
-        onClose={handleCloseCropper}
-        onConfirmCrop={handleConfirmCrop}
-      />
+      {isOwnProfile && (
+        <BannerCropperModal
+          isOpen={isCropperOpen}
+          imageSrc={cropperImageSrc}
+          fileName={pendingCropFile?.name}
+          fileType={pendingCropFile?.type}
+          onClose={handleCloseCropper}
+          onConfirmCrop={handleConfirmCrop}
+        />
+      )}
 
       {/* 1:1 Avatar Cropper Modal */}
-      <AvatarCropperModal
-        isOpen={isAvatarCropperOpen}
-        imageSrc={avatarCropperSrc}
-        fileName={pendingAvatarFile?.name}
-        fileType={pendingAvatarFile?.type}
-        onClose={handleCloseAvatarCropper}
-        onConfirmCrop={handleConfirmAvatarCrop}
-      />
+      {isOwnProfile && (
+        <AvatarCropperModal
+          isOpen={isAvatarCropperOpen}
+          imageSrc={avatarCropperSrc}
+          fileName={pendingAvatarFile?.name}
+          fileType={pendingAvatarFile?.type}
+          onClose={handleCloseAvatarCropper}
+          onConfirmCrop={handleConfirmAvatarCrop}
+        />
+      )}
 
       {/* Change Password Modal */}
-      <ChangePasswordModal
-        isOpen={isChangePasswordOpen}
-        onClose={() => setIsChangePasswordOpen(false)}
-      />
+      {isOwnProfile && (
+        <ChangePasswordModal
+          isOpen={isChangePasswordOpen}
+          onClose={() => setIsChangePasswordOpen(false)}
+        />
+      )}
     </div>
   );
 };
+
+export default ProfilePage;

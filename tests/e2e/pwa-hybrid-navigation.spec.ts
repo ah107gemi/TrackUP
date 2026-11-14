@@ -67,11 +67,12 @@ test.describe('PWA & Hybrid Mobile Navigation E2E', () => {
     await expect(page.locator('[data-testid="mobile-nav-drawer"]')).toBeVisible();
 
     // Verify secondary routes are present in the More Menu
-    await expect(page.locator('[data-testid="mobile-nav-calendar"]')).toBeVisible();
-    await expect(page.locator('[data-testid="mobile-nav-recommendations"]')).toBeVisible();
-    await expect(page.locator('[data-testid="mobile-nav-history"]')).toBeVisible();
     await expect(page.locator('[data-testid="mobile-nav-import"]')).toBeVisible();
     await expect(page.locator('[data-testid="mobile-nav-profile-link"]')).toBeVisible();
+    // Removed secondary routes must not be present
+    await expect(page.locator('[data-testid="mobile-nav-calendar"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="mobile-nav-recommendations"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="mobile-nav-history"]')).toHaveCount(0);
 
     // Close More bottom sheet via close button
     await page.locator('[data-testid="mobile-menu-close"]').click();

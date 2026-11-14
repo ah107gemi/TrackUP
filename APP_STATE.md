@@ -19,10 +19,12 @@
     *   Mobile bottom navigation bar `<BottomNavBar />` is deployed and live.
     *   Database triggers and policies for username-based login are fully configured.
     *   The missing `email` column in `profiles` was successfully added, and ghost accounts were purged via SQL. Registration is now stable.
+    *   Cross-season episode tracking state bug fixed: `toggleEpisodeWatched` and batch episode logging strictly respect both `season_number` and `episode_number`.
+    *   "Unmark Season" button implemented and deployed across season headers in `TitleDetailPage.tsx`.
+    *   Public Profile Viewing fixed: `ProfilePage` dynamically resolves target user ID from URL parameters (`#/user/:param`, `#/profile/:param`, `?user=:id`, `?userId=:id`), fetching `user_libraries` data via `effectiveUserId` rather than `useAuth().user.id`. Includes full public library showcase with privacy filtering.
+    *   More Navigation Panel cleaned: "Tracking History", "For You", and "Release Calendar" links completely removed from `MobileNavDrawer.tsx`.
 *   **Current Active Task:**
-    *   Fixing a cross-season state bug where toggling an episode's watched status (e.g., S3E1) accidentally marks the same episode number across all other seasons (S1E1, S2E1, etc.).
-    *   **Goal:** Refactor the UI state update functions (likely in `TitleDetailPage.tsx` or similar) to strictly filter by both `season_number` AND `episode_number`.
-    *   **Goal:** Add a new "Unmark Season" button that batch-updates an entire season array to unwatched.
+    *   Verification, stability monitoring, and test maintenance.
 
 ## Instructions for AI (Antigravity)
 1.  **Always read this file (`APP_STATE.md`) first** before attempting any modifications to the codebase or generating SQL.
