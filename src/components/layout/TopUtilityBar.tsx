@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Search, User as UserIcon, LogIn, LogOut, Menu } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../features/auth/AuthContext';
 import { MobileNavDrawer } from './MobileNavDrawer';
 
 export const TopUtilityBar: React.FC = () => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const {
+    mobileDrawerOpen,
+    setMobileDrawerOpen,
     setOmnisearchOpen,
     setAuthModalOpen,
     setProfileModalOpen,
@@ -23,7 +24,7 @@ export const TopUtilityBar: React.FC = () => {
         <div className="flex items-center gap-2 md:gap-3 min-w-0">
           {/* Top-left Hamburger Menu for Mobile */}
           <button
-            onClick={() => setMobileMenuOpen(true)}
+            onClick={() => setMobileDrawerOpen(true)}
             data-testid="mobile-hamburger-trigger"
             aria-label="Open navigation menu"
             className="md:hidden p-2 -ml-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-surface-elevated transition-colors shrink-0"
@@ -137,10 +138,10 @@ export const TopUtilityBar: React.FC = () => {
       </div>
     </header>
 
-    {/* Slide-out Mobile Navigation Drawer */}
+    {/* Slide-out Mobile Navigation Drawer / More Menu */}
     <MobileNavDrawer
-      isOpen={mobileMenuOpen}
-      onClose={() => setMobileMenuOpen(false)}
+      isOpen={mobileDrawerOpen}
+      onClose={() => setMobileDrawerOpen(false)}
     />
   </>
   );

@@ -131,10 +131,11 @@ describe('PWA & Hybrid Mobile Navigation Suite', () => {
         activeTab: 'dashboard',
         selectedTitleId: null,
         viewingPublicUser: null,
+        mobileDrawerOpen: false,
       });
     });
 
-    it('switches between 4 primary routes cleanly and clears title selection', () => {
+    it('switches between primary routes (Home, Discover, Social) cleanly and clears title selection', () => {
       const store = useUIStore.getState();
 
       // Simulate detail page active
@@ -147,9 +148,9 @@ describe('PWA & Hybrid Mobile Navigation Suite', () => {
       expect(useUIStore.getState().activeTab).toBe('discover');
       expect(useUIStore.getState().selectedTitleId).toBeNull();
 
-      // Click Profile on BottomNavBar
-      useUIStore.getState().setActiveTab('profile');
-      expect(useUIStore.getState().activeTab).toBe('profile');
+      // Click Social on BottomNavBar
+      useUIStore.getState().setActiveTab('social');
+      expect(useUIStore.getState().activeTab).toBe('social');
 
       // Click Home on BottomNavBar
       useUIStore.getState().setActiveTab('dashboard');
@@ -169,12 +170,29 @@ describe('PWA & Hybrid Mobile Navigation Suite', () => {
       expect(useUIStore.getState().activeTab).toBe('read');
     });
 
-    it('preserves access to secondary tabs (calendar, social, import, history) in uiStore', () => {
+    it('toggles More menu and manages mobileDrawerOpen state', () => {
+      expect(useUIStore.getState().mobileDrawerOpen).toBe(false);
+
+      // Open More menu
+      useUIStore.getState().setMobileDrawerOpen(true);
+      expect(useUIStore.getState().mobileDrawerOpen).toBe(true);
+
+      // Navigate to a secondary route from More menu
+      useUIStore.getState().setActiveTab('calendar');
+      useUIStore.getState().setMobileDrawerOpen(false);
+      expect(useUIStore.getState().activeTab).toBe('calendar');
+      expect(useUIStore.getState().mobileDrawerOpen).toBe(false);
+    });
+
+    it('preserves access to secondary tabs (calendar, recommendations, import, history, profile) in uiStore', () => {
+      useUIStore.getState().setActiveTab('profile');
+      expect(useUIStore.getState().activeTab).toBe('profile');
+
       useUIStore.getState().setActiveTab('calendar');
       expect(useUIStore.getState().activeTab).toBe('calendar');
 
-      useUIStore.getState().setActiveTab('social');
-      expect(useUIStore.getState().activeTab).toBe('social');
+      useUIStore.getState().setActiveTab('recommendations');
+      expect(useUIStore.getState().activeTab).toBe('recommendations');
 
       useUIStore.getState().setActiveTab('import');
       expect(useUIStore.getState().activeTab).toBe('import');

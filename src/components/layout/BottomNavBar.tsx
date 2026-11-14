@@ -3,7 +3,8 @@ import {
   LayoutDashboard,
   Compass,
   Film,
-  User as UserIcon,
+  Users,
+  MoreHorizontal,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 
@@ -15,11 +16,14 @@ export const BottomNavBar: React.FC = () => {
     setSelectedTitleId,
     viewingPublicUser,
     setViewingPublicUser,
+    mobileDrawerOpen,
+    setMobileDrawerOpen,
   } = useUIStore();
 
-  const handleNavClick = (tab: 'dashboard' | 'discover' | 'watch' | 'profile') => {
+  const handleNavClick = (tab: 'dashboard' | 'discover' | 'watch' | 'social') => {
     if (selectedTitleId) setSelectedTitleId(null);
     if (viewingPublicUser) setViewingPublicUser(null);
+    if (mobileDrawerOpen) setMobileDrawerOpen(false);
 
     // If clicking Library and already on watch, allow toggling to read, or default to watch
     if (tab === 'watch') {
@@ -34,33 +38,38 @@ export const BottomNavBar: React.FC = () => {
     setActiveTab(tab);
   };
 
-  const isHomeActive = activeTab === 'dashboard' && !selectedTitleId && !viewingPublicUser;
-  const isDiscoverActive = activeTab === 'discover' && !selectedTitleId && !viewingPublicUser;
-  const isLibraryActive = (activeTab === 'watch' || activeTab === 'read') && !selectedTitleId && !viewingPublicUser;
-  const isProfileActive = activeTab === 'profile' && !selectedTitleId && !viewingPublicUser;
+  const handleMoreClick = () => {
+    setMobileDrawerOpen(!mobileDrawerOpen);
+  };
+
+  const isHomeActive = activeTab === 'dashboard' && !selectedTitleId && !viewingPublicUser && !mobileDrawerOpen;
+  const isDiscoverActive = activeTab === 'discover' && !selectedTitleId && !viewingPublicUser && !mobileDrawerOpen;
+  const isLibraryActive = (activeTab === 'watch' || activeTab === 'read') && !selectedTitleId && !viewingPublicUser && !mobileDrawerOpen;
+  const isSocialActive = activeTab === 'social' && !selectedTitleId && !viewingPublicUser && !mobileDrawerOpen;
+  const isMoreActive = mobileDrawerOpen || (['calendar', 'recommendations', 'history', 'import', 'profile'].includes(activeTab) && !selectedTitleId && !viewingPublicUser);
 
   return (
     <nav
       data-testid="bottom-navigation-bar"
       aria-label="Mobile Bottom Navigation"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#101014]/95 backdrop-blur-xl border-t border-surface-elevated/80 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 transition-all shadow-2xl"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#16161D] border-t border-[#1F1F29] pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 transition-all shadow-2xl"
     >
-      <div className="flex items-center justify-around max-w-lg mx-auto px-2">
+      <div className="flex items-center justify-around max-w-lg mx-auto px-1">
         {/* 1. Home */}
         <button
           onClick={() => handleNavClick('dashboard')}
           data-testid="bottom-nav-home"
           aria-label="Home"
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all ${
+          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-2xl transition-all ${
             isHomeActive
-              ? 'text-accent font-bold scale-105'
+              ? 'text-[#FFC400] font-bold scale-105'
               : 'text-text-muted hover:text-text-primary'
           }`}
         >
           <div className="relative">
             <LayoutDashboard className="w-5 h-5 transition-transform duration-200" />
             {isHomeActive && (
-              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent" />
+              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#FFC400]" />
             )}
           </div>
           <span className="text-[10px] tracking-tight mt-1">Home</span>
@@ -71,16 +80,16 @@ export const BottomNavBar: React.FC = () => {
           onClick={() => handleNavClick('discover')}
           data-testid="bottom-nav-discover"
           aria-label="Discover"
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all ${
+          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-2xl transition-all ${
             isDiscoverActive
-              ? 'text-accent font-bold scale-105'
+              ? 'text-[#FFC400] font-bold scale-105'
               : 'text-text-muted hover:text-text-primary'
           }`}
         >
           <div className="relative">
             <Compass className="w-5 h-5 transition-transform duration-200" />
             {isDiscoverActive && (
-              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent" />
+              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#FFC400]" />
             )}
           </div>
           <span className="text-[10px] tracking-tight mt-1">Discover</span>
@@ -91,16 +100,16 @@ export const BottomNavBar: React.FC = () => {
           onClick={() => handleNavClick('watch')}
           data-testid="bottom-nav-library"
           aria-label="Library"
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all ${
+          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-2xl transition-all ${
             isLibraryActive
-              ? 'text-accent font-bold scale-105'
+              ? 'text-[#FFC400] font-bold scale-105'
               : 'text-text-muted hover:text-text-primary'
           }`}
         >
           <div className="relative">
             <Film className="w-5 h-5 transition-transform duration-200" />
             {isLibraryActive && (
-              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent" />
+              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#FFC400]" />
             )}
           </div>
           <span className="text-[10px] tracking-tight mt-1">
@@ -108,24 +117,44 @@ export const BottomNavBar: React.FC = () => {
           </span>
         </button>
 
-        {/* 4. Profile */}
+        {/* 4. Social */}
         <button
-          onClick={() => handleNavClick('profile')}
-          data-testid="bottom-nav-profile"
-          aria-label="Profile"
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all ${
-            isProfileActive
-              ? 'text-accent font-bold scale-105'
+          onClick={() => handleNavClick('social')}
+          data-testid="bottom-nav-social"
+          aria-label="Social"
+          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-2xl transition-all ${
+            isSocialActive
+              ? 'text-[#FFC400] font-bold scale-105'
               : 'text-text-muted hover:text-text-primary'
           }`}
         >
           <div className="relative">
-            <UserIcon className="w-5 h-5 transition-transform duration-200" />
-            {isProfileActive && (
-              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent" />
+            <Users className="w-5 h-5 transition-transform duration-200" />
+            {isSocialActive && (
+              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#FFC400]" />
             )}
           </div>
-          <span className="text-[10px] tracking-tight mt-1">Profile</span>
+          <span className="text-[10px] tracking-tight mt-1">Social</span>
+        </button>
+
+        {/* 5. More */}
+        <button
+          onClick={handleMoreClick}
+          data-testid="bottom-nav-more"
+          aria-label="More options"
+          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-2xl transition-all ${
+            isMoreActive
+              ? 'text-[#FFC400] font-bold scale-105'
+              : 'text-text-muted hover:text-text-primary'
+          }`}
+        >
+          <div className="relative">
+            <MoreHorizontal className="w-5 h-5 transition-transform duration-200" />
+            {isMoreActive && (
+              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#FFC400]" />
+            )}
+          </div>
+          <span className="text-[10px] tracking-tight mt-1">More</span>
         </button>
       </div>
     </nav>
