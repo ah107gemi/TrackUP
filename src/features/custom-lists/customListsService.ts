@@ -91,7 +91,7 @@ export async function fetchUserCustomLists(userId: string): Promise<CustomList[]
     // 1. Try Supabase query
     const { data: dbLists, error: listErr } = await (supabase as any)
       .from('custom_lists')
-      .select('id, user_id, name, description, is_private, created_at, updated_at')
+      .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: true });
 
@@ -99,37 +99,38 @@ export async function fetchUserCustomLists(userId: string): Promise<CustomList[]
       const listIds = dbLists.map((l: any) => l.id);
       const { data: dbItems } = await (supabase as any)
         .from('list_items')
-        .select('id, list_id, title_id, notes, display_order, created_at')
+        .select('*')
         .in('list_id', listIds)
-        .order('display_order', { ascending: true });
+        .order('created_at', { ascending: true });
 
       const hydratedLists: CustomList[] = await Promise.all(
         dbLists.map(async (l: any) => {
           const rawItems = (dbItems || []).filter((i: any) => i.list_id === l.id);
           const items: CustomListItem[] = await Promise.all(
             rawItems.map(async (i: any) => {
-              let title = resolveLocalTitle(i.title_id);
+              const itemTitleId = i.title_id || i.media_id;
+              let title = resolveLocalTitle(itemTitleId);
               if (!title) {
                 try {
-                  title = await getCatalogTitleById(i.title_id);
+                  title = await getCatalogTitleById(itemTitleId);
                 } catch {
                   // ignore
                 }
               }
               if (!title) {
                 title = {
-                  id: i.title_id,
-                  title: i.title_id.replace(/^[^_]+_/, '').replace(/_/g, ' '),
-                  media_type: inferMediaTypeFromId(i.title_id),
+                  id: itemTitleId,
+                  title: itemTitleId.replace(/^[^_]+_/, '').replace(/_/g, ' '),
+                  media_type: (i.media_type as MediaType) || inferMediaTypeFromId(itemTitleId),
                   genres: [],
                 };
               }
               return {
                 id: i.id,
                 list_id: i.list_id,
-                title_id: i.title_id,
+                title_id: itemTitleId,
                 notes: i.notes,
-                display_order: i.display_order,
+                display_order: i.display_order ?? 0,
                 created_at: i.created_at,
                 title,
               };
@@ -139,7 +140,7 @@ export async function fetchUserCustomLists(userId: string): Promise<CustomList[]
           return {
             id: l.id,
             user_id: l.user_id,
-            name: l.name,
+            name: l.name || l.list_name || 'Untitled List',
             description: l.description,
             is_private: Boolean(l.is_private),
             created_at: l.created_at,
@@ -224,22 +225,32 @@ export async function createCustomList(
 
   // 1. Try Supabase
   try {
+    const payload = {
+      user_id: userId,
+      name: name.trim(),
+      list_name: name.trim(),
+      description: description ? description.trim() : null,
+      is_private: isPrivate,
+    };
+
     const { data, error } = await (supabase as any)
       .from('custom_lists')
-      .insert({
-        user_id: userId,
-        name: name.trim(),
-        description: description ? description.trim() : null,
-        is_private: isPrivate,
-      })
+      .insert(payload)
       .select()
       .single();
 
-    if (!error && data) {
+    if (error) {
+      console.error('[customListsService] custom_lists insert failed:', error);
+      throw new Error(error.message || 'Failed to create custom list in Supabase.');
+    }
+
+    if (data?.id) {
       newList.id = data.id;
     }
-  } catch {
-    // continue with local list
+  } catch (err: any) {
+    if (err?.message && !err.message.includes('fetch failed') && !err.message.includes('Failed to fetch')) {
+      throw err;
+    }
   }
 
   // 2. Save to localStorage
@@ -260,15 +271,33 @@ export async function updateCustomList(
 
   // 1. Try Supabase
   try {
-    await (supabase as any)
+    const updatePayload: Record<string, any> = {
+      updated_at: now,
+    };
+    if (updates.name !== undefined) {
+      updatePayload.name = updates.name.trim();
+      updatePayload.list_name = updates.name.trim();
+    }
+    if (updates.description !== undefined) {
+      updatePayload.description = updates.description ? updates.description.trim() : null;
+    }
+    if (updates.is_private !== undefined) {
+      updatePayload.is_private = updates.is_private;
+    }
+
+    const { error } = await (supabase as any)
       .from('custom_lists')
-      .update({
-        ...updates,
-        updated_at: now,
-      })
+      .update(updatePayload)
       .eq('id', listId);
-  } catch {
-    // ignore
+
+    if (error) {
+      console.error('[customListsService] custom_lists update failed:', error);
+      throw new Error(error.message || 'Failed to update custom list in Supabase.');
+    }
+  } catch (err: any) {
+    if (err?.message && !err.message.includes('fetch failed') && !err.message.includes('Failed to fetch')) {
+      throw err;
+    }
   }
 
   // 2. Update localStorage
@@ -302,9 +331,15 @@ export async function updateCustomList(
 export async function deleteCustomList(listId: string): Promise<boolean> {
   // 1. Try Supabase
   try {
-    await (supabase as any).from('custom_lists').delete().eq('id', listId);
-  } catch {
-    // ignore
+    const { error } = await (supabase as any).from('custom_lists').delete().eq('id', listId);
+    if (error) {
+      console.error('[customListsService] custom_lists delete failed:', error);
+      throw new Error(error.message || 'Failed to delete custom list from Supabase.');
+    }
+  } catch (err: any) {
+    if (err?.message && !err.message.includes('fetch failed') && !err.message.includes('Failed to fetch')) {
+      throw err;
+    }
   }
 
   // 2. Update localStorage
@@ -350,7 +385,7 @@ export async function addTitleToList(
 
   const itemId = `item_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const now = new Date().toISOString();
-  const displayOrder = (targetList?.items?.length || 0);
+  const displayOrder = targetList?.items?.length || 0;
 
   const newItem: CustomListItem = {
     id: itemId,
@@ -362,27 +397,51 @@ export async function addTitleToList(
     title: titleObj,
   };
 
-  // 1. Try Supabase
+  // 1. Try Supabase with complete, verified payload
   try {
+    let targetUserId = targetList?.user_id;
+    if (!targetUserId && supabase) {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        targetUserId = authData?.user?.id;
+      } catch {
+        // ignore
+      }
+    }
+
+    const payload: Record<string, any> = {
+      list_id: listId,
+      media_id: titleId,
+      title_id: titleId,
+      media_type: titleObj.media_type || inferMediaTypeFromId(titleId),
+      notes: notes ? notes.trim() : null,
+      display_order: displayOrder,
+    };
+    if (targetUserId) {
+      payload.user_id = targetUserId;
+    }
+
     const { data, error } = await (supabase as any)
       .from('list_items')
-      .insert({
-        list_id: listId,
-        title_id: titleId,
-        notes: notes ? notes.trim() : null,
-        display_order: displayOrder,
-      })
+      .insert(payload)
       .select()
       .single();
 
-    if (!error && data) {
+    if (error) {
+      console.error('[customListsService] Supabase list_items insert failed:', error);
+      throw new Error(error.message || 'Supabase rejected list_items insert (RLS policy or schema violation).');
+    }
+
+    if (data?.id) {
       newItem.id = data.id;
     }
-  } catch {
-    // continue
+  } catch (err: any) {
+    if (err?.message && !err.message.includes('fetch failed') && !err.message.includes('Failed to fetch')) {
+      throw err;
+    }
   }
 
-  // 2. Update localStorage
+  // 2. Update localStorage only after persistence succeeded
   const nextStored = stored.map((l) => {
     if (l.id === listId) {
       return {
@@ -404,13 +463,20 @@ export async function addTitleToList(
 export async function removeTitleFromList(listId: string, titleId: string): Promise<boolean> {
   // 1. Try Supabase
   try {
-    await (supabase as any)
+    const { error } = await (supabase as any)
       .from('list_items')
       .delete()
       .eq('list_id', listId)
-      .eq('title_id', titleId);
-  } catch {
-    // ignore
+      .or(`title_id.eq.${titleId},media_id.eq.${titleId}`);
+
+    if (error) {
+      console.error('[customListsService] Supabase list_items delete failed:', error);
+      throw new Error(error.message || 'Supabase rejected list_items delete (RLS policy violation).');
+    }
+  } catch (err: any) {
+    if (err?.message && !err.message.includes('fetch failed') && !err.message.includes('Failed to fetch')) {
+      throw err;
+    }
   }
 
   // 2. Update localStorage

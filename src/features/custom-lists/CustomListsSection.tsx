@@ -15,6 +15,7 @@ import {
   Folder,
   ChevronRight,
   ArrowLeft,
+  AlertCircle,
 } from 'lucide-react';
 import {
   fetchUserCustomLists,
@@ -43,6 +44,7 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
   const [lists, setLists] = useState<CustomList[]>([]);
   const [activeListId, setActiveListId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Dedicated Detail Modal state (collapses lists on profile page)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -126,6 +128,7 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
   // Handler: Open List Detail Modal
   const handleOpenListDetail = (listId: string) => {
     setActiveListId(listId);
+    setErrorMessage(null);
     setIsDetailModalOpen(true);
   };
 
@@ -135,6 +138,7 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
     if (!newListName.trim()) return;
 
     try {
+      setErrorMessage(null);
       const created = await createCustomList(userId, newListName, newListDesc, newListPrivate);
       setLists((prev) => [...prev, created]);
       setActiveListId(created.id);
@@ -143,8 +147,9 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
       setNewListDesc('');
       setNewListPrivate(false);
       setIsDetailModalOpen(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to create list:', err);
+      setErrorMessage(err?.message || 'Failed to create custom list in Supabase.');
     }
   };
 
@@ -154,6 +159,7 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
     setEditListName(activeList.name);
     setEditListDesc(activeList.description || '');
     setEditListPrivate(activeList.is_private);
+    setErrorMessage(null);
     setIsEditOpen(true);
   };
 
@@ -163,6 +169,7 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
     if (!activeList || !editListName.trim()) return;
 
     try {
+      setErrorMessage(null);
       const updated = await updateCustomList(activeList.id, {
         name: editListName,
         description: editListDesc,
@@ -171,8 +178,9 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
 
       setLists((prev) => prev.map((l) => (l.id === updated.id ? { ...l, ...updated } : l)));
       setIsEditOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to update list:', err);
+      setErrorMessage(err?.message || 'Failed to update custom list in Supabase.');
     }
   };
 
@@ -183,13 +191,15 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
     if (!confirmed) return;
 
     try {
+      setErrorMessage(null);
       await deleteCustomList(activeList.id);
       const remaining = lists.filter((l) => l.id !== activeList.id);
       setLists(remaining);
       setActiveListId(null);
       setIsDetailModalOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to delete list:', err);
+      setErrorMessage(err?.message || 'Failed to delete custom list from Supabase.');
     }
   };
 
@@ -197,6 +207,7 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
   const handleAddTitle = async (title: NormalizedCatalogItem) => {
     if (!activeList) return;
     try {
+      setErrorMessage(null);
       const newItem = await addTitleToList(activeList.id, title);
       setLists((prev) =>
         prev.map((l) => {
@@ -211,8 +222,9 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
           return l;
         })
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to add title to list:', err);
+      setErrorMessage(err?.message || 'Supabase rejected list item insert (RLS policy violation).');
     }
   };
 
@@ -220,6 +232,7 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
   const handleRemoveTitle = async (titleId: string) => {
     if (!activeList) return;
     try {
+      setErrorMessage(null);
       await removeTitleFromList(activeList.id, titleId);
       setLists((prev) =>
         prev.map((l) => {
@@ -232,8 +245,9 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
           return l;
         })
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to remove title from list:', err);
+      setErrorMessage(err?.message || 'Supabase rejected list item removal (RLS policy violation).');
     }
   };
 
@@ -258,7 +272,10 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
         {isOwnProfile && (
           <button
             type="button"
-            onClick={() => setIsCreateOpen(true)}
+            onClick={() => {
+              setErrorMessage(null);
+              setIsCreateOpen(true);
+            }}
             data-testid="create-list-button"
             className="px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shrink-0 cursor-pointer"
           >
@@ -267,6 +284,27 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
           </button>
         )}
       </div>
+
+      {/* Red Error Toast if Supabase Rejects the Request */}
+      {errorMessage && (
+        <div
+          data-testid="custom-lists-error-toast"
+          className="p-3.5 rounded-2xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-center justify-between gap-2 shadow-lg animate-in fade-in"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+            <span className="font-medium truncate">{errorMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setErrorMessage(null)}
+            className="p-1 hover:bg-rose-500/20 rounded-lg text-rose-300 transition-colors shrink-0 cursor-pointer"
+            aria-label="Dismiss error"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="p-12 text-center text-text-muted text-xs">Loading custom lists...</div>
@@ -287,7 +325,10 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
           {isOwnProfile && (
             <button
               type="button"
-              onClick={() => setIsCreateOpen(true)}
+              onClick={() => {
+                setErrorMessage(null);
+                setIsCreateOpen(true);
+              }}
               className="px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs inline-flex items-center gap-1.5 transition-all shadow cursor-pointer"
             >
               <Plus className="w-4 h-4" />
@@ -492,6 +533,27 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
               </div>
             </div>
 
+            {/* Error toast inside modal if action fails */}
+            {errorMessage && (
+              <div
+                data-testid="custom-lists-modal-error-toast"
+                className="p-3.5 rounded-2xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-center justify-between gap-2 shadow-lg animate-in fade-in"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span className="font-medium truncate">{errorMessage}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setErrorMessage(null)}
+                  className="p-1 hover:bg-rose-500/20 rounded-lg text-rose-300 transition-colors shrink-0 cursor-pointer"
+                  aria-label="Dismiss error"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             {/* Modal Items Content */}
             <div className="flex-1 overflow-y-auto pr-1">
               {activeList.items.length === 0 ? (
@@ -566,7 +628,7 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
                               data-testid={`remove-item-btn-${item.title_id}`}
                               title="Remove from list"
                               aria-label="Remove from list"
-                              className="absolute top-2 right-2 p-1.5 rounded-lg bg-background/80 backdrop-blur-md text-text-muted hover:text-rose-400 hover:bg-rose-500/20 transition-all opacity-0 group-hover:opacity-100"
+                              className="absolute top-2 right-2 p-1.5 rounded-lg bg-background/80 backdrop-blur-md text-text-muted hover:text-rose-400 hover:bg-rose-500/20 transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
                             >
                               <X className="w-3.5 h-3.5" />
                             </button>
@@ -619,7 +681,7 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
               <button
                 type="button"
                 onClick={() => setIsCreateOpen(false)}
-                className="p-1.5 rounded-xl text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors"
+                className="p-1.5 rounded-xl text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -707,7 +769,7 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
               <button
                 type="button"
                 onClick={() => setIsEditOpen(false)}
-                className="p-1.5 rounded-xl text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors"
+                className="p-1.5 rounded-xl text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -796,11 +858,32 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
               <button
                 type="button"
                 onClick={() => setIsAddMediaOpen(false)}
-                className="p-1.5 rounded-xl text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors"
+                className="p-1.5 rounded-xl text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {/* Error toast inside add media modal */}
+            {errorMessage && (
+              <div
+                data-testid="add-media-error-toast"
+                className="p-3.5 rounded-2xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-center justify-between gap-2 shadow-lg animate-in fade-in"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span className="font-medium truncate">{errorMessage}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setErrorMessage(null)}
+                  className="p-1 hover:bg-rose-500/20 rounded-lg text-rose-300 transition-colors shrink-0 cursor-pointer"
+                  aria-label="Dismiss error"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
             {/* Domain Switcher */}
             <div className="flex items-center gap-2 p-1 bg-background rounded-xl border border-surface-elevated text-xs font-semibold">

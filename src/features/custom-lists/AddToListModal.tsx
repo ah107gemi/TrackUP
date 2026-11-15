@@ -8,6 +8,7 @@ import {
   FolderPlus,
   ListPlus,
   Folder,
+  AlertCircle,
 } from 'lucide-react';
 import {
   fetchUserCustomLists,
@@ -35,6 +36,7 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
   const [lists, setLists] = useState<CustomList[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [busyListIds, setBusyListIds] = useState<Record<string, boolean>>({});
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Inline "Create New List" state
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -49,6 +51,7 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
 
     let mounted = true;
     setIsLoading(true);
+    setErrorMessage(null);
 
     fetchUserCustomLists(userId).then((fetched) => {
       if (mounted) {
@@ -67,6 +70,7 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
   const handleToggleTitleInList = async (list: CustomList) => {
     const isCurrentlyAdded = (list.items || []).some((i) => i.title_id === title.id);
     setBusyListIds((prev) => ({ ...prev, [list.id]: true }));
+    setErrorMessage(null);
 
     try {
       if (isCurrentlyAdded) {
@@ -86,8 +90,9 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
           )
         );
       }
-    } catch (err) {
-      console.warn('Failed to toggle title in custom list:', err);
+    } catch (err: any) {
+      console.error('Failed to toggle title in custom list:', err);
+      setErrorMessage(err?.message || 'Supabase rejected list items update (RLS policy violation).');
     } finally {
       setBusyListIds((prev) => ({ ...prev, [list.id]: false }));
     }
@@ -98,6 +103,7 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
     if (!newListName.trim() || isCreating) return;
 
     setIsCreating(true);
+    setErrorMessage(null);
     try {
       const created = await createCustomList(
         userId,
@@ -116,8 +122,9 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
       setNewListDesc('');
       setNewListPrivate(false);
       setShowCreateForm(false);
-    } catch (err) {
-      console.warn('Failed to create and add to custom list:', err);
+    } catch (err: any) {
+      console.error('Failed to create and add to custom list:', err);
+      setErrorMessage(err?.message || 'Supabase rejected creating list or item.');
     } finally {
       setIsCreating(false);
     }
@@ -166,6 +173,27 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Red Error Toast if Supabase Rejects the Request */}
+        {errorMessage && (
+          <div
+            data-testid="add-to-list-error-toast"
+            className="p-3.5 rounded-2xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-center justify-between gap-2 shadow-lg animate-in fade-in"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+              <span className="font-medium truncate">{errorMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setErrorMessage(null)}
+              className="p-1 hover:bg-rose-500/20 rounded-lg text-rose-300 transition-colors shrink-0 cursor-pointer"
+              aria-label="Dismiss error"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Modal Content: Custom Lists */}
         <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 min-h-[160px]">
@@ -280,7 +308,7 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowCreateForm(false)}
-                className="text-text-muted hover:text-text-primary text-xs"
+                className="text-text-muted hover:text-text-primary text-xs cursor-pointer"
               >
                 Cancel
               </button>
