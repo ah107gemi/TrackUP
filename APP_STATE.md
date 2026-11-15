@@ -14,11 +14,11 @@
 *   **Core Media & Tracking Tables:** `catalog_titles`, `user_libraries`, `user_episode_progress`, `user_reading_progress`, `reviews`, `user_follows`.
     *   *Note: These tables must respect standard UUID foreign key constraints pointing to `profiles.id`.*
 *   **`public.custom_lists`:** User-created custom media collections.
-    *   **Fields:** `id` (UUID, PK), `user_id` (UUID, FK -> `profiles.id` ON DELETE CASCADE), `name` (TEXT), `description` (TEXT), `is_private` (BOOLEAN DEFAULT false), `created_at` (TIMESTAMPTZ), `updated_at` (TIMESTAMPTZ).
-    *   **RLS Policies:** SELECT permitted if `is_private = false` or `auth.uid() = user_id`; INSERT, UPDATE, DELETE permitted strictly for the list owner (`auth.uid() = user_id`).
+    *   **Fields:** `id` (UUID, PK), `user_id` (UUID, FK -> `profiles.id` ON DELETE CASCADE), `list_name` (TEXT), `description` (TEXT), `created_at` (TIMESTAMPTZ), `updated_at` (TIMESTAMPTZ).
+    *   **RLS Policies:** SELECT, INSERT, UPDATE, DELETE permitted strictly for the list owner (`auth.uid() = user_id`).
 *   **`public.list_items`:** Universal media title mappings for custom lists (supports shows, movies, anime series/films, manga, manhwa).
-    *   **Fields:** `id` (UUID, PK), `list_id` (UUID, FK -> `custom_lists.id` ON DELETE CASCADE), `title_id` (UUID, FK -> `catalog_titles.id` ON DELETE CASCADE), `notes` (TEXT), `display_order` (INTEGER DEFAULT 0), `created_at` (TIMESTAMPTZ), UNIQUE(`list_id`, `title_id`).
-    *   **RLS Policies:** SELECT permitted if the parent list is accessible (public or owned); INSERT, UPDATE, DELETE permitted strictly for the parent list's owner (`custom_lists.user_id = auth.uid()`).
+    *   **Fields:** `id` (UUID, PK), `list_id` (UUID, FK -> `custom_lists.id` ON DELETE CASCADE), `media_id` (TEXT), `media_type` (TEXT), `created_at` (TIMESTAMPTZ), `updated_at` (TIMESTAMPTZ), UNIQUE(`list_id`, `media_id`).
+    *   **RLS Policies:** SELECT, INSERT, UPDATE, DELETE permitted strictly for the parent list's owner (`custom_lists.user_id = auth.uid()`).
 
 ## Current Development Phase: Mobile & Bug Fixes
 *   **Recently Completed (Do not re-implement):**
