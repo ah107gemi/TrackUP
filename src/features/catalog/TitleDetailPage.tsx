@@ -16,6 +16,8 @@ import {
   Clock,
   Trash2,
   ChevronDown,
+  Lock,
+  Check,
 } from 'lucide-react';
 import {
   getCatalogTitleById,
@@ -38,6 +40,7 @@ import {
   useBatchEpisodeProgress,
   useIncrementChapter,
   useRemoveFromLibrary,
+  useSavePrivateNotes,
 } from '../library/useLibrary';
 import {
   calculateTotalEpisodes,
@@ -108,6 +111,12 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   const [reviews, setReviews] = useState<Review[]>([]);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [editingReview, setEditingReview] = useState<Review | null>(null);
+
+  // Private Notes state
+  const [privateNotes, setPrivateNotes] = useState<string>('');
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [notesSaveStatus, setNotesSaveStatus] = useState<'idle' | 'saved'>('idle');
+  const savePrivateNotesMutation = useSavePrivateNotes();
 
   const heroRef = useRef<HTMLDivElement>(null);
   const { setScrolledHeaderTitle } = useUIStore();
@@ -210,8 +219,9 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       setLocalStatus(existingEntry.status || 'planned');
       setLocalRating(existingEntry.rating ?? null);
       setLocalChapter(existingEntry.last_chapter_read || 0);
+      setPrivateNotes(existingEntry.private_notes || '');
     }
-  }, [existingEntry?.id, existingEntry?.status, existingEntry?.episodes_watched?.length]);
+  }, [existingEntry?.id, existingEntry?.status, existingEntry?.episodes_watched?.length, existingEntry?.private_notes]);
 
   if (loading) {
     return (
@@ -381,6 +391,25 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   const handleDeleteReview = async (reviewId: string) => {
     await deleteReview(reviewId, activeUserId);
     setReviews((prev) => prev.filter((r) => r.id !== reviewId));
+  };
+
+  const handleSavePrivateNotes = async () => {
+    if (!activeUserId || !title) return;
+    setIsSavingNotes(true);
+    try {
+      await savePrivateNotesMutation.mutateAsync({
+        userId: activeUserId,
+        titleId: title.id,
+        notes: privateNotes,
+        titleData: title,
+      });
+      setNotesSaveStatus('saved');
+      setTimeout(() => setNotesSaveStatus('idle'), 2500);
+    } catch (err) {
+      console.warn('Failed to save private notes:', err);
+    } finally {
+      setIsSavingNotes(false);
+    }
   };
 
   const toggleEpisodeWatched = async (
@@ -1048,7 +1077,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                   className="appearance-none pl-4 pr-9 py-2.5 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated hover:border-accent text-text-primary text-xs font-semibold focus:border-accent focus:outline-none transition-all shadow-sm cursor-pointer"
                 >
                   <option value="active">{isReading ? 'Reading' : 'Watching'}</option>
-                  <option value="planned">Planned</option>
+                  <option value="planned">Plan to watch/read</option>
                   <option value="completed">Completed</option>
                   <option value="paused">On Hold</option>
                   <option value="dropped">Dropped</option>
@@ -1583,6 +1612,80 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
           </div>
         )}
       </section>
+
+      {/* Private Notes Section (Strictly Private & Logged-in User Only) */}
+      {user && (
+        <section
+          data-testid="private-notes-section"
+          className="p-6 rounded-2xl bg-surface border border-surface-elevated space-y-4"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-accent/15 border border-accent/30 text-accent shrink-0">
+                <Lock className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-bold text-text-primary">Private Notes</h2>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-surface-elevated text-accent border border-accent/20">
+                    Only visible to you
+                  </span>
+                </div>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Personal thoughts, impressions, or reminders. Strictly confidential and never visible to other users.
+                </p>
+              </div>
+            </div>
+
+            {notesSaveStatus === 'saved' && (
+              <span
+                data-testid="private-notes-saved-badge"
+                className="text-xs text-emerald-400 font-semibold flex items-center gap-1 self-start sm:self-auto bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg animate-in fade-in"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Saved to your library</span>
+              </span>
+            )}
+          </div>
+
+          <div className="relative">
+            <textarea
+              value={privateNotes}
+              onChange={(e) => {
+                setPrivateNotes(e.target.value);
+                if (notesSaveStatus === 'saved') setNotesSaveStatus('idle');
+              }}
+              placeholder={`Jot down personal thoughts on ${title.title} (strictly private to your account)...`}
+              rows={4}
+              data-testid="private-notes-textarea"
+              className="w-full p-4 rounded-xl bg-surface-elevated/70 border border-surface-elevated hover:border-accent/40 focus:border-accent text-text-primary text-sm placeholder:text-text-muted/60 focus:outline-none transition-all resize-y shadow-inner"
+            />
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-[11px] text-text-muted font-mono">
+              {privateNotes.length} characters
+            </span>
+
+            <button
+              type="button"
+              onClick={handleSavePrivateNotes}
+              disabled={isSavingNotes}
+              data-testid="save-private-notes-button"
+              className="px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover disabled:opacity-50 text-background font-bold text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+            >
+              {isSavingNotes ? (
+                <span>Saving...</span>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Save Private Note</span>
+                </>
+              )}
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* Review Modal */}
       <ReviewModal

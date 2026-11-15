@@ -177,7 +177,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
                             className="px-2.5 py-1 rounded-lg bg-surface-elevated hover:bg-accent hover:text-background text-text-secondary text-xs font-semibold flex items-center gap-1 transition-all"
                           >
                             <Plus className="w-3.5 h-3.5" />
-                            <span>Plan to Watch</span>
+                            <span>Plan to watch/read</span>
                           </button>
                         )}
                       </div>

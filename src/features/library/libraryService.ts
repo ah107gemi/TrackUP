@@ -11,6 +11,7 @@ export interface UserLibraryItem {
   rating: number | null;
   is_private: boolean;
   personal_notes: string | null;
+  private_notes?: string | null;
   started_at: string | null;
   completed_at: string | null;
   last_progressed_at: string;
@@ -110,6 +111,7 @@ export async function fetchUserLibrary(userId: string): Promise<UserLibraryItem[
           rating,
           is_private,
           personal_notes,
+          private_notes,
           started_at,
           completed_at,
           last_progressed_at,
@@ -173,6 +175,7 @@ export async function fetchUserLibrary(userId: string): Promise<UserLibraryItem[
             rating: row.rating,
             is_private: Boolean(row.is_private),
             personal_notes: row.personal_notes,
+            private_notes: row.private_notes || null,
             started_at: row.started_at,
             completed_at: row.completed_at,
             last_progressed_at: row.last_progressed_at,
@@ -274,6 +277,7 @@ export async function upsertLibraryItem(params: {
   rating?: number | null;
   isPrivate?: boolean;
   notes?: string | null;
+  privateNotes?: string | null;
   titleData?: NormalizedCatalogItem;
 }): Promise<UserLibraryItem> {
   const all = getStoredLibraries();
@@ -327,6 +331,7 @@ export async function upsertLibraryItem(params: {
       rating: params.rating !== undefined ? params.rating : existing.rating,
       is_private: params.isPrivate !== undefined ? params.isPrivate : existing.is_private,
       personal_notes: params.notes !== undefined ? params.notes : existing.personal_notes,
+      private_notes: params.privateNotes !== undefined ? params.privateNotes : existing.private_notes,
       title: (params.titleData && params.titleData.title !== 'Unknown Title') ? params.titleData : existing.title,
       episodes_watched: episodesWatched,
       last_chapter_read: lastChapter,
@@ -341,16 +346,21 @@ export async function upsertLibraryItem(params: {
     // Sync to Supabase database if available
     if (supabase) {
       try {
+        const updatePayload: Record<string, any> = {
+          status: nextStatus,
+          started_at: updated.started_at,
+          completed_at: updated.completed_at,
+          last_progressed_at: now,
+          updated_at: now,
+        };
+        if (params.privateNotes !== undefined) {
+          updatePayload.private_notes = params.privateNotes;
+        }
+
         await supabase
           .from('user_libraries')
           // @ts-expect-error dynamic typing
-          .update({
-            status: nextStatus,
-            started_at: updated.started_at,
-            completed_at: updated.completed_at,
-            last_progressed_at: now,
-            updated_at: now,
-          })
+          .update(updatePayload)
           .match({ user_id: params.userId, title_id: params.titleId });
 
         if (isPlanned) {
@@ -386,6 +396,7 @@ export async function upsertLibraryItem(params: {
     rating: params.rating || null,
     is_private: params.isPrivate || false,
     personal_notes: params.notes || null,
+    private_notes: params.privateNotes || null,
     started_at: params.status === 'active' ? now : null,
     completed_at: isNewCompleted ? now : null,
     last_progressed_at: now,
@@ -409,6 +420,7 @@ export async function upsertLibraryItem(params: {
         rating: newItem.rating,
         is_private: newItem.is_private,
         personal_notes: newItem.personal_notes,
+        private_notes: newItem.private_notes,
         started_at: newItem.started_at,
         completed_at: newItem.completed_at,
         last_progressed_at: newItem.last_progressed_at,
@@ -417,6 +429,23 @@ export async function upsertLibraryItem(params: {
   }
 
   return newItem;
+}
+
+/**
+ * Saves or updates strictly private user notes for a specific title in their library.
+ */
+export async function savePrivateNotes(
+  userId: string,
+  titleId: string,
+  privateNotes: string,
+  titleData?: NormalizedCatalogItem
+): Promise<UserLibraryItem> {
+  return upsertLibraryItem({
+    userId,
+    titleId,
+    privateNotes,
+    titleData,
+  });
 }
 
 /**

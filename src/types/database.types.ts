@@ -131,6 +131,7 @@ export interface Database {
           rating: number | null;
           is_private: boolean;
           personal_notes: string | null;
+          private_notes: string | null;
           started_at: string | null;
           completed_at: string | null;
           last_progressed_at: string;
@@ -145,6 +146,7 @@ export interface Database {
           rating?: number | null;
           is_private?: boolean;
           personal_notes?: string | null;
+          private_notes?: string | null;
           started_at?: string | null;
           completed_at?: string | null;
           last_progressed_at?: string;
@@ -159,6 +161,7 @@ export interface Database {
           rating?: number | null;
           is_private?: boolean;
           personal_notes?: string | null;
+          private_notes?: string | null;
           started_at?: string | null;
           completed_at?: string | null;
           last_progressed_at?: string;

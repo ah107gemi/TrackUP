@@ -212,11 +212,20 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const statuses: { id: TrackingStatus | 'all'; label: string }[] = [
     { id: 'all', label: 'All Statuses' },
     { id: 'active', label: domain === 'watch' ? 'Watching' : 'Reading' },
-    { id: 'planned', label: 'Planned' },
+    { id: 'planned', label: 'Plan to watch/read' },
     { id: 'completed', label: 'Completed' },
     { id: 'paused', label: 'On Hold' },
     { id: 'dropped', label: 'Dropped' },
   ];
+
+  const formatStatusBadge = (status?: string | null) => {
+    if (!status || status === 'planned') return 'Plan to watch/read';
+    if (status === 'active') return domain === 'watch' ? 'Watching' : 'Reading';
+    if (status === 'completed') return 'Completed';
+    if (status === 'paused') return 'On Hold';
+    if (status === 'dropped') return 'Dropped';
+    return status;
+  };
 
   const handleQuickProgress = (e: React.MouseEvent, item: (typeof library)[0]) => {
     e.stopPropagation();
@@ -623,7 +632,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     />
                     <div className="absolute top-2 left-2">
                       <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-background/80 text-accent border border-accent/20 backdrop-blur-md">
-                        {item.status || 'planned'}
+                        {formatStatusBadge(item.status)}
                       </span>
                     </div>
                   </div>
@@ -691,7 +700,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     <h4 className="text-xs font-bold text-text-primary truncate group-hover:text-accent">
                       {item.title?.title || 'Unknown Title'}
                     </h4>
-                    <p className="text-[10px] text-text-muted capitalize mt-0.5">{item.status || 'planned'}</p>
+                    <p className="text-[10px] text-text-muted capitalize mt-0.5">{formatStatusBadge(item.status)}</p>
                     <div className="mt-1 flex items-center justify-between">
                       <span className="font-mono text-[11px] text-accent">
                         {item.title?.media_type === 'tv' || item.title?.media_type === 'anime_series'
@@ -775,7 +784,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       </td>
                       <td className="py-3 px-3">
                         <span className="capitalize font-medium text-text-secondary">
-                          {item.status || 'planned'}
+                          {formatStatusBadge(item.status)}
                         </span>
                       </td>
                       <td className="py-3 px-3 font-mono font-semibold text-text-primary">

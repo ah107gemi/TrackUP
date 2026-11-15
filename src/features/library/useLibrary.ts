@@ -9,6 +9,7 @@ import {
   logBatchEpisodeProgress,
   logReadingProgress,
   removeLibraryItem,
+  savePrivateNotes,
   calculateTotalEpisodes,
   calculateWatchedEpisodesCount,
   inferWatchedTrackingStatus,
@@ -350,3 +351,20 @@ export function useRemoveFromLibrary() {
     },
   });
 }
+
+export function useSavePrivateNotes() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: {
+      userId: string;
+      titleId: string;
+      notes: string;
+      titleData?: any;
+    }) => savePrivateNotes(params.userId, params.titleId, params.notes, params.titleData),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['library', variables.userId] });
+    },
+  });
+}
+

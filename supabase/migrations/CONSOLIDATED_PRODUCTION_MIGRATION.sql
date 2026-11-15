@@ -1195,3 +1195,9 @@ CREATE POLICY "Users can delete items from own lists"
 
 
 
+
+-- ============================================================================
+-- MIGRATION: 20261115000003_add_private_notes.sql
+-- ============================================================================
+
+ALTER TABLE public.user_libraries ADD COLUMN IF NOT EXISTS private_notes TEXT;

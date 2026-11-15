@@ -13,6 +13,7 @@
     *   **Fields:** `id` (UUID), `email` (TEXT), `username` (TEXT - has a case-insensitive index `idx_profiles_username_lower`), `display_name` (TEXT).
 *   **Core Media & Tracking Tables:** `catalog_titles`, `user_libraries`, `user_episode_progress`, `user_reading_progress`, `reviews`, `user_follows`.
     *   *Note: These tables must respect standard UUID foreign key constraints pointing to `profiles.id`.*
+    *   *`user_libraries` Schema:* includes `id`, `user_id`, `title_id`, `status` (`'active' | 'completed' | 'planned' | 'paused' | 'dropped'`), `rating`, `is_private`, `personal_notes`, `private_notes` (TEXT, strictly confidential private user notes), timestamps.
 *   **`public.custom_lists`:** User-created custom media collections.
     *   **Fields:** `id` (UUID, PK), `user_id` (UUID, FK -> `profiles.id` ON DELETE CASCADE), `list_name` (TEXT), `description` (TEXT), `created_at` (TIMESTAMPTZ), `updated_at` (TIMESTAMPTZ).
     *   **RLS Policies:** SELECT, INSERT, UPDATE, DELETE permitted strictly for the list owner (`auth.uid() = user_id`).
@@ -22,6 +23,8 @@
 
 ## Current Development Phase: Mobile & Bug Fixes
 *   **Recently Completed (Do not re-implement):**
+    *   **Private Notes Section:** Under the Review section on the title detail page (`TitleDetailPage.tsx`), added a dedicated "Private Notes" text area with confidential lock indicators, real-time feedback toast, and auto-sync. Backed by `user_libraries.private_notes` (TEXT) and optimistic local storage caching, strictly accessible only to the authenticated owner.
+    *   **"Plan to watch/read" Status UX:** Updated the tracking status UI across the entire application (`TitleDetailPage.tsx`, `LibraryView.tsx`, `RecommendationsView.tsx`, `PublicProfilePage.tsx`). Replaced legacy "Planned" display labels with "Plan to watch/read" while preserving the underlying `'planned'` database enum value to guarantee backwards compatibility.
     *   **Hamburger Menu Completely Removed:** Completely eliminated the hamburger menu trigger button and `<MobileNavDrawer />` dropdown/drawer from the application header and navigation shell. Mobile navigation relies 100% on `<BottomNavBar />` (Home, Discover, Library, Social, Profile) with accessible tap targets and zero horizontal layout overflow, while desktop relies on `DesktopSidebar` and `TopUtilityBar`.
     *   **Custom Lists Feature Implemented:** In the Profile section, completely replaced the legacy "My Library & Watched Titles" showcase with a rich, interactive "Custom Lists" manager (`CustomListsSection.tsx`, `customListsService.ts`). Users can create new lists, edit names/descriptions, delete lists, and curate any media type (shows, movies, anime, manhwa, manga) backed by Supabase tables (`custom_lists`, `list_items`) and optimistic localStorage synchronization.
     *   **Unified Search UX:** Refactored the search bars inside the Library (`LibraryView.tsx`) and Discover (`SearchPage.tsx`) sections. Inline search text inputs were replaced with unified global search triggers that match the exact UI look, styling, and functionality of the Global Search Omnisearch modal (`OmnisearchModal.tsx`) with ⌘K shortcuts.

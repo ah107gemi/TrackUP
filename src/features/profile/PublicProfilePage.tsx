@@ -718,7 +718,7 @@ export const PublicProfilePage: React.FC<PublicProfilePageProps> = ({
                         : 'bg-surface border-surface-elevated text-text-muted hover:text-text-primary'
                     }`}
                   >
-                    {st === 'active' ? 'Watching / Reading' : st}
+                    {st === 'active' ? 'Watching / Reading' : st === 'planned' ? 'Plan to watch/read' : st}
                   </button>
                 ))}
               </div>
@@ -800,7 +800,7 @@ export const PublicProfilePage: React.FC<PublicProfilePageProps> = ({
                                 : 'bg-surface-elevated text-text-muted border border-surface-elevated'
                             }`}
                           >
-                            {item.status}
+                            {item.status === 'planned' ? 'Plan to watch/read' : item.status}
                           </span>
                         </div>
 
@@ -818,7 +818,7 @@ export const PublicProfilePage: React.FC<PublicProfilePageProps> = ({
                           <span className="text-[10px] font-mono text-text-secondary bg-background/80 backdrop-blur-md px-1.5 py-0.5 rounded-md border border-surface-elevated">
                             {isEpisodic && (item.status === 'completed' ? `${item.title.total_episodes || item.episodes_watched?.length || 1} eps` : `${item.episodes_watched?.length || 0} eps`)}
                             {isReading && `Ch. ${item.last_chapter_read || 0}`}
-                            {!isEpisodic && !isReading && item.status}
+                            {!isEpisodic && !isReading && (item.status === 'planned' ? 'Plan to watch/read' : item.status)}
                           </span>
                         </div>
                       </div>
