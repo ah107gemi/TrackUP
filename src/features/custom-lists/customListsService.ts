@@ -27,10 +27,92 @@ export interface CustomList {
 const LOCAL_STORAGE_CUSTOM_LISTS_KEY = 'trackup_custom_lists';
 const LOCAL_STORAGE_LIBRARIES_KEY = 'trackup_user_libraries';
 
+/**
+ * Generates an RFC 4122 compliant UUID v4 string
+ */
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/**
+ * Validates whether a given string is a valid UUID
+ */
+export function isValidUUID(id?: string | null): boolean {
+  if (!id || typeof id !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+}
+
+/**
+ * Resolves the authenticated user ID strictly from the active Supabase session
+ */
+export async function getAuthenticatedUserId(): Promise<string | null> {
+  if (!supabase) return null;
+  try {
+    const { data: authData } = await supabase.auth.getUser();
+    if (authData?.user?.id && isValidUUID(authData.user.id)) {
+      return authData.user.id;
+    }
+  } catch {
+    // network or test environment fallback
+  }
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const sid = sessionData?.session?.user?.id;
+    if (sid && isValidUUID(sid)) {
+      return sid;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/**
+ * Loads custom lists from localStorage, auto-healing any legacy non-UUID string IDs
+ */
 export function getStoredCustomLists(): CustomList[] {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_CUSTOM_LISTS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const parsed: CustomList[] = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    let hasMigrated = false;
+    const sanitized = parsed.map((list) => {
+      let currentList = { ...list };
+      // Heal non-UUID list IDs (e.g. legacy list_123 strings)
+      if (!isValidUUID(currentList.id)) {
+        currentList.id = generateUUID();
+        hasMigrated = true;
+      }
+      if (Array.isArray(currentList.items)) {
+        currentList.items = currentList.items.map((item) => {
+          let currentItem = { ...item };
+          if (!isValidUUID(currentItem.id)) {
+            currentItem.id = generateUUID();
+            hasMigrated = true;
+          }
+          if (currentItem.list_id !== currentList.id) {
+            currentItem.list_id = currentList.id;
+            hasMigrated = true;
+          }
+          return currentItem;
+        });
+      }
+      return currentList;
+    });
+
+    if (hasMigrated) {
+      saveStoredCustomLists(sanitized);
+    }
+    return sanitized;
   } catch {
     return [];
   }
@@ -87,96 +169,121 @@ function inferMediaTypeFromId(id: string): MediaType {
  * Fetches all custom lists for a user, including their items with hydrated titles
  */
 export async function fetchUserCustomLists(userId: string): Promise<CustomList[]> {
-  try {
-    // 1. Try Supabase query
-    const { data: dbLists, error: listErr } = await (supabase as any)
-      .from('custom_lists')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true });
+  const sessionUserId = await getAuthenticatedUserId();
+  const effectiveUserId = isValidUUID(userId) ? userId : sessionUserId;
 
-    if (!listErr && dbLists && dbLists.length > 0) {
-      const listIds = dbLists.map((l: any) => l.id);
-      const { data: dbItems } = await (supabase as any)
-        .from('list_items')
+  // 1. Try Supabase query if we have a valid UUID to query for
+  if (effectiveUserId && supabase) {
+    try {
+      const { data: dbLists, error: listErr } = await (supabase as any)
+        .from('custom_lists')
         .select('*')
-        .in('list_id', listIds)
+        .eq('user_id', effectiveUserId)
         .order('created_at', { ascending: true });
 
-      const hydratedLists: CustomList[] = await Promise.all(
-        dbLists.map(async (l: any) => {
-          const rawItems = (dbItems || []).filter((i: any) => i.list_id === l.id);
-          const items: CustomListItem[] = await Promise.all(
-            rawItems.map(async (i: any) => {
-              const itemTitleId = i.title_id || i.media_id;
-              let title = resolveLocalTitle(itemTitleId);
-              if (!title) {
-                try {
-                  title = await getCatalogTitleById(itemTitleId);
-                } catch {
-                  // ignore
+      if (!listErr && dbLists && dbLists.length > 0) {
+        const listIds = dbLists.map((l: any) => l.id);
+        const { data: dbItems } = await (supabase as any)
+          .from('list_items')
+          .select('*')
+          .in('list_id', listIds)
+          .order('created_at', { ascending: true });
+
+        const hydratedLists: CustomList[] = await Promise.all(
+          dbLists.map(async (l: any) => {
+            const rawItems = (dbItems || []).filter((i: any) => i.list_id === l.id);
+            const items: CustomListItem[] = await Promise.all(
+              rawItems.map(async (i: any) => {
+                const itemTitleId = i.title_id || i.media_id;
+                let title = resolveLocalTitle(itemTitleId);
+                if (!title) {
+                  try {
+                    title = await getCatalogTitleById(itemTitleId);
+                  } catch {
+                    // ignore
+                  }
                 }
-              }
-              if (!title) {
-                title = {
-                  id: itemTitleId,
-                  title: itemTitleId.replace(/^[^_]+_/, '').replace(/_/g, ' '),
-                  media_type: (i.media_type as MediaType) || inferMediaTypeFromId(itemTitleId),
-                  genres: [],
+                if (!title) {
+                  title = {
+                    id: itemTitleId,
+                    title: itemTitleId.replace(/^[^_]+_/, '').replace(/_/g, ' '),
+                    media_type: (i.media_type as MediaType) || inferMediaTypeFromId(itemTitleId),
+                    genres: [],
+                  };
+                }
+                return {
+                  id: i.id,
+                  list_id: i.list_id,
+                  title_id: itemTitleId,
+                  notes: i.notes,
+                  display_order: i.display_order ?? 0,
+                  created_at: i.created_at,
+                  title,
                 };
-              }
-              return {
-                id: i.id,
-                list_id: i.list_id,
-                title_id: itemTitleId,
-                notes: i.notes,
-                display_order: i.display_order ?? 0,
-                created_at: i.created_at,
-                title,
-              };
-            })
-          );
+              })
+            );
 
-          return {
-            id: l.id,
-            user_id: l.user_id,
-            name: l.name || l.list_name || 'Untitled List',
-            description: l.description,
-            is_private: Boolean(l.is_private),
-            created_at: l.created_at,
-            updated_at: l.updated_at,
-            items,
-          };
-        })
-      );
+            return {
+              id: l.id,
+              user_id: l.user_id,
+              name: l.name || l.list_name || 'Untitled List',
+              description: l.description,
+              is_private: Boolean(l.is_private),
+              created_at: l.created_at,
+              updated_at: l.updated_at,
+              items,
+            };
+          })
+        );
 
-      // Cache locally
-      const existing = getStoredCustomLists().filter((l) => l.user_id !== userId);
-      saveStoredCustomLists([...existing, ...hydratedLists]);
-      return hydratedLists;
+        // Cache locally
+        const existing = getStoredCustomLists().filter((l) => l.user_id !== effectiveUserId && l.user_id !== userId);
+        saveStoredCustomLists([...existing, ...hydratedLists]);
+        return hydratedLists;
+      }
+    } catch {
+      // fallback to localStorage
     }
-  } catch {
-    // fallback to localStorage
   }
 
   // 2. LocalStorage Fallback
   const stored = getStoredCustomLists();
-  let userLists = stored.filter((l) => l.user_id === userId);
+  let userLists = stored.filter(
+    (l) => l.user_id === userId || (effectiveUserId && l.user_id === effectiveUserId)
+  );
 
-  // If no lists exist yet for this user, generate a welcoming starter list
+  // If no lists exist yet for this user, generate a welcoming starter list with a strict UUID v4
   if (userLists.length === 0) {
+    const starterId = generateUUID();
+    const now = new Date().toISOString();
     const starterList: CustomList = {
-      id: `list_${Date.now()}_starter`,
-      user_id: userId,
+      id: starterId,
+      user_id: effectiveUserId || userId,
       name: 'All-Time Masterpieces',
       description: 'Curated list of favorite shows, films, anime, and manga.',
       is_private: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: now,
+      updated_at: now,
       items: [],
     };
     userLists = [starterList];
     saveStoredCustomLists([...stored, starterList]);
+
+    // If an authenticated session is active, sync the starter list to Supabase
+    if (sessionUserId && supabase) {
+      try {
+        await (supabase as any).from('custom_lists').insert({
+          id: starterId,
+          user_id: sessionUserId,
+          name: starterList.name,
+          list_name: starterList.name,
+          description: starterList.description,
+          is_private: false,
+        });
+      } catch {
+        // ignore offline / non-blocking sync error
+      }
+    }
   }
 
   // Ensure title hydration
@@ -209,12 +316,14 @@ export async function createCustomList(
   description?: string,
   isPrivate: boolean = false
 ): Promise<CustomList> {
-  const newListId = `list_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const sessionUserId = await getAuthenticatedUserId();
+  const effectiveUserId = sessionUserId || (isValidUUID(userId) ? userId : userId);
+  const listUuid = generateUUID();
   const now = new Date().toISOString();
 
   const newList: CustomList = {
-    id: newListId,
-    user_id: userId,
+    id: listUuid,
+    user_id: effectiveUserId,
     name: name.trim(),
     description: description ? description.trim() : null,
     is_private: isPrivate,
@@ -223,33 +332,36 @@ export async function createCustomList(
     items: [],
   };
 
-  // 1. Try Supabase
-  try {
-    const payload = {
-      user_id: userId,
-      name: name.trim(),
-      list_name: name.trim(),
-      description: description ? description.trim() : null,
-      is_private: isPrivate,
-    };
+  // 1. Try Supabase when authenticated session is present
+  if (sessionUserId && supabase) {
+    try {
+      const payload: Record<string, any> = {
+        id: listUuid,
+        user_id: sessionUserId,
+        name: name.trim(),
+        list_name: name.trim(),
+        description: description ? description.trim() : null,
+        is_private: isPrivate,
+      };
 
-    const { data, error } = await (supabase as any)
-      .from('custom_lists')
-      .insert(payload)
-      .select()
-      .single();
+      const { data, error } = await (supabase as any)
+        .from('custom_lists')
+        .insert(payload)
+        .select()
+        .single();
 
-    if (error) {
-      console.error('[customListsService] custom_lists insert failed:', error);
-      throw new Error(error.message || 'Failed to create custom list in Supabase.');
-    }
+      if (error) {
+        console.error('[customListsService] custom_lists insert failed:', error);
+        throw new Error(error.message || 'Failed to create custom list in Supabase.');
+      }
 
-    if (data?.id) {
-      newList.id = data.id;
-    }
-  } catch (err: any) {
-    if (err?.message && !err.message.includes('fetch failed') && !err.message.includes('Failed to fetch')) {
-      throw err;
+      if (data?.id) {
+        newList.id = data.id;
+      }
+    } catch (err: any) {
+      if (err?.message && !err.message.includes('fetch failed') && !err.message.includes('Failed to fetch')) {
+        throw err;
+      }
     }
   }
 
@@ -268,35 +380,39 @@ export async function updateCustomList(
   updates: { name?: string; description?: string; is_private?: boolean }
 ): Promise<CustomList> {
   const now = new Date().toISOString();
+  const sessionUserId = await getAuthenticatedUserId();
 
   // 1. Try Supabase
-  try {
-    const updatePayload: Record<string, any> = {
-      updated_at: now,
-    };
-    if (updates.name !== undefined) {
-      updatePayload.name = updates.name.trim();
-      updatePayload.list_name = updates.name.trim();
-    }
-    if (updates.description !== undefined) {
-      updatePayload.description = updates.description ? updates.description.trim() : null;
-    }
-    if (updates.is_private !== undefined) {
-      updatePayload.is_private = updates.is_private;
-    }
+  if (sessionUserId && isValidUUID(listId) && supabase) {
+    try {
+      const updatePayload: Record<string, any> = {
+        updated_at: now,
+      };
+      if (updates.name !== undefined) {
+        updatePayload.name = updates.name.trim();
+        updatePayload.list_name = updates.name.trim();
+      }
+      if (updates.description !== undefined) {
+        updatePayload.description = updates.description ? updates.description.trim() : null;
+      }
+      if (updates.is_private !== undefined) {
+        updatePayload.is_private = updates.is_private;
+      }
 
-    const { error } = await (supabase as any)
-      .from('custom_lists')
-      .update(updatePayload)
-      .eq('id', listId);
+      const { error } = await (supabase as any)
+        .from('custom_lists')
+        .update(updatePayload)
+        .eq('id', listId)
+        .eq('user_id', sessionUserId);
 
-    if (error) {
-      console.error('[customListsService] custom_lists update failed:', error);
-      throw new Error(error.message || 'Failed to update custom list in Supabase.');
-    }
-  } catch (err: any) {
-    if (err?.message && !err.message.includes('fetch failed') && !err.message.includes('Failed to fetch')) {
-      throw err;
+      if (error) {
+        console.error('[customListsService] custom_lists update failed:', error);
+        throw new Error(error.message || 'Failed to update custom list in Supabase.');
+      }
+    } catch (err: any) {
+      if (err?.message && !err.message.includes('fetch failed') && !err.message.includes('Failed to fetch')) {
+        throw err;
+      }
     }
   }
 
@@ -329,16 +445,25 @@ export async function updateCustomList(
  * Deletes a custom list and its associated items
  */
 export async function deleteCustomList(listId: string): Promise<boolean> {
+  const sessionUserId = await getAuthenticatedUserId();
+
   // 1. Try Supabase
-  try {
-    const { error } = await (supabase as any).from('custom_lists').delete().eq('id', listId);
-    if (error) {
-      console.error('[customListsService] custom_lists delete failed:', error);
-      throw new Error(error.message || 'Failed to delete custom list from Supabase.');
-    }
-  } catch (err: any) {
-    if (err?.message && !err.message.includes('fetch failed') && !err.message.includes('Failed to fetch')) {
-      throw err;
+  if (sessionUserId && isValidUUID(listId) && supabase) {
+    try {
+      const { error } = await (supabase as any)
+        .from('custom_lists')
+        .delete()
+        .eq('id', listId)
+        .eq('user_id', sessionUserId);
+
+      if (error) {
+        console.error('[customListsService] custom_lists delete failed:', error);
+        throw new Error(error.message || 'Failed to delete custom list from Supabase.');
+      }
+    } catch (err: any) {
+      if (err?.message && !err.message.includes('fetch failed') && !err.message.includes('Failed to fetch')) {
+        throw err;
+      }
     }
   }
 
@@ -376,20 +501,41 @@ export async function addTitleToList(
   }
 
   const stored = getStoredCustomLists();
-  const targetList = stored.find((l) => l.id === listId);
+  let targetList = stored.find((l) => l.id === listId);
+
+  // If list not found by exact ID, check if it had a legacy non-UUID prefix or match
+  if (!targetList && !isValidUUID(listId)) {
+    targetList = stored.find((l) => l.id.startsWith('list_') || l.id === listId);
+  }
+
+  // Ensure target list ID is a valid UUID v4
+  let effectiveListId = targetList?.id || listId;
+  if (!isValidUUID(effectiveListId)) {
+    const freshUuid = generateUUID();
+    if (targetList) {
+      targetList.id = freshUuid;
+      if (targetList.items) {
+        targetList.items.forEach((item) => {
+          item.list_id = freshUuid;
+        });
+      }
+      saveStoredCustomLists(stored);
+    }
+    effectiveListId = freshUuid;
+  }
 
   const existingItem = targetList?.items?.find((i) => i.title_id === titleId);
   if (existingItem) {
     return existingItem;
   }
 
-  const itemId = `item_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const itemUuid = generateUUID();
   const now = new Date().toISOString();
   const displayOrder = targetList?.items?.length || 0;
 
   const newItem: CustomListItem = {
-    id: itemId,
-    list_id: listId,
+    id: itemUuid,
+    list_id: effectiveListId,
     title_id: titleId,
     notes: notes ? notes.trim() : null,
     display_order: displayOrder,
@@ -397,55 +543,80 @@ export async function addTitleToList(
     title: titleObj,
   };
 
-  // 1. Try Supabase with complete, verified payload
-  try {
-    let targetUserId = targetList?.user_id;
-    if (!targetUserId && supabase) {
-      try {
-        const { data: authData } = await supabase.auth.getUser();
-        targetUserId = authData?.user?.id;
-      } catch {
-        // ignore
+  const sessionUserId = await getAuthenticatedUserId();
+
+  // 1. Try Supabase with strictly verified auth session user_id and UUIDs
+  if (sessionUserId && supabase && isValidUUID(effectiveListId)) {
+    try {
+      // Step A: Ensure parent list exists in Supabase under sessionUserId
+      const { data: parentCheck, error: parentCheckErr } = await (supabase as any)
+        .from('custom_lists')
+        .select('id')
+        .eq('id', effectiveListId)
+        .maybeSingle();
+
+      if (!parentCheck && !parentCheckErr) {
+        // Sync parent custom list to Supabase so foreign key & RLS on list_items succeed
+        const parentName = targetList?.name || 'Custom List';
+        const parentDesc = targetList?.description || null;
+        const parentPrivate = Boolean(targetList?.is_private);
+
+        const { error: insertParentErr } = await (supabase as any)
+          .from('custom_lists')
+          .insert({
+            id: effectiveListId,
+            user_id: sessionUserId,
+            name: parentName,
+            list_name: parentName,
+            description: parentDesc,
+            is_private: parentPrivate,
+          });
+
+        if (insertParentErr) {
+          console.error('[customListsService] Failed to auto-sync parent list to Supabase:', insertParentErr);
+          throw new Error(insertParentErr.message || 'Parent custom list could not be verified in Supabase.');
+        }
       }
-    }
 
-    const payload: Record<string, any> = {
-      list_id: listId,
-      media_id: titleId,
-      title_id: titleId,
-      media_type: titleObj.media_type || inferMediaTypeFromId(titleId),
-      notes: notes ? notes.trim() : null,
-      display_order: displayOrder,
-    };
-    if (targetUserId) {
-      payload.user_id = targetUserId;
-    }
+      // Step B: Insert list_item strictly with sessionUserId and valid UUIDs
+      const payload: Record<string, any> = {
+        id: itemUuid,
+        list_id: effectiveListId,
+        user_id: sessionUserId,
+        media_id: titleId,
+        title_id: titleId,
+        media_type: titleObj.media_type || inferMediaTypeFromId(titleId),
+        notes: notes ? notes.trim() : null,
+        display_order: displayOrder,
+      };
 
-    const { data, error } = await (supabase as any)
-      .from('list_items')
-      .insert(payload)
-      .select()
-      .single();
+      const { data, error } = await (supabase as any)
+        .from('list_items')
+        .insert(payload)
+        .select()
+        .single();
 
-    if (error) {
-      console.error('[customListsService] Supabase list_items insert failed:', error);
-      throw new Error(error.message || 'Supabase rejected list_items insert (RLS policy or schema violation).');
-    }
+      if (error) {
+        console.error('[customListsService] Supabase list_items insert failed:', error);
+        throw new Error(error.message || 'Supabase rejected list_items insert (RLS policy or schema violation).');
+      }
 
-    if (data?.id) {
-      newItem.id = data.id;
-    }
-  } catch (err: any) {
-    if (err?.message && !err.message.includes('fetch failed') && !err.message.includes('Failed to fetch')) {
-      throw err;
+      if (data?.id) {
+        newItem.id = data.id;
+      }
+    } catch (err: any) {
+      if (err?.message && !err.message.includes('fetch failed') && !err.message.includes('Failed to fetch')) {
+        throw err;
+      }
     }
   }
 
   // 2. Update localStorage only after persistence succeeded
   const nextStored = stored.map((l) => {
-    if (l.id === listId) {
+    if (l.id === effectiveListId || (targetList && l.id === targetList.id)) {
       return {
         ...l,
+        id: effectiveListId,
         updated_at: now,
         items: [...(l.items || []), newItem],
       };
@@ -461,28 +632,34 @@ export async function addTitleToList(
  * Removes a title from a custom list
  */
 export async function removeTitleFromList(listId: string, titleId: string): Promise<boolean> {
-  // 1. Try Supabase
-  try {
-    const { error } = await (supabase as any)
-      .from('list_items')
-      .delete()
-      .eq('list_id', listId)
-      .or(`title_id.eq.${titleId},media_id.eq.${titleId}`);
+  const sessionUserId = await getAuthenticatedUserId();
+  const stored = getStoredCustomLists();
+  const targetList = stored.find((l) => l.id === listId);
+  const effectiveListId = targetList?.id || listId;
 
-    if (error) {
-      console.error('[customListsService] Supabase list_items delete failed:', error);
-      throw new Error(error.message || 'Supabase rejected list_items delete (RLS policy violation).');
-    }
-  } catch (err: any) {
-    if (err?.message && !err.message.includes('fetch failed') && !err.message.includes('Failed to fetch')) {
-      throw err;
+  // 1. Try Supabase
+  if (sessionUserId && isValidUUID(effectiveListId) && supabase) {
+    try {
+      const { error } = await (supabase as any)
+        .from('list_items')
+        .delete()
+        .eq('list_id', effectiveListId)
+        .or(`title_id.eq.${titleId},media_id.eq.${titleId}`);
+
+      if (error) {
+        console.error('[customListsService] Supabase list_items delete failed:', error);
+        throw new Error(error.message || 'Supabase rejected list_items delete (RLS policy violation).');
+      }
+    } catch (err: any) {
+      if (err?.message && !err.message.includes('fetch failed') && !err.message.includes('Failed to fetch')) {
+        throw err;
+      }
     }
   }
 
   // 2. Update localStorage
-  const stored = getStoredCustomLists();
   const nextStored = stored.map((l) => {
-    if (l.id === listId) {
+    if (l.id === effectiveListId || l.id === listId) {
       return {
         ...l,
         updated_at: new Date().toISOString(),

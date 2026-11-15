@@ -29,6 +29,7 @@ import {
 import { resolvePosterUrl } from '../../lib/imageUtils';
 import { searchCatalog, MOCK_CATALOG_FIXTURES } from '../catalog/catalogService';
 import type { NormalizedCatalogItem } from '../../lib/validators';
+import { useAuth } from '../auth/AuthContext';
 
 interface CustomListsSectionProps {
   userId: string;
@@ -41,6 +42,9 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
   isOwnProfile,
   onSelectTitle,
 }) => {
+  const { user } = useAuth();
+  const effectiveUserId = (isOwnProfile && user?.id) ? user.id : (userId || user?.id || '');
+
   const [lists, setLists] = useState<CustomList[]>([]);
   const [activeListId, setActiveListId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -73,7 +77,7 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
     let mounted = true;
     setIsLoading(true);
 
-    fetchUserCustomLists(userId).then((fetched) => {
+    fetchUserCustomLists(effectiveUserId).then((fetched) => {
       if (!mounted) return;
       // Filter out private lists if not own profile
       const visible = isOwnProfile ? fetched : fetched.filter((l) => !l.is_private);
@@ -89,7 +93,7 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
     return () => {
       mounted = false;
     };
-  }, [userId, isOwnProfile]);
+  }, [effectiveUserId, isOwnProfile]);
 
   const activeList = useMemo(() => {
     return lists.find((l) => l.id === activeListId) || null;
@@ -139,7 +143,7 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
 
     try {
       setErrorMessage(null);
-      const created = await createCustomList(userId, newListName, newListDesc, newListPrivate);
+      const created = await createCustomList(effectiveUserId, newListName, newListDesc, newListPrivate);
       setLists((prev) => [...prev, created]);
       setActiveListId(created.id);
       setIsCreateOpen(false);

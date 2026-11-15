@@ -1184,7 +1184,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
           isOpen={isAddToListOpen}
           onClose={() => setIsAddToListOpen(false)}
           title={title}
-          userId={activeUserId || user?.id || ''}
+          userId={user?.id || activeUserId}
         />
       )}
 

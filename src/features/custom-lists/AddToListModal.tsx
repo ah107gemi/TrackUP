@@ -19,6 +19,7 @@ import {
 } from './customListsService';
 import type { NormalizedCatalogItem } from '../../lib/validators';
 import { resolvePosterUrl } from '../../lib/imageUtils';
+import { useAuth } from '../auth/AuthContext';
 
 interface AddToListModalProps {
   isOpen: boolean;
@@ -33,6 +34,9 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
   title,
   userId,
 }) => {
+  const { user } = useAuth();
+  const effectiveUserId = user?.id || userId;
+
   const [lists, setLists] = useState<CustomList[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [busyListIds, setBusyListIds] = useState<Record<string, boolean>>({});
@@ -47,13 +51,13 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
 
   // Load custom lists on open
   useEffect(() => {
-    if (!isOpen || !userId) return;
+    if (!isOpen || !effectiveUserId) return;
 
     let mounted = true;
     setIsLoading(true);
     setErrorMessage(null);
 
-    fetchUserCustomLists(userId).then((fetched) => {
+    fetchUserCustomLists(effectiveUserId).then((fetched) => {
       if (mounted) {
         setLists(fetched);
         setIsLoading(false);
@@ -63,7 +67,7 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
     return () => {
       mounted = false;
     };
-  }, [isOpen, userId]);
+  }, [isOpen, effectiveUserId]);
 
   if (!isOpen) return null;
 
@@ -106,7 +110,7 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
     setErrorMessage(null);
     try {
       const created = await createCustomList(
-        userId,
+        effectiveUserId,
         newListName.trim(),
         newListDesc.trim() || undefined,
         newListPrivate
