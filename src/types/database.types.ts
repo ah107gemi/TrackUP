@@ -166,6 +166,61 @@ export interface Database {
           updated_at?: string;
         };
       };
+      custom_lists: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          description: string | null;
+          is_private: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          description?: string | null;
+          is_private?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          description?: string | null;
+          is_private?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      list_items: {
+        Row: {
+          id: string;
+          list_id: string;
+          title_id: string;
+          notes: string | null;
+          display_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          list_id: string;
+          title_id: string;
+          notes?: string | null;
+          display_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          list_id?: string;
+          title_id?: string;
+          notes?: string | null;
+          display_order?: number;
+          created_at?: string;
+        };
+      };
     };
   };
 }

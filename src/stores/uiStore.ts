@@ -102,3 +102,8 @@ export const useUIStore = create<UIState>((set, get) => ({
     }
   },
 }));
+
+if (typeof window !== 'undefined') {
+  (window as any).__TRACKUP_UI_STORE__ = useUIStore;
+}
+

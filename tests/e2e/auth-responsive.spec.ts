@@ -7,13 +7,15 @@ test.describe('TrackUp Phase 1: Responsive Layout & App Shell', () => {
     const isMobile = page.viewportSize() ? page.viewportSize()!.width <= 768 : false;
 
     if (isMobile) {
-      // Mobile: desktop sidebar is hidden, mobile hamburger trigger is visible
+      // Mobile: desktop sidebar is hidden, mobile bottom nav is visible, hamburger trigger is removed
       await expect(page.locator('[data-testid="desktop-sidebar"]')).toBeHidden();
-      await expect(page.locator('[data-testid="mobile-hamburger-trigger"]')).toBeVisible();
+      await expect(page.locator('[data-testid="bottom-navigation-bar"]')).toBeVisible();
+      await expect(page.locator('[data-testid="mobile-hamburger-trigger"]')).not.toBeAttached();
     } else {
-      // Desktop: desktop sidebar is visible, mobile hamburger trigger is hidden
+      // Desktop: desktop sidebar is visible, mobile bottom nav is hidden, hamburger trigger is removed
       await expect(page.locator('[data-testid="desktop-sidebar"]')).toBeVisible();
-      await expect(page.locator('[data-testid="mobile-hamburger-trigger"]')).toBeHidden();
+      await expect(page.locator('[data-testid="bottom-navigation-bar"]')).toBeHidden();
+      await expect(page.locator('[data-testid="mobile-hamburger-trigger"]')).not.toBeAttached();
     }
   });
 
@@ -46,8 +48,7 @@ test.describe('TrackUp Phase 1: Responsive Layout & App Shell', () => {
     const isMobile = page.viewportSize() ? page.viewportSize()!.width <= 768 : false;
 
     if (isMobile) {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-watch"]').click();
+      await page.locator('[data-testid="bottom-nav-library"]').click();
     } else {
       await page.locator('[data-testid="desktop-sidebar"] button:has-text("Watch Library")').click();
     }
@@ -71,12 +72,8 @@ test.describe('TrackUp Phase 1: Responsive Layout & App Shell', () => {
 
     // Open Auth Modal
     const authTrigger = page.locator('[data-testid="auth-modal-trigger"]');
-    if (await authTrigger.isVisible()) {
-      await authTrigger.click();
-    } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-profile"]').click();
-    }
+    await expect(authTrigger).toBeVisible();
+    await authTrigger.click();
 
     await expect(page.locator('[data-testid="auth-modal"]')).toBeVisible();
 
@@ -101,15 +98,8 @@ test.describe('TrackUp Phase 1: Responsive Layout & App Shell', () => {
 
     // Verify user is now authenticated
     const profileBtn = page.locator('[data-testid="profile-button"]');
-    const isMobile = page.viewportSize() ? page.viewportSize()!.width <= 768 : false;
-
-    if (!isMobile) {
-      await expect(profileBtn).toBeVisible();
-      await profileBtn.click();
-    } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-profile"]').click();
-    }
+    await expect(profileBtn).toBeVisible();
+    await profileBtn.click();
 
     // Profile modal opens
     await expect(page.locator('[data-testid="profile-modal"]')).toBeVisible();
@@ -126,22 +116,11 @@ test.describe('TrackUp Phase 1: Responsive Layout & App Shell', () => {
     await expect(page.locator('[data-testid="profile-modal"]')).toBeHidden();
 
     // Sign out
-    if (!isMobile) {
-      await page.locator('[data-testid="signout-button"]').click();
-      await expect(page.locator('[data-testid="auth-modal-trigger"]')).toBeVisible();
-    } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-drawer-signout"]').click();
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await expect(page.locator('[data-testid="mobile-nav-profile"]')).toContainText('Sign In');
-    }
+    await page.locator('[data-testid="signout-button"]').click();
+    await expect(page.locator('[data-testid="auth-modal-trigger"]')).toBeVisible();
 
     // Re-login using username (with @ prefix) to verify username login
-    if (!isMobile) {
-      await page.locator('[data-testid="auth-modal-trigger"]').click();
-    } else {
-      await page.locator('[data-testid="mobile-nav-profile"]').click();
-    }
+    await page.locator('[data-testid="auth-modal-trigger"]').click();
     await expect(page.locator('[data-testid="auth-modal"]')).toBeVisible();
     await page.locator('[data-testid="auth-tab-login"]').click();
     await page.locator('[data-testid="auth-email-input"]').fill(`@${testUsername}`);

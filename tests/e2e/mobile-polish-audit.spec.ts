@@ -9,8 +9,7 @@ test.describe('TrackUp UI Quality Audit & Mobile Polish', () => {
     // Navigate to Discover
     const isMobile = (page.viewportSize()?.width ?? 1280) <= 768;
     if (isMobile) {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-discover"]').click();
+      await page.locator('[data-testid="bottom-nav-discover"]').click();
     } else {
       await page.locator('[data-testid="sidebar-nav-discover"]').click();
     }
@@ -56,33 +55,32 @@ test.describe('TrackUp UI Quality Audit & Mobile Polish', () => {
     await page.setViewportSize({ width: 360, height: 780 });
     await page.goto('/');
 
+    // Verify mobile hamburger menu trigger and drawer are completely removed
     const hamburger = page.locator('[data-testid="mobile-hamburger-trigger"]');
-    await expect(hamburger).toBeVisible();
+    await expect(hamburger).not.toBeAttached();
+    await expect(page.locator('[data-testid="mobile-nav-drawer"]')).not.toBeAttached();
 
-    // Verify touch target and accessible label
-    const box = await hamburger.boundingBox();
+    // Verify bottom navigation bar is visible and properly anchored
+    const bottomNav = page.locator('[data-testid="bottom-navigation-bar"]');
+    await expect(bottomNav).toBeVisible();
+
+    // Verify touch target size of bottom nav buttons
+    const discoverBtn = page.locator('[data-testid="bottom-nav-discover"]');
+    await expect(discoverBtn).toBeVisible();
+    const box = await discoverBtn.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.height).toBeGreaterThanOrEqual(36);
     expect(box!.width).toBeGreaterThanOrEqual(36);
 
-    await expect(hamburger).toHaveAttribute('aria-label', 'Open navigation menu');
-
-    // Open mobile hamburger drawer
-    await hamburger.click();
-    const drawer = page.locator('[data-testid="mobile-nav-drawer"]');
-    await expect(drawer).toBeVisible();
-
-    // Test navigation between tabs on mobile via hamburger drawer
-    await page.locator('[data-testid="mobile-nav-discover"]').click();
+    // Test navigation between tabs on mobile via bottom navigation bar
+    await discoverBtn.click();
     await expect(page.locator('[data-testid="discover-page"]')).toBeVisible();
 
-    await hamburger.click();
-    await page.locator('[data-testid="mobile-nav-import"]').click();
-    await expect(page.locator('[data-testid="import-export-view"]')).toBeVisible();
+    await page.locator('[data-testid="bottom-nav-library"]').click();
+    await expect(page.locator('[data-testid="auth-guard-fallback"]')).toBeVisible();
 
-    await hamburger.click();
-    await page.locator('[data-testid="mobile-nav-watch"]').click();
-    await expect(page.locator('[data-testid="watch-library-view"]')).toBeVisible();
+    await page.locator('[data-testid="bottom-nav-home"]').click();
+    await expect(page.locator('[data-testid="dashboard-up-next-section"]')).toBeVisible();
 
     // Verify narrow phone (320x568) has no horizontal layout overflow
     await page.setViewportSize({ width: 320, height: 568 });
@@ -98,8 +96,7 @@ test.describe('TrackUp UI Quality Audit & Mobile Polish', () => {
     await page.setViewportSize({ width: 360, height: 780 });
     await page.goto('/');
 
-    await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-    await page.locator('[data-testid="mobile-nav-discover"]').click();
+    await page.locator('[data-testid="bottom-nav-discover"]').click();
     await expect(page.locator('[data-testid="discover-page"]')).toBeVisible();
 
     // All 6 categories + All

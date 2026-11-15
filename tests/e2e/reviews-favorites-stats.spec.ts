@@ -13,12 +13,7 @@ test.describe('TrackUp Phase 4: Ratings, Reviews, Favorites & Dashboard Stats', 
 
     const isMobile = page.viewportSize() ? page.viewportSize()!.width <= 768 : false;
 
-    if (!isMobile) {
-      await page.locator('[data-testid="auth-modal-trigger"]').click();
-    } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-profile"]').click();
-    }
+    await page.locator('[data-testid="auth-modal-trigger"]').click();
 
     await page.locator('[data-testid="auth-tab-register"]').click();
     await page.locator('[data-testid="auth-username-input"]').fill(`reviewer_${timestamp}`);
@@ -91,12 +86,7 @@ test.describe('TrackUp Phase 4: Ratings, Reviews, Favorites & Dashboard Stats', 
     await expect(reviewBody).toContainText('Dom Cobb reaches the deepest subconscious');
 
     // 8. Verify Favorites Showcase in Profile Modal
-    if (!isMobile) {
-      await page.locator('[data-testid="profile-button"]').click();
-    } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-profile"]').click();
-    }
+    await page.locator('[data-testid="profile-button"]').click();
 
     await expect(page.locator('[data-testid="profile-modal"]')).toBeVisible();
     await page.locator('[data-testid="profile-tab-favorites"]').click();
@@ -114,8 +104,7 @@ test.describe('TrackUp Phase 4: Ratings, Reviews, Favorites & Dashboard Stats', 
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-dashboard"]').click();
     } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-dashboard"]').click();
+      await page.locator('[data-testid="bottom-nav-home"]').click();
     }
 
     await expect(page.locator('[data-testid="dashboard-view"]')).toBeVisible();

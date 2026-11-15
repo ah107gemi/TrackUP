@@ -17,8 +17,6 @@ import {
   ChevronRight,
   Upload,
   Image as ImageIcon,
-  Star,
-  Search,
   ArrowLeft,
   UserPlus,
   UserCheck,
@@ -39,8 +37,8 @@ import {
   type FavoriteCategory,
 } from '../favorites/favoritesService';
 import { CategoryFavoritesView } from '../favorites/CategoryFavoritesView';
+import { CustomListsSection } from '../custom-lists/CustomListsSection';
 import { formatWatchTime } from '../../lib/dateUtils';
-import { resolvePosterUrl } from '../../lib/imageUtils';
 import { supabase } from '../../lib/supabase';
 import { clearUserLibrary } from '../library/libraryService';
 import { ChangePasswordModal } from '../auth/ChangePasswordModal';
@@ -51,7 +49,6 @@ import {
   MOCK_COMMUNITY_PROFILES,
 } from '../social/socialService';
 import type { SocialProfile } from '../social/types';
-import type { TrackingStatus } from '../../types/database.types';
 
 export interface ProfilePageProps {
   userId?: string;
@@ -111,7 +108,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   onBack,
 }) => {
   const { user, profile, updateProfile, signOut } = useAuth();
-  const { setProfileModalOpen, setAuthModalOpen } = useUIStore();
+  const { setProfileModalOpen, setAuthModalOpen, setActiveTab } = useUIStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -291,7 +288,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   const effectiveUserId = isOwnProfile
     ? user?.id
     : (visitedProfile?.id || (cleanTargetParam && /^[0-9a-f-]{36}$/i.test(cleanTargetParam) ? cleanTargetParam : undefined));
-  const effectiveProfile = isOwnProfile ? profile : visitedProfile;
   const effectiveDisplayName = isOwnProfile
     ? (profile?.display_name || user?.username || 'Tracker')
     : (visitedProfile?.display_name || visitedProfile?.username || cleanTargetParam || 'Tracker');
@@ -559,11 +555,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
     return rawLibrary.filter((item) => !item.is_private);
   }, [isOwnProfile, rawLibrary]);
 
-  // Filter state for the Watched Shows & Movies showcase section
-  const [libraryCategory, setLibraryCategory] = useState<'all' | 'watch' | 'read'>('all');
-  const [libraryStatus, setLibraryStatus] = useState<TrackingStatus | 'all'>('all');
-  const [librarySearchQuery, setLibrarySearchQuery] = useState('');
-
   // Category segregation
   const tvSeriesItems = library.filter((i) => i.title.media_type === 'tv');
   const movieItems = library.filter((i) => i.title.media_type === 'movie');
@@ -573,31 +564,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   const readingItems = library.filter(
     (i) => i.title.media_type === 'manga' || i.title.media_type === 'manhwa'
   );
-
-  // Filtered titles for the public library showcase
-  const filteredLibrary = useMemo(() => {
-    return library.filter((item) => {
-      if (!item || !item.title) return false;
-      const type = item.title.media_type;
-
-      if (libraryCategory === 'watch') {
-        if (!['tv', 'movie', 'anime_series', 'anime_film'].includes(type)) return false;
-      } else if (libraryCategory === 'read') {
-        if (!['manga', 'manhwa'].includes(type)) return false;
-      }
-
-      if (libraryStatus !== 'all' && item.status !== libraryStatus) return false;
-
-      if (librarySearchQuery.trim()) {
-        const q = librarySearchQuery.toLowerCase().trim();
-        const matchTitle = item.title.title?.toLowerCase().includes(q);
-        const matchGenre = item.title.genres?.some((g) => g.toLowerCase().includes(q));
-        if (!matchTitle && !matchGenre) return false;
-      }
-
-      return true;
-    });
-  }, [library, libraryCategory, libraryStatus, librarySearchQuery]);
 
   // Loading state when resolving public profile
   if (!isOwnProfile && isResolvingProfile) {
@@ -988,8 +954,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   // Aggregate metrics
   const totalEpisodesWatched = tvEpisodesWatched + animeEpisodesWatched;
   const combinedWatchTimeMinutes = tvWatchTimeMinutes + animeWatchTimeMinutes;
-
-  const isPrivateLibrary = !isOwnProfile && effectiveProfile?.library_visibility === 'private';
 
   return (
     <div data-testid="profile-page" className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-200">
@@ -1568,220 +1532,39 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
         </div>
       </div>
 
-      {/* Watched Shows, Movies & Reading Library Showcase */}
-      <section data-testid="profile-library-section" className="space-y-6 pt-4 border-t border-surface-elevated/70">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-surface-elevated">
-          <div>
-            <h2 className="text-xl font-extrabold text-text-primary tracking-tight">
-              {isOwnProfile ? 'My Library & Watched Titles' : `${effectiveDisplayName}'s Watched Titles & Library`}
-            </h2>
-            <p className="text-xs text-text-muted mt-0.5">
-              {isOwnProfile
-                ? 'All tracked movies, TV shows, anime, and manga in your collection.'
-                : `Browse movies, TV shows, anime, and manga tracked by @${effectiveUsername}.`}
-            </p>
-          </div>
+      {/* Custom Lists Feature */}
+      <CustomListsSection
+        userId={effectiveUserId || ''}
+        isOwnProfile={isOwnProfile}
+        onSelectTitle={onSelectTitle}
+      />
 
-          {/* Category Switcher */}
-          {!isPrivateLibrary && (
-            <div className="inline-flex items-center gap-1 p-1 bg-surface rounded-xl border border-surface-elevated text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setLibraryCategory('all')}
-                data-testid="public-library-filter-all"
-                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                  libraryCategory === 'all'
-                    ? 'bg-accent text-background font-bold shadow-sm'
-                    : 'text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                All ({library.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setLibraryCategory('watch')}
-                data-testid="public-library-filter-watch"
-                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                  libraryCategory === 'watch'
-                    ? 'bg-accent text-background font-bold shadow-sm'
-                    : 'text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                Watch ({tvSeriesItems.length + movieItems.length + animeItems.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setLibraryCategory('read')}
-                data-testid="public-library-filter-read"
-                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                  libraryCategory === 'read'
-                    ? 'bg-accent text-background font-bold shadow-sm'
-                    : 'text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                Read ({readingItems.length})
-              </button>
+      {/* Quick Data Management (Import / Export) */}
+      {isOwnProfile && user && (
+        <div className="p-6 rounded-2xl bg-surface border border-surface-elevated space-y-4">
+          <div className="flex items-center gap-2 text-accent">
+            <Upload className="w-5 h-5" />
+            <h3 className="text-base font-bold text-text-primary">Data Management & Migration</h3>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
+            <div>
+              <p className="text-sm font-semibold text-text-primary">Universal CSV Import & Export</p>
+              <p className="text-xs text-text-muted mt-0.5">
+                Import from Letterboxd, IMDb, Trakt, Binger, or export your full TrackUp library.
+              </p>
             </div>
-          )}
+            <button
+              type="button"
+              onClick={() => setActiveTab('import')}
+              data-testid="profile-import-export-btn"
+              className="px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs flex items-center justify-center gap-2 transition-colors shrink-0 shadow cursor-pointer"
+            >
+              <Upload className="w-4 h-4" />
+              <span>Import / Export Libraries</span>
+            </button>
+          </div>
         </div>
-
-        {/* Private Library State */}
-        {isPrivateLibrary ? (
-          <div
-            data-testid="public-profile-private-notice"
-            className="p-10 rounded-3xl bg-surface border border-surface-elevated text-center space-y-3 shadow-lg"
-          >
-            <div className="w-12 h-12 rounded-2xl bg-surface-elevated border border-surface-elevated flex items-center justify-center mx-auto text-text-muted">
-              <Lock className="w-6 h-6" />
-            </div>
-            <h3 className="text-base font-bold text-text-primary">This Library is Private</h3>
-            <p className="text-xs text-text-secondary max-w-sm mx-auto">
-              @{effectiveUsername} has set their library visibility to private. Only approved activity is shared.
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* Filter Toolbar: Status tabs & Search Input */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-              {/* Status Tabs */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 text-xs font-medium">
-                {(['all', 'active', 'completed', 'planned'] as const).map((st) => (
-                  <button
-                    key={st}
-                    type="button"
-                    onClick={() => setLibraryStatus(st)}
-                    data-testid={`public-status-filter-${st}`}
-                    className={`px-3 py-1.5 rounded-xl border transition-all cursor-pointer capitalize shrink-0 ${
-                      libraryStatus === st
-                        ? 'bg-accent/15 border-accent text-accent font-bold shadow-sm'
-                        : 'bg-surface border-surface-elevated text-text-muted hover:text-text-primary'
-                    }`}
-                  >
-                    {st === 'active' ? 'Watching / Reading' : st}
-                  </button>
-                ))}
-              </div>
-
-              {/* Search Within Library */}
-              <div className="relative min-w-[200px] sm:min-w-[240px]">
-                <Search className="w-3.5 h-3.5 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={librarySearchQuery}
-                  onChange={(e) => setLibrarySearchQuery(e.target.value)}
-                  placeholder="Filter watched titles..."
-                  data-testid="public-library-search"
-                  className="w-full pl-8 pr-3 py-1.5 bg-surface border border-surface-elevated focus:border-accent rounded-xl text-xs text-text-primary focus:outline-none transition-colors"
-                />
-              </div>
-            </div>
-
-            {/* Empty State */}
-            {filteredLibrary.length === 0 ? (
-              <div
-                data-testid="public-library-empty"
-                className="p-10 rounded-3xl bg-surface border border-surface-elevated text-center space-y-3 shadow-md"
-              >
-                <div className="w-12 h-12 rounded-2xl bg-surface-elevated flex items-center justify-center mx-auto text-text-muted">
-                  <Film className="w-6 h-6" />
-                </div>
-                <h3 className="text-sm font-bold text-text-primary">No Titles Found</h3>
-                <p className="text-xs text-text-muted max-w-sm mx-auto">
-                  {librarySearchQuery || libraryStatus !== 'all' || libraryCategory !== 'all'
-                    ? 'No tracked titles match your active filters.'
-                    : 'No public titles tracked in this library yet.'}
-                </p>
-              </div>
-            ) : (
-              /* Media Poster Grid */
-              <div
-                data-testid="public-library-grid"
-                className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"
-              >
-                {filteredLibrary.map((item) => {
-                  const isEpisodic =
-                    item.title.media_type === 'tv' || item.title.media_type === 'anime_series';
-                  const isReading =
-                    item.title.media_type === 'manga' || item.title.media_type === 'manhwa';
-
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => onSelectTitle?.(item.title_id)}
-                      data-testid={`public-media-card-${item.id}`}
-                      className="group relative rounded-2xl overflow-hidden bg-surface border border-surface-elevated hover:border-accent/40 transition-all duration-200 cursor-pointer shadow-md hover:-translate-y-1 flex flex-col"
-                    >
-                      {/* Poster Image Container */}
-                      <div className="relative aspect-[2/3] w-full overflow-hidden bg-[#16161D]">
-                        <img
-                          src={resolvePosterUrl(item.title.poster_url || (item.title as any)?.poster_path) || '/assets/trackup-logo.jpg'}
-                          alt={item.title.title}
-                          loading="lazy"
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          onError={(e) => {
-                            e.currentTarget.onerror = null;
-                            e.currentTarget.src = '/assets/trackup-logo.jpg';
-                          }}
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-transparent opacity-80 group-hover:opacity-90 transition-opacity" />
-
-                        {/* Top Status & Type Badges */}
-                        <div className="absolute top-2 left-2 right-2 flex items-center justify-between gap-1 pointer-events-none">
-                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-background/80 backdrop-blur-md text-text-primary border border-surface-elevated">
-                            {item.title.media_type.replace('_', ' ')}
-                          </span>
-                          <span
-                            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full backdrop-blur-md ${
-                              item.status === 'completed'
-                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                                : item.status === 'active'
-                                ? 'bg-accent/20 text-accent border border-accent/30'
-                                : 'bg-surface-elevated text-text-muted border border-surface-elevated'
-                            }`}
-                          >
-                            {item.status}
-                          </span>
-                        </div>
-
-                        {/* Bottom Rating and Progress */}
-                        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-xs font-semibold pointer-events-none">
-                          {item.rating !== null && item.rating !== undefined ? (
-                            <span className="flex items-center gap-1 text-amber-300 font-mono text-[11px] bg-background/80 backdrop-blur-md px-1.5 py-0.5 rounded-md border border-surface-elevated">
-                              <Star className="w-3 h-3 fill-amber-300 text-amber-300" />
-                              <span>{item.rating}/10</span>
-                            </span>
-                          ) : (
-                            <span />
-                          )}
-
-                          <span className="text-[10px] font-mono text-text-secondary bg-background/80 backdrop-blur-md px-1.5 py-0.5 rounded-md border border-surface-elevated">
-                            {isEpisodic && (item.status === 'completed' ? `${item.title.total_episodes || item.episodes_watched?.length || 1} eps` : `${item.episodes_watched?.length || 0} eps`)}
-                            {isReading && `Ch. ${item.last_chapter_read || 0}`}
-                            {!isEpisodic && !isReading && item.status}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Title Info */}
-                      <div className="p-3 flex-1 flex flex-col justify-between">
-                        <h4 className="text-xs font-bold text-text-primary truncate group-hover:text-accent transition-colors">
-                          {item.title.title}
-                        </h4>
-                        <div className="flex items-center justify-between mt-1 text-[11px] text-text-muted">
-                          <span>{item.title.release_year || '—'}</span>
-                          {item.title.genres && item.title.genres[0] && (
-                            <span className="truncate max-w-[90px]">{item.title.genres[0]}</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </>
-        )}
-      </section>
+      )}
 
       {/* Account Settings & Danger Zone (Owner Only) */}
       {isOwnProfile && user && (

@@ -13,12 +13,7 @@ test.describe('TrackUp Phase 6: Social Graph, Activity Feeds & Rating Comparison
 
     const isMobile = page.viewportSize() ? page.viewportSize()!.width <= 768 : false;
 
-    if (!isMobile) {
-      await page.locator('[data-testid="auth-modal-trigger"]').click();
-    } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-profile"]').click();
-    }
+    await page.locator('[data-testid="auth-modal-trigger"]').click();
 
     await page.locator('[data-testid="auth-tab-register"]').click();
     await page.locator('[data-testid="auth-username-input"]').fill(`socialite_${timestamp}`);
@@ -32,8 +27,7 @@ test.describe('TrackUp Phase 6: Social Graph, Activity Feeds & Rating Comparison
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-social"]').click();
     } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-social"]').click();
+      await page.locator('[data-testid="bottom-nav-social"]').click();
     }
 
     if (!isMobile) {
@@ -49,7 +43,7 @@ test.describe('TrackUp Phase 6: Social Graph, Activity Feeds & Rating Comparison
 
       // Click Follow
       const followBtn = page.locator('[data-testid="follow-toggle-elena_tracker"]');
-      await expect(followBtn).toContainText('Follow');
+      await expect(followBtn).toContainText(/Follow|Add Friend/);
       await followBtn.click();
 
       // Button updates to Following

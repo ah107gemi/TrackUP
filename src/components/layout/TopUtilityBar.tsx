@@ -1,13 +1,10 @@
 import React from 'react';
-import { Search, User as UserIcon, LogIn, LogOut, Menu } from 'lucide-react';
+import { Search, User as UserIcon, LogIn, LogOut } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../features/auth/AuthContext';
-import { MobileNavDrawer } from './MobileNavDrawer';
 
 export const TopUtilityBar: React.FC = () => {
   const {
-    mobileDrawerOpen,
-    setMobileDrawerOpen,
     setOmnisearchOpen,
     setAuthModalOpen,
     setProfileModalOpen,
@@ -18,41 +15,30 @@ export const TopUtilityBar: React.FC = () => {
   const username = profile?.display_name || user?.username;
 
   return (
-    <>
-      <header className="h-16 px-4 md:px-8 border-b border-surface-elevated bg-surface/80 backdrop-blur-md flex items-center justify-between sticky top-0 z-20">
-        {/* Left: Mobile Hamburger & Logo / Desktop Greeting or Scrolled Title */}
-        <div className="flex items-center gap-2 md:gap-3 min-w-0">
-          {/* Top-left Hamburger Menu for Mobile */}
-          <button
-            onClick={() => setMobileDrawerOpen(true)}
-            data-testid="mobile-hamburger-trigger"
-            aria-label="Open navigation menu"
-            className="md:hidden p-2 -ml-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-surface-elevated transition-colors shrink-0"
-          >
-            <Menu className="w-5 h-5 text-accent" />
-          </button>
+    <header className="h-16 px-4 md:px-8 border-b border-surface-elevated bg-surface/80 backdrop-blur-md flex items-center justify-between sticky top-0 z-20">
+      {/* Left: Mobile Brand Logo / Desktop Greeting or Scrolled Title */}
+      <div className="flex items-center gap-2 md:gap-3 min-w-0">
+        <div className="md:hidden flex items-center gap-2.5 min-w-0">
+          <img
+            src="/assets/trackup-logo.jpg"
+            alt="TrackUp Logo"
+            className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-md border-2 border-accent/40"
+          />
+          {scrolledHeaderTitle ? (
+            <span
+              data-testid="mobile-scrolled-header-title"
+              className="font-bold text-sm text-accent truncate max-w-[160px]"
+            >
+              {scrolledHeaderTitle}
+            </span>
+          ) : (
+            <span className="font-extrabold text-2xl tracking-tight text-text-primary truncate">
+              Track<span className="text-accent">Up</span>
+            </span>
+          )}
+        </div>
 
-          <div className="md:hidden flex items-center gap-2.5 min-w-0">
-            <img
-              src="/assets/trackup-logo.jpg"
-              alt="TrackUp Logo"
-              className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-md border-2 border-accent/40"
-            />
-            {scrolledHeaderTitle ? (
-              <span
-                data-testid="mobile-scrolled-header-title"
-                className="font-bold text-sm text-accent truncate max-w-[160px]"
-              >
-                {scrolledHeaderTitle}
-              </span>
-            ) : (
-              <span className="font-extrabold text-2xl tracking-tight text-text-primary truncate">
-                Track<span className="text-accent">Up</span>
-              </span>
-            )}
-          </div>
-
-          <div className="hidden md:block min-w-0">
+        <div className="hidden md:block min-w-0">
             {scrolledHeaderTitle ? (
               <p
                 data-testid="header-scrolled-title"
@@ -137,12 +123,5 @@ export const TopUtilityBar: React.FC = () => {
         )}
       </div>
     </header>
-
-    {/* Slide-out Mobile Navigation Drawer / More Menu */}
-    <MobileNavDrawer
-      isOpen={mobileDrawerOpen}
-      onClose={() => setMobileDrawerOpen(false)}
-    />
-  </>
   );
 };

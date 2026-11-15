@@ -4,7 +4,7 @@ import {
   Compass,
   Film,
   Users,
-  MoreHorizontal,
+  User as UserIcon,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 
@@ -16,14 +16,11 @@ export const BottomNavBar: React.FC = () => {
     setSelectedTitleId,
     viewingPublicUser,
     setViewingPublicUser,
-    mobileDrawerOpen,
-    setMobileDrawerOpen,
   } = useUIStore();
 
-  const handleNavClick = (tab: 'dashboard' | 'discover' | 'watch' | 'social') => {
+  const handleNavClick = (tab: 'dashboard' | 'discover' | 'watch' | 'social' | 'profile') => {
     if (selectedTitleId) setSelectedTitleId(null);
     if (viewingPublicUser) setViewingPublicUser(null);
-    if (mobileDrawerOpen) setMobileDrawerOpen(false);
 
     // If clicking Library and already on watch, allow toggling to read, or default to watch
     if (tab === 'watch') {
@@ -38,15 +35,11 @@ export const BottomNavBar: React.FC = () => {
     setActiveTab(tab);
   };
 
-  const handleMoreClick = () => {
-    setMobileDrawerOpen(!mobileDrawerOpen);
-  };
-
-  const isHomeActive = activeTab === 'dashboard' && !selectedTitleId && !viewingPublicUser && !mobileDrawerOpen;
-  const isDiscoverActive = activeTab === 'discover' && !selectedTitleId && !viewingPublicUser && !mobileDrawerOpen;
-  const isLibraryActive = (activeTab === 'watch' || activeTab === 'read') && !selectedTitleId && !viewingPublicUser && !mobileDrawerOpen;
-  const isSocialActive = activeTab === 'social' && !selectedTitleId && !viewingPublicUser && !mobileDrawerOpen;
-  const isMoreActive = mobileDrawerOpen || (['calendar', 'recommendations', 'history', 'import', 'profile'].includes(activeTab) && !selectedTitleId && !viewingPublicUser);
+  const isHomeActive = activeTab === 'dashboard' && !selectedTitleId && !viewingPublicUser;
+  const isDiscoverActive = activeTab === 'discover' && !selectedTitleId && !viewingPublicUser;
+  const isLibraryActive = (activeTab === 'watch' || activeTab === 'read') && !selectedTitleId && !viewingPublicUser;
+  const isSocialActive = activeTab === 'social' && !selectedTitleId && !viewingPublicUser;
+  const isProfileActive = activeTab === 'profile' && !selectedTitleId && !viewingPublicUser;
 
   return (
     <nav
@@ -137,24 +130,24 @@ export const BottomNavBar: React.FC = () => {
           <span className="text-[10px] tracking-tight mt-1">Social</span>
         </button>
 
-        {/* 5. More */}
+        {/* 5. Profile */}
         <button
-          onClick={handleMoreClick}
-          data-testid="bottom-nav-more"
-          aria-label="More options"
+          onClick={() => handleNavClick('profile')}
+          data-testid="bottom-nav-profile"
+          aria-label="Profile"
           className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-2xl transition-all ${
-            isMoreActive
+            isProfileActive
               ? 'text-[#FFC400] font-bold scale-105'
               : 'text-text-muted hover:text-text-primary'
           }`}
         >
           <div className="relative">
-            <MoreHorizontal className="w-5 h-5 transition-transform duration-200" />
-            {isMoreActive && (
+            <UserIcon className="w-5 h-5 transition-transform duration-200" />
+            {isProfileActive && (
               <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#FFC400]" />
             )}
           </div>
-          <span className="text-[10px] tracking-tight mt-1">More</span>
+          <span className="text-[10px] tracking-tight mt-1">Profile</span>
         </button>
       </div>
     </nav>

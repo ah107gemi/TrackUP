@@ -13,12 +13,7 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
 
     // 2. Register user session
     const timestamp = Date.now();
-    if (!isMobile) {
-      await page.locator('[data-testid="auth-modal-trigger"]').click();
-    } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-profile"]').click();
-    }
+    await page.locator('[data-testid="auth-modal-trigger"]').click();
 
     await page.locator('[data-testid="auth-tab-register"]').click();
     await page.locator('[data-testid="auth-username-input"]').fill(`recs_tester_${timestamp}`);
@@ -31,7 +26,7 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-recommendations"]').click();
     } else {
-      await page.evaluate(() => { window.location.hash = '#/recommendations'; });
+      await page.evaluate(() => (window as any).__TRACKUP_UI_STORE__?.getState().setActiveTab('recommendations'));
     }
 
     await expect(page.locator('[data-testid="recommendations-view"]')).toBeVisible();
@@ -76,7 +71,7 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-calendar"]').click();
     } else {
-      await page.evaluate(() => { window.location.hash = '#/calendar'; });
+      await page.evaluate(() => (window as any).__TRACKUP_UI_STORE__?.getState().setActiveTab('calendar'));
     }
     await expect(page.locator('[data-testid="release-calendar-view"]')).toBeVisible();
 
@@ -95,7 +90,7 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
     await expect(filterBtn).toContainText('Showing: Tracked Only');
   });
 
-  test('responsive verification: desktop shows sidebar and hides mobile bottom bar; mobile hides sidebar and shows mobile hamburger trigger', async ({
+  test('responsive verification: desktop shows sidebar and hides mobile bottom bar; mobile hides sidebar and shows mobile bottom bar with hamburger removed', async ({
     page,
   }) => {
     await page.goto('/');
@@ -103,15 +98,15 @@ test.describe('TrackUp Phase 7: Recommendations Engine & Release Calendar', () =
 
     if (!isMobile) {
       await expect(page.locator('[data-testid="desktop-sidebar"]')).toBeVisible();
-      await expect(page.locator('[data-testid="mobile-hamburger-trigger"]')).toBeHidden();
+      await expect(page.locator('[data-testid="bottom-navigation-bar"]')).toBeHidden();
+      await expect(page.locator('[data-testid="mobile-hamburger-trigger"]')).not.toBeAttached();
       await expect(page.locator('[data-testid="sidebar-nav-calendar"]')).toBeVisible();
       await expect(page.locator('[data-testid="sidebar-nav-recommendations"]')).toBeVisible();
     } else {
       await expect(page.locator('[data-testid="desktop-sidebar"]')).toBeHidden();
-      await expect(page.locator('[data-testid="mobile-hamburger-trigger"]')).toBeVisible();
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await expect(page.locator('[data-testid="mobile-nav-profile-link"]')).toBeVisible();
-      await expect(page.locator('[data-testid="mobile-nav-import"]')).toBeVisible();
+      await expect(page.locator('[data-testid="bottom-navigation-bar"]')).toBeVisible();
+      await expect(page.locator('[data-testid="mobile-hamburger-trigger"]')).not.toBeAttached();
+      await expect(page.locator('[data-testid="mobile-nav-drawer"]')).not.toBeAttached();
     }
   });
 });

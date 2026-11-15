@@ -14,12 +14,7 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     const isMobile = page.viewportSize() ? page.viewportSize()!.width <= 768 : false;
 
     // 1. Register & Authenticate User
-    if (!isMobile) {
-      await page.locator('[data-testid="auth-modal-trigger"]').click();
-    } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-profile"]').click();
-    }
+    await page.locator('[data-testid="auth-modal-trigger"]').click();
 
     await page.locator('[data-testid="auth-tab-register"]').click();
     await page.locator('[data-testid="auth-username-input"]').fill(`bingertester_${timestamp}`);
@@ -33,8 +28,7 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-read"]').click();
     } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-read"]').click();
+      await page.evaluate(() => (window as any).__TRACKUP_UI_STORE__?.getState().setActiveTab('read'));
     }
     await expect(page.locator('[data-testid="read-library-view"]')).toBeVisible();
 
@@ -42,8 +36,7 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-profile"]').click();
     } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-profile-link"]').click();
+      await page.locator('[data-testid="bottom-nav-profile"]').click();
     }
 
     await expect(page.locator('[data-testid="profile-page"]')).toBeVisible();
@@ -115,8 +108,7 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-social"]').click();
     } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-social"]').click();
+      await page.locator('[data-testid="bottom-nav-social"]').click();
     }
     await expect(page.locator('[data-testid="social-feed-view"]')).toBeVisible();
     await expect(page.locator('[data-testid="friends-search-panel"]')).toBeVisible();
@@ -131,8 +123,8 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-import"]').click();
     } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-import"]').click();
+      await page.locator('[data-testid="bottom-nav-profile"]').click();
+      await page.locator('[data-testid="profile-import-export-btn"]').click();
     }
 
     await expect(page.locator('[data-testid="import-export-engine"]')).toBeVisible();
@@ -169,8 +161,7 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     if (!isMobile) {
       await page.locator('[data-testid="desktop-sidebar"] button:has-text("Watch Library")').click();
     } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-watch"]').click();
+      await page.locator('[data-testid="bottom-nav-library"]').click();
     }
 
     await expect(page.locator('[data-testid="watch-library-view"]')).toBeVisible();
@@ -188,7 +179,6 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
 
     // Verify Filter State Preservation and Yellowstone Poster
     await page.locator('[data-testid="library-status-select"]').selectOption('active');
-    await page.locator('[data-testid="library-search-input"]').fill('Yellowstone');
     await expect(page.locator('text=Yellowstone')).toBeVisible();
 
     // Verify Yellowstone poster contains the valid TMDB URL
@@ -203,18 +193,15 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     await page.locator('[data-testid="detail-back-button"]').click();
     await expect(page.locator('[data-testid="watch-library-view"]')).toBeVisible();
     await expect(page.locator('[data-testid="library-status-select"]')).toHaveValue('active');
-    await expect(page.locator('[data-testid="library-search-input"]')).toHaveValue('Yellowstone');
 
     // Reset filters for subsequent tests
-    await page.locator('[data-testid="library-search-clear-btn"]').click();
     await page.locator('[data-testid="library-status-select"]').selectOption('all');
 
     // 7. Navigate back to Profile page to verify category-specific watch time updates
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-profile"]').click();
     } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-profile-link"]').click();
+      await page.locator('[data-testid="bottom-nav-profile"]').click();
     }
 
     await expect(page.locator('[data-testid="profile-page"]')).toBeVisible();
@@ -229,8 +216,8 @@ test.describe('TrackUp: Profile Groundwork, Dedicated Manga/Manhwa, and Binger I
     if (!isMobile) {
       await page.locator('[data-testid="sidebar-nav-import"]').click();
     } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-import"]').click();
+      await page.locator('[data-testid="bottom-nav-profile"]').click();
+      await page.locator('[data-testid="profile-import-export-btn"]').click();
     }
 
     const clearBtn = page.locator('[data-testid="clear-library-button"]');

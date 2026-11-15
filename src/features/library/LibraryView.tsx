@@ -9,7 +9,6 @@ import {
   Film,
   BookOpen,
   Search,
-  X,
   Check,
   ChevronDown,
 } from 'lucide-react';
@@ -52,6 +51,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     libraryViewMode,
     setLibraryViewMode,
     setActiveTab,
+    setOmnisearchOpen,
     watchLibraryFilters,
     setWatchLibraryFilters,
     readLibraryFilters,
@@ -95,7 +95,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   }, [domain]);
 
   // Dedicated Reading Search & Quick-Add state (Manga/Manhwa only)
-  const [readingSearchQuery, setReadingSearchQuery] = useState('');
+  const readingSearchQuery = '';
   const [readingSearchResults, setReadingSearchResults] = useState<NormalizedCatalogItem[]>([]);
   const [isReadingSearching, setIsReadingSearching] = useState(false);
   const [addedItemIds, setAddedItemIds] = useState<Set<string>>(new Set());
@@ -370,26 +370,22 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             </span>
           </div>
 
-          <div className="relative">
-            <Search className="w-4 h-4 text-accent absolute left-3.5 top-3" />
-            <input
-              type="text"
-              value={readingSearchQuery}
-              onChange={(e) => setReadingSearchQuery(e.target.value)}
-              placeholder="Search Manga or South Korean Manhwa to track (e.g. Solo Leveling, Berserk)..."
-              data-testid="reading-library-search-input"
-              className="w-full pl-10 pr-9 py-2 bg-surface-elevated/60 border border-surface-elevated rounded-xl text-text-primary text-sm focus:border-accent focus:outline-none placeholder:text-text-muted"
-            />
-            {readingSearchQuery && (
-              <button
-                onClick={() => setReadingSearchQuery('')}
-                aria-label="Clear reading search query"
-                className="absolute right-3 top-2.5 p-0.5 text-text-muted hover:text-text-primary"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          {/* Unified Reading Search Overlay Trigger */}
+          <button
+            type="button"
+            onClick={() => setOmnisearchOpen(true)}
+            data-testid="reading-library-search-input"
+            aria-label="Search Manga and Manhwa"
+            className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated hover:border-accent/50 text-text-secondary hover:text-text-primary transition-all text-xs group cursor-pointer shadow-sm text-left"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Search className="w-4 h-4 text-accent group-hover:scale-110 transition-transform shrink-0" />
+              <span className="truncate">Search Manga or South Korean Manhwa to track...</span>
+            </div>
+            <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono font-medium text-text-muted bg-surface rounded border border-surface-elevated shrink-0">
+              ⌘K
+            </kbd>
+          </button>
 
           {/* Quick Add Reading Results Shelf */}
           {isReadingSearching ? (
@@ -470,29 +466,24 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 border-b border-surface-elevated pb-3">
         {/* Left: Local Search Input + Status Dropdown */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 max-w-xl">
-          {/* Local Library Search Bar */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-accent absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={localSearchQuery}
-              onChange={(e) => setLocalSearchQuery(e.target.value)}
-              placeholder={domain === 'watch' ? 'Search your watch library...' : 'Search your reading library...'}
-              data-testid="library-search-input"
-              className="w-full pl-9 pr-8 py-2 bg-surface border border-surface-elevated rounded-xl text-text-primary text-xs focus:border-accent focus:outline-none placeholder:text-text-muted transition-colors shadow-sm"
-            />
-            {localSearchQuery && (
-              <button
-                type="button"
-                onClick={() => setLocalSearchQuery('')}
-                aria-label="Clear local search"
-                data-testid="library-search-clear-btn"
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-text-muted hover:text-text-primary cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          {/* Unified Global Search Overlay Trigger for Library */}
+          <button
+            type="button"
+            onClick={() => setOmnisearchOpen(true)}
+            data-testid="library-search-input"
+            aria-label="Search titles"
+            className="flex items-center justify-between gap-3 px-3.5 py-2 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated hover:border-accent/50 text-text-secondary hover:text-text-primary transition-all text-xs group flex-1 cursor-pointer shadow-sm text-left"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Search className="w-4 h-4 text-accent group-hover:scale-110 transition-transform shrink-0" />
+              <span className="truncate">
+                {domain === 'watch' ? 'Search movies, TV shows, anime...' : 'Search manga and manhwa...'}
+              </span>
+            </div>
+            <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono font-medium text-text-muted bg-surface rounded border border-surface-elevated shrink-0">
+              ⌘K
+            </kbd>
+          </button>
 
           {/* Status Dropdown Filter */}
           <div className="relative shrink-0">

@@ -46,8 +46,7 @@ test.describe('TrackUp Phase 2: Unified Search & Adaptive Title Detail Pages', (
     // Navigate to Discover
     const isMobile = page.viewportSize() ? page.viewportSize()!.width <= 768 : false;
     if (isMobile) {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-discover"]').click();
+      await page.locator('[data-testid="bottom-nav-discover"]').click();
     } else {
       await page.locator('[data-testid="desktop-sidebar"] button:has-text("Discover")').click();
     }
@@ -170,14 +169,10 @@ test.describe('TrackUp Phase 2: Unified Search & Adaptive Title Detail Pages', (
     await expect(season4Tab).toBeVisible();
     await season4Tab.click();
 
-    // Verify unaired future episode 27 has formatted air date and countdown badge
+    // Verify episode 27 has formatted air date
     const episodeAirDate27 = page.locator('[data-testid="episode-air-date-27"]');
     await expect(episodeAirDate27).toBeVisible();
     await expect(episodeAirDate27).toContainText('Oct 31, 2026');
-
-    const countdownPill27 = page.locator('[data-testid="episode-countdown-27"]');
-    await expect(countdownPill27).toBeVisible();
-    await expect(countdownPill27).toContainText(/days/i);
 
     // Verify unaired future episode 30 has countdown badge
     const countdownPill = page.locator('[data-testid="episode-countdown-30"]');

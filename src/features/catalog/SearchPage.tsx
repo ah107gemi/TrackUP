@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Compass, SlidersHorizontal, Info, X, Film, BookOpen, Sparkles } from 'lucide-react';
+import { Search, Compass, SlidersHorizontal, Info, Film, BookOpen, Sparkles } from 'lucide-react';
 import { searchCatalog, type SearchDomain } from './catalogService';
 import { isTmdbConfigured } from './tmdbClient';
 import type { NormalizedCatalogItem } from '../../lib/validators';
@@ -8,6 +8,7 @@ import { MediaPosterCard } from '../../components/shared/MediaPosterCard';
 import { TmdbAttribution } from '../../components/shared/TmdbAttribution';
 import { useAuth } from '../auth/AuthContext';
 import { useUserLibrary } from '../library/useLibrary';
+import { useUIStore } from '../../stores/uiStore';
 
 interface SearchPageProps {
   onSelectTitle: (id: string) => void;
@@ -17,9 +18,10 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onSelectTitle }) => {
   const { user } = useAuth();
   const activeUserId = user?.id || 'demo_user';
   const { data: userLibrary = [] } = useUserLibrary(activeUserId);
+  const { setOmnisearchOpen } = useUIStore();
 
   const [domain, setDomain] = useState<SearchDomain>('watch');
-  const [query, setQuery] = useState('');
+  const query = '';
   const [activeCategory, setActiveCategory] = useState<MediaType | 'all'>('all');
   const [results, setResults] = useState<NormalizedCatalogItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -133,31 +135,26 @@ export const SearchPage: React.FC<SearchPageProps> = ({ onSelectTitle }) => {
           </p>
         </div>
 
-        {/* Live Search Bar */}
-        <div className="relative w-full md:w-80">
-          <Search className="w-4 h-4 text-accent absolute left-3.5 top-3" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={
-              domain === 'watch'
-                ? 'Search movies, TV shows, and anime...'
-                : 'Search manga and manhwa...'
-            }
-            data-testid="discover-search-input"
-            className="w-full pl-10 pr-9 py-2 bg-surface border border-surface-elevated rounded-xl text-text-primary text-sm focus:border-accent focus:outline-none shadow-sm placeholder:text-text-muted"
-          />
-          {query && (
-            <button
-              onClick={() => setQuery('')}
-              aria-label="Clear search query"
-              className="absolute right-3 top-2.5 p-0.5 text-text-muted hover:text-text-primary"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
+        {/* Unified Search Overlay Trigger */}
+        <button
+          type="button"
+          onClick={() => setOmnisearchOpen(true)}
+          data-testid="discover-search-input"
+          aria-label="Search titles"
+          className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 border border-surface-elevated hover:border-accent/50 text-text-secondary hover:text-text-primary transition-all text-sm group w-full md:w-80 cursor-pointer shadow-sm text-left"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Search className="w-4 h-4 text-accent group-hover:scale-110 transition-transform shrink-0" />
+            <span className="truncate">
+              {domain === 'watch'
+                ? 'Search movies, TV shows, anime...'
+                : 'Search manga and manhwa...'}
+            </span>
+          </div>
+          <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono font-medium text-text-muted bg-surface rounded border border-surface-elevated shrink-0">
+            ⌘K
+          </kbd>
+        </button>
       </div>
 
       {/* Category Filter Pills */}

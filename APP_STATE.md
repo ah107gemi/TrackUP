@@ -1,5 +1,5 @@
 # TrackUP PWA - Master Application State
-**Last Updated:** November 14, 2026
+**Last Updated:** November 15, 2026
 
 ## Core Stack & Infrastructure
 *   **Frontend:** React (TypeScript), Progressive Web App (PWA) with Service Worker caching.
@@ -11,11 +11,20 @@
 *   **`auth.users`:** Managed exclusively by Supabase Authentication. (Email confirm is currently OFF).
 *   **`public.profiles`:** Linked to `auth.users` via a trigger (`on_auth_user_created`). 
     *   **Fields:** `id` (UUID), `email` (TEXT), `username` (TEXT - has a case-insensitive index `idx_profiles_username_lower`), `display_name` (TEXT).
-*   **Other Core Tables:** `user_libraries`, `user_episode_progress`, `user_reading_progress`.
+*   **Core Media & Tracking Tables:** `catalog_titles`, `user_libraries`, `user_episode_progress`, `user_reading_progress`, `reviews`, `user_follows`.
     *   *Note: These tables must respect standard UUID foreign key constraints pointing to `profiles.id`.*
+*   **`public.custom_lists`:** User-created custom media collections.
+    *   **Fields:** `id` (UUID, PK), `user_id` (UUID, FK -> `profiles.id` ON DELETE CASCADE), `name` (TEXT), `description` (TEXT), `is_private` (BOOLEAN DEFAULT false), `created_at` (TIMESTAMPTZ), `updated_at` (TIMESTAMPTZ).
+    *   **RLS Policies:** SELECT permitted if `is_private = false` or `auth.uid() = user_id`; INSERT, UPDATE, DELETE permitted strictly for the list owner (`auth.uid() = user_id`).
+*   **`public.list_items`:** Universal media title mappings for custom lists (supports shows, movies, anime series/films, manga, manhwa).
+    *   **Fields:** `id` (UUID, PK), `list_id` (UUID, FK -> `custom_lists.id` ON DELETE CASCADE), `title_id` (UUID, FK -> `catalog_titles.id` ON DELETE CASCADE), `notes` (TEXT), `display_order` (INTEGER DEFAULT 0), `created_at` (TIMESTAMPTZ), UNIQUE(`list_id`, `title_id`).
+    *   **RLS Policies:** SELECT permitted if the parent list is accessible (public or owned); INSERT, UPDATE, DELETE permitted strictly for the parent list's owner (`custom_lists.user_id = auth.uid()`).
 
 ## Current Development Phase: Mobile & Bug Fixes
 *   **Recently Completed (Do not re-implement):**
+    *   **Hamburger Menu Completely Removed:** Completely eliminated the hamburger menu trigger button and `<MobileNavDrawer />` dropdown/drawer from the application header and navigation shell. Mobile navigation relies 100% on `<BottomNavBar />` (Home, Discover, Library, Social, Profile) with accessible tap targets and zero horizontal layout overflow, while desktop relies on `DesktopSidebar` and `TopUtilityBar`.
+    *   **Custom Lists Feature Implemented:** In the Profile section, completely replaced the legacy "My Library & Watched Titles" showcase with a rich, interactive "Custom Lists" manager (`CustomListsSection.tsx`, `customListsService.ts`). Users can create new lists, edit names/descriptions, delete lists, and curate any media type (shows, movies, anime, manhwa, manga) backed by Supabase tables (`custom_lists`, `list_items`) and optimistic localStorage synchronization.
+    *   **Unified Search UX:** Refactored the search bars inside the Library (`LibraryView.tsx`) and Discover (`SearchPage.tsx`) sections. Inline search text inputs were replaced with unified global search triggers that match the exact UI look, styling, and functionality of the Global Search Omnisearch modal (`OmnisearchModal.tsx`) with ⌘K shortcuts.
     *   Mobile bottom navigation bar `<BottomNavBar />` is deployed and live.
     *   Database triggers and policies for username-based login are fully configured.
     *   The missing `email` column in `profiles` was successfully added, and ghost accounts were purged via SQL. Registration is now stable.
@@ -32,3 +41,4 @@
 2.  Base all new React components and styling choices on the established "Core Stack" and "Design Language".
 3.  When writing SQL or Supabase logic, refer to the "Database Schema" section to ensure columns and relationships are accurate.
 4.  After successfully completing a major task or resolving a bug, update this file to reflect the new state.
+5. Always commit your changes and run 'git push origin main' to the remote repository when you finish a task, so the user does not have to do it manually.

@@ -14,12 +14,7 @@ test.describe('TrackUp Phase 3: Watch & Read Libraries, 3 View Modes & Granular 
 
     const isMobile = page.viewportSize() ? page.viewportSize()!.width <= 768 : false;
 
-    if (!isMobile) {
-      await page.locator('[data-testid="auth-modal-trigger"]').click();
-    } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-profile"]').click();
-    }
+    await page.locator('[data-testid="auth-modal-trigger"]').click();
 
     await page.locator('[data-testid="auth-tab-register"]').click();
     await page.locator('[data-testid="auth-username-input"]').fill(`phase3_user_${timestamp}`);
@@ -74,26 +69,21 @@ test.describe('TrackUp Phase 3: Watch & Read Libraries, 3 View Modes & Granular 
     if (!isMobile) {
       await page.locator('[data-testid="desktop-sidebar"] button:has-text("Watch Library")').click();
     } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-watch"]').click();
+      await page.locator('[data-testid="bottom-nav-library"]').click();
     }
 
     await expect(page.locator('[data-testid="watch-library-view"]')).toBeVisible();
     await expect(page.locator('text=Breaking Bad')).toBeVisible();
 
-    // Test Local Library Search & Status Dropdown Filter
+    // Test Unified Library Search Trigger & Omnisearch Integration
     const searchInput = page.locator('[data-testid="library-search-input"]');
     await expect(searchInput).toBeVisible();
-    await searchInput.fill('Breaking');
-    await expect(page.locator('text=Breaking Bad')).toBeVisible();
-
-    // Search for non-matching query
-    await searchInput.fill('NonExistentTitle12345');
-    await expect(page.locator('[data-testid="no-library-matches"]')).toBeVisible();
-
-    // Clear search using clear button
-    await page.locator('[data-testid="library-search-clear-btn"]').click();
-    await expect(page.locator('text=Breaking Bad')).toBeVisible();
+    await searchInput.click();
+    await expect(page.locator('[data-testid="omnisearch-modal"]')).toBeVisible();
+    await page.locator('[data-testid="omnisearch-input"]').fill('Breaking Bad');
+    await expect(page.locator('[data-testid="omnisearch-result-tv_breaking_bad_1396"]')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-testid="omnisearch-modal"]')).toBeHidden();
 
     // Filter by Status Dropdown
     const statusSelect = page.locator('[data-testid="library-status-select"]');
@@ -129,8 +119,7 @@ test.describe('TrackUp Phase 3: Watch & Read Libraries, 3 View Modes & Granular 
     if (!isMobile) {
       await page.locator('[data-testid="desktop-sidebar"] [data-testid="sidebar-nav-read"]').click();
     } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-read"]').click();
+      await page.locator('[data-testid="bottom-nav-library"]').click();
     }
 
     await expect(page.locator('[data-testid="read-library-view"]')).toBeVisible();
@@ -151,8 +140,7 @@ test.describe('TrackUp Phase 3: Watch & Read Libraries, 3 View Modes & Granular 
     if (!isMobile) {
       await page.locator('[data-testid="desktop-sidebar"] button:has-text("Dashboard")').click();
     } else {
-      await page.locator('[data-testid="mobile-hamburger-trigger"]').click();
-      await page.locator('[data-testid="mobile-nav-dashboard"]').click();
+      await page.locator('[data-testid="bottom-nav-home"]').click();
     }
 
     const upNext = page.locator('[data-testid="dashboard-up-next-section"]');
