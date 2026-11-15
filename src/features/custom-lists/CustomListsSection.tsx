@@ -12,6 +12,9 @@ import {
   Check,
   FolderPlus,
   BookOpen,
+  Folder,
+  ChevronRight,
+  ArrowLeft,
 } from 'lucide-react';
 import {
   fetchUserCustomLists,
@@ -41,17 +44,22 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
   const [activeListId, setActiveListId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Modals state
+  // Dedicated Detail Modal state (collapses lists on profile page)
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+
+  // Create List Modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [newListDesc, setNewListDesc] = useState('');
   const [newListPrivate, setNewListPrivate] = useState(false);
 
+  // Edit List Modal state
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editListName, setEditListName] = useState('');
   const [editListDesc, setEditListDesc] = useState('');
   const [editListPrivate, setEditListPrivate] = useState(false);
 
+  // Add Media Modal state
   const [isAddMediaOpen, setIsAddMediaOpen] = useState(false);
   const [mediaSearchQuery, setMediaSearchQuery] = useState('');
   const [mediaSearchDomain, setMediaSearchDomain] = useState<'watch' | 'read'>('watch');
@@ -115,6 +123,12 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
     };
   }, [mediaSearchQuery, mediaSearchDomain, isAddMediaOpen]);
 
+  // Handler: Open List Detail Modal
+  const handleOpenListDetail = (listId: string) => {
+    setActiveListId(listId);
+    setIsDetailModalOpen(true);
+  };
+
   // Handler: Create List
   const handleCreateList = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,6 +142,7 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
       setNewListName('');
       setNewListDesc('');
       setNewListPrivate(false);
+      setIsDetailModalOpen(true);
     } catch (err) {
       console.error('Failed to create list:', err);
     }
@@ -171,7 +186,8 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
       await deleteCustomList(activeList.id);
       const remaining = lists.filter((l) => l.id !== activeList.id);
       setLists(remaining);
-      setActiveListId(remaining.length > 0 ? remaining[0].id : null);
+      setActiveListId(null);
+      setIsDetailModalOpen(false);
     } catch (err) {
       console.error('Failed to delete list:', err);
     }
@@ -280,49 +296,137 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
           )}
         </div>
       ) : (
-        <div className="space-y-5">
-          {/* List Selector Tabs */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-            {lists.map((list) => {
-              const isSelected = list.id === activeListId;
-              return (
-                <button
-                  key={list.id}
-                  type="button"
-                  onClick={() => setActiveListId(list.id)}
-                  data-testid={`custom-list-tab-${list.id}`}
-                  className={`px-4 py-2 rounded-xl border text-xs font-semibold flex items-center gap-2 whitespace-nowrap transition-all cursor-pointer ${
-                    isSelected
-                      ? 'bg-accent/15 border-accent text-accent shadow-sm'
-                      : 'bg-surface border-surface-elevated text-text-secondary hover:text-text-primary hover:border-surface-elevated/80'
-                  }`}
-                >
-                  {list.is_private ? (
-                    <Lock className="w-3.5 h-3.5 text-text-muted" />
-                  ) : (
-                    <Globe className="w-3.5 h-3.5 text-text-muted" />
-                  )}
-                  <span>{list.name}</span>
-                  <span className="font-mono text-[11px] px-1.5 py-0.2 rounded-md bg-surface-elevated text-text-muted">
-                    {list.items?.length || 0}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        /* COLLAPSED CUSTOM LISTS DISPLAY: Clickable Folders / Summary Cards */
+        <div
+          data-testid="custom-lists-folders-grid"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+        >
+          {lists.map((list) => {
+            const itemCount = list.items?.length || 0;
+            const previewPosters = (list.items || [])
+              .map((i) => resolvePosterUrl(i.title?.poster_url))
+              .filter(Boolean)
+              .slice(0, 3);
 
-          {/* Active List Showcase Card */}
-          {activeList && (
-            <div className="p-5 rounded-3xl bg-surface border border-surface-elevated space-y-5 shadow-lg">
-              {/* Header with Title, Description, and Actions */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-surface-elevated">
-                <div>
-                  <div className="flex items-center gap-2.5">
-                    <h3 data-testid="active-list-title" className="text-lg font-bold text-text-primary">
+            return (
+              <div
+                key={list.id}
+                onClick={() => handleOpenListDetail(list.id)}
+                data-testid={`custom-list-card-${list.id}`}
+                className="group relative p-5 rounded-2xl bg-surface border border-surface-elevated hover:border-accent/50 hover:bg-surface/90 transition-all duration-200 cursor-pointer shadow-md hover:-translate-y-1 flex flex-col justify-between gap-4 select-none"
+              >
+                <div className="space-y-3">
+                  {/* Top row: Folder Icon + Privacy Badge */}
+                  <div className="flex items-center justify-between">
+                    <div className="p-2.5 rounded-xl bg-accent/15 border border-accent/30 text-accent group-hover:scale-105 transition-transform">
+                      <Folder className="w-5 h-5" />
+                    </div>
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                        list.is_private
+                          ? 'bg-surface-elevated text-text-muted border-surface-elevated'
+                          : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      }`}
+                    >
+                      {list.is_private ? (
+                        <>
+                          <Lock className="w-3 h-3" />
+                          <span>Private</span>
+                        </>
+                      ) : (
+                        <>
+                          <Globe className="w-3 h-3" />
+                          <span>Public</span>
+                        </>
+                      )}
+                    </span>
+                  </div>
+
+                  {/* List Name and Description */}
+                  <div>
+                    <h3
+                      data-testid={`custom-list-title-${list.id}`}
+                      className="text-base font-bold text-text-primary group-hover:text-accent transition-colors line-clamp-1"
+                    >
+                      {list.name}
+                    </h3>
+                    {list.description ? (
+                      <p className="text-xs text-text-muted mt-1 line-clamp-2 leading-relaxed">
+                        {list.description}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-text-muted/60 mt-1 italic">
+                        No description provided.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Bottom row: Item Count & Thumbnail Previews Stack + View Affordance */}
+                <div className="pt-3 border-t border-surface-elevated/70 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {previewPosters.length > 0 && (
+                      <div className="flex -space-x-2 overflow-hidden">
+                        {previewPosters.map((url, idx) => (
+                          <img
+                            key={idx}
+                            src={url!}
+                            alt="Preview"
+                            className="inline-block w-6 h-8 rounded object-cover ring-2 ring-surface bg-surface-elevated shrink-0"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    <span className="font-mono text-xs font-semibold text-text-secondary">
+                      {itemCount} {itemCount === 1 ? 'title' : 'titles'}
+                    </span>
+                  </div>
+
+                  <span className="text-xs font-semibold text-accent flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                    <span>View</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* DEDICATED CUSTOM LIST DETAIL MODAL */}
+      {isDetailModalOpen && activeList && (
+        <div
+          data-testid="custom-list-detail-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-background/80 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setIsDetailModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-4xl max-h-[90vh] bg-surface border border-surface-elevated rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col space-y-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Top Header */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-surface-elevated">
+              <div className="flex items-center gap-3 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setIsDetailModalOpen(false)}
+                  data-testid="close-list-modal-button"
+                  className="p-2 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 text-text-secondary hover:text-text-primary transition-colors cursor-pointer shrink-0"
+                  title="Back to Custom Lists"
+                  aria-label="Back to Custom Lists"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h3 data-testid="active-list-title" className="text-lg sm:text-xl font-bold text-text-primary truncate">
                       {activeList.name}
                     </h3>
                     <span
-                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shrink-0 ${
                         activeList.is_private
                           ? 'bg-surface-elevated text-text-muted border-surface-elevated'
                           : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
@@ -330,17 +434,22 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
                     >
                       {activeList.is_private ? 'Private' : 'Public'}
                     </span>
+                    <span className="font-mono text-xs px-2 py-0.5 rounded-full bg-surface-elevated text-accent border border-accent/20 shrink-0">
+                      {activeList.items?.length || 0} {activeList.items?.length === 1 ? 'title' : 'titles'}
+                    </span>
                   </div>
                   {activeList.description && (
-                    <p data-testid="active-list-desc" className="text-xs text-text-secondary mt-1 max-w-xl">
+                    <p data-testid="active-list-desc" className="text-xs text-text-secondary mt-1 line-clamp-2 max-w-xl">
                       {activeList.description}
                     </p>
                   )}
                 </div>
+              </div>
 
-                {/* List Action Buttons (Owner Only) */}
+              {/* Modal Action Buttons (Owner Only) */}
+              <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
                 {isOwnProfile && (
-                  <div className="flex items-center gap-2 shrink-0">
+                  <>
                     <button
                       type="button"
                       onClick={() => setIsAddMediaOpen(true)}
@@ -370,17 +479,27 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                  </div>
+                  </>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setIsDetailModalOpen(false)}
+                  className="p-2 rounded-xl text-text-muted hover:text-text-primary hover:bg-surface-elevated transition-colors cursor-pointer"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
+            </div>
 
-              {/* Items Grid */}
+            {/* Modal Items Content */}
+            <div className="flex-1 overflow-y-auto pr-1">
               {activeList.items.length === 0 ? (
                 <div
                   data-testid="active-list-empty"
-                  className="py-12 text-center space-y-2 border border-dashed border-surface-elevated rounded-2xl"
+                  className="py-16 text-center space-y-3 border border-dashed border-surface-elevated rounded-2xl"
                 >
-                  <Film className="w-8 h-8 text-text-muted mx-auto" />
+                  <Film className="w-10 h-10 text-text-muted mx-auto" />
                   <p className="text-sm font-semibold text-text-primary">List is currently empty</p>
                   <p className="text-xs text-text-muted max-w-sm mx-auto">
                     {isOwnProfile
@@ -391,9 +510,9 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsAddMediaOpen(true)}
-                      className="mt-2 px-3.5 py-1.5 rounded-xl bg-accent text-background font-bold text-xs inline-flex items-center gap-1.5 hover:bg-accent-hover transition-all cursor-pointer"
+                      className="mt-2 px-4 py-2 rounded-xl bg-accent text-background font-bold text-xs inline-flex items-center gap-1.5 hover:bg-accent-hover transition-all cursor-pointer shadow"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus className="w-4 h-4" />
                       <span>Add Media Now</span>
                     </button>
                   )}
@@ -409,7 +528,10 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
                       <div
                         key={item.id}
                         data-testid={`custom-list-card-${item.title_id}`}
-                        onClick={() => onSelectTitle?.(item.title_id)}
+                        onClick={() => {
+                          setIsDetailModalOpen(false);
+                          onSelectTitle?.(item.title_id);
+                        }}
                         className="group relative rounded-2xl overflow-hidden bg-[#16161D] border border-surface-elevated hover:border-accent/40 transition-all duration-200 cursor-pointer shadow-md hover:-translate-y-1 flex flex-col"
                       >
                         {/* Poster Container */}
@@ -474,7 +596,7 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
                 </div>
               )}
             </div>
-          )}
+          </div>
         </div>
       )}
 

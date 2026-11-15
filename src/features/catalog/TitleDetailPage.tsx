@@ -18,6 +18,7 @@ import {
   ChevronDown,
   Lock,
   Check,
+  BookmarkPlus,
 } from 'lucide-react';
 import {
   getCatalogTitleById,
@@ -48,6 +49,7 @@ import {
   inferWatchedTrackingStatus,
   updateLibraryItem,
 } from '../library/libraryService';
+import { AddToListModal } from '../custom-lists/AddToListModal';
 import type { TrackingStatus, PrivacyLevel } from '../../types/database.types';
 import { StarRating } from '../../components/ui/StarRating';
 import { ReviewModal } from '../reviews/ReviewModal';
@@ -117,6 +119,9 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [notesSaveStatus, setNotesSaveStatus] = useState<'idle' | 'saved'>('idle');
   const savePrivateNotesMutation = useSavePrivateNotes();
+
+  // Custom Lists "Add to List" Modal state
+  const [isAddToListOpen, setIsAddToListOpen] = useState(false);
 
   const heroRef = useRef<HTMLDivElement>(null);
   const { setScrolledHeaderTitle } = useUIStore();
@@ -1141,6 +1146,47 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
           {title.synopsis || 'No synopsis provided for this title.'}
         </p>
       </section>
+
+      {/* Add to List Shortcut Button (Positioned between Synopsis and Episodes/Chapters) */}
+      <section className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 sm:p-5 rounded-2xl bg-surface border border-surface-elevated hover:border-accent/30 transition-all shadow-sm">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="p-2.5 rounded-xl bg-accent/15 border border-accent/30 text-accent shrink-0">
+            <BookmarkPlus className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-text-primary truncate">Add to Custom List</h3>
+            <p className="text-xs text-text-muted mt-0.5">
+              Organize this title into your personalized custom collections or themed watchlists.
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (!activeUserId && !user) {
+              alert('Please sign in to add titles to custom lists.');
+              return;
+            }
+            setIsAddToListOpen(true);
+          }}
+          data-testid="add-to-list-shortcut-button"
+          className="px-4 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-background font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md shrink-0 cursor-pointer"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Add to List</span>
+        </button>
+      </section>
+
+      {/* Add to List Modal */}
+      {(user || activeUserId) && (
+        <AddToListModal
+          isOpen={isAddToListOpen}
+          onClose={() => setIsAddToListOpen(false)}
+          title={title}
+          userId={activeUserId || user?.id || ''}
+        />
+      )}
 
       {/* 1. Episodic Tracking: TV & Anime Series */}
       {isEpisodic && (
