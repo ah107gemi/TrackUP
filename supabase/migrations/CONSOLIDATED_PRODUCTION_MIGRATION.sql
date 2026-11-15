@@ -1247,26 +1247,51 @@ ALTER TABLE public.custom_lists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.list_items ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can view public or own custom lists" ON public.custom_lists;
+-- 5. Refresh RLS Policies for custom_lists and list_items (DROP AND RECREATE)
+DO $$
+DECLARE
+    pol RECORD;
+BEGIN
+    FOR pol IN (
+        SELECT policyname, tablename 
+        FROM pg_policies 
+        WHERE schemaname = 'public' AND tablename IN ('custom_lists', 'list_items')
+    ) LOOP
+        EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol.policyname, pol.tablename);
+    END LOOP;
+END $$;
+
+DROP POLICY IF EXISTS "Users can view public or own custom lists" ON public.custom_lists;
 DROP POLICY IF EXISTS "Users can create their own custom lists" ON public.custom_lists;
 DROP POLICY IF EXISTS "Users can update their own custom lists" ON public.custom_lists;
 DROP POLICY IF EXISTS "Users can delete their own custom lists" ON public.custom_lists;
 DROP POLICY IF EXISTS "Users can view their own custom lists" ON public.custom_lists;
 DROP POLICY IF EXISTS "Users can insert their own custom lists" ON public.custom_lists;
+DROP POLICY IF EXISTS "custom_lists_select_policy" ON public.custom_lists;
+DROP POLICY IF EXISTS "custom_lists_insert_policy" ON public.custom_lists;
+DROP POLICY IF EXISTS "custom_lists_update_policy" ON public.custom_lists;
+DROP POLICY IF EXISTS "custom_lists_delete_policy" ON public.custom_lists;
 
-CREATE POLICY "Users can view public or own custom lists"
+CREATE POLICY "custom_lists_select_policy"
   ON public.custom_lists FOR SELECT
-  USING (is_private = false OR auth.uid() = user_id);
+  USING (
+    auth.uid() = user_id 
+    OR is_private = false 
+    OR is_private IS NULL
+  );
 
-CREATE POLICY "Users can insert their own custom lists"
+CREATE POLICY "custom_lists_insert_policy"
   ON public.custom_lists FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  WITH CHECK (
+    auth.uid() = user_id
+  );
 
-CREATE POLICY "Users can update their own custom lists"
+CREATE POLICY "custom_lists_update_policy"
   ON public.custom_lists FOR UPDATE
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Users can delete their own custom lists"
+CREATE POLICY "custom_lists_delete_policy"
   ON public.custom_lists FOR DELETE
   USING (auth.uid() = user_id);
 
@@ -1279,19 +1304,23 @@ DROP POLICY IF EXISTS "Users can insert items into their own custom lists" ON pu
 DROP POLICY IF EXISTS "Users can update items in their own custom lists" ON public.list_items;
 DROP POLICY IF EXISTS "Users can delete items from their own custom lists" ON public.list_items;
 DROP POLICY IF EXISTS "Users can view accessible list items" ON public.list_items;
+DROP POLICY IF EXISTS "list_items_select_policy" ON public.list_items;
+DROP POLICY IF EXISTS "list_items_insert_policy" ON public.list_items;
+DROP POLICY IF EXISTS "list_items_update_policy" ON public.list_items;
+DROP POLICY IF EXISTS "list_items_delete_policy" ON public.list_items;
 
-CREATE POLICY "Users can view accessible list items"
+CREATE POLICY "list_items_select_policy"
   ON public.list_items FOR SELECT
   USING (
-    user_id = auth.uid()
+    auth.uid() = user_id
     OR EXISTS (
       SELECT 1 FROM public.custom_lists
       WHERE public.custom_lists.id = list_items.list_id
-        AND (public.custom_lists.is_private = false OR public.custom_lists.user_id = auth.uid())
+        AND (public.custom_lists.user_id = auth.uid() OR public.custom_lists.is_private = false OR public.custom_lists.is_private IS NULL)
     )
   );
 
-CREATE POLICY "Users can insert items into their own custom lists"
+CREATE POLICY "list_items_insert_policy"
   ON public.list_items FOR INSERT
   WITH CHECK (
     auth.uid() = user_id
@@ -1302,7 +1331,7 @@ CREATE POLICY "Users can insert items into their own custom lists"
     )
   );
 
-CREATE POLICY "Users can update items in their own custom lists"
+CREATE POLICY "list_items_update_policy"
   ON public.list_items FOR UPDATE
   USING (
     auth.uid() = user_id
@@ -1321,7 +1350,7 @@ CREATE POLICY "Users can update items in their own custom lists"
     )
   );
 
-CREATE POLICY "Users can delete items from their own custom lists"
+CREATE POLICY "list_items_delete_policy"
   ON public.list_items FOR DELETE
   USING (
     auth.uid() = user_id
@@ -1331,3 +1360,8 @@ CREATE POLICY "Users can delete items from their own custom lists"
         AND public.custom_lists.user_id = auth.uid()
     )
   );
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.custom_lists TO authenticated;
+GRANT SELECT ON public.custom_lists TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.list_items TO authenticated;
+GRANT SELECT ON public.list_items TO anon;
