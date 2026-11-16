@@ -181,4 +181,16 @@ describe('Custom Lists Feature & Universal Media Association Suite', () => {
     expect(healedLists[0].items[0].id).not.toContain('item_');
     expect(healedLists[0].items[0].list_id).toBe(healedLists[0].id);
   });
+
+  it('strictly throws an explicit error on auth abort when no authenticated session is present', async () => {
+    // Calling createCustomList with empty/null user must throw an explicit error rather than silently exiting
+    await expect(createCustomList('', 'Empty Auth List')).rejects.toThrow(
+      'User session not found. Please log in to create custom lists.'
+    );
+
+    // Calling addTitleToList on a non-existent list with no session must throw an explicit error
+    await expect(addTitleToList('non_existent_list', 'movie_inception_27205')).rejects.toThrow(
+      'User session not found. Please log in to add titles to custom lists.'
+    );
+  });
 });
