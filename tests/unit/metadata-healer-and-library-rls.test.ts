@@ -7,7 +7,13 @@ import {
 import {
   fetchUserLibrary,
   updateLibraryItem,
+  upsertLibraryItem,
+  logEpisodeProgress,
+  logReadingProgress,
+  removeLibraryItem,
   saveStoredLibraries,
+  healLegacyLibraryIds,
+  isValidUUID,
   type UserLibraryItem,
 } from '../../src/features/library/libraryService';
 import fs from 'fs';
@@ -213,6 +219,91 @@ describe('Active Metadata Healer & Public Library RLS Test Suite', () => {
       expect(sql).toContain('CREATE POLICY "Catalog titles are publicly readable"');
       expect(sql).toContain('CREATE POLICY "Catalog seasons are publicly readable"');
       expect(sql).toContain('CREATE POLICY "Catalog episodes are publicly readable"');
+    });
+  });
+
+  describe('4. Main Library Strict Error Throwing, Auth Aborts, and UUID Compliance', () => {
+    it('strictly throws an explicit error when user session is missing on write operations', async () => {
+      // 1. upsertLibraryItem with empty userId
+      await expect(
+        upsertLibraryItem({
+          userId: '',
+          titleId: 'tmdb_movie_27205',
+          status: 'active',
+        })
+      ).rejects.toThrow('User session not found. Please log in to manage your library.');
+
+      // 2. logEpisodeProgress with empty userId
+      await expect(
+        logEpisodeProgress({
+          libraryId: 'any_lib_id',
+          userId: '',
+          episodeId: 'ep_1',
+          watched: true,
+        })
+      ).rejects.toThrow('User session not found. Please log in to update episode progress.');
+
+      // 3. logReadingProgress with empty userId
+      await expect(
+        logReadingProgress({
+          libraryId: 'any_lib_id',
+          userId: '',
+          chapter: 5,
+        })
+      ).rejects.toThrow('User session not found. Please log in to update reading progress.');
+
+      // 4. removeLibraryItem with empty userId
+      await expect(
+        removeLibraryItem('any_lib_id', '')
+      ).rejects.toThrow('User session not found. Please log in to remove library entries.');
+    });
+
+    it('generates strictly valid RFC 4122 UUID v4 IDs for new library items instead of legacy strings', async () => {
+      const created = await upsertLibraryItem({
+        userId: 'user_uuid_test',
+        titleId: 'tmdb_movie_27205',
+        status: 'active',
+      });
+
+      expect(created.id).not.toContain('lib_');
+      expect(isValidUUID(created.id)).toBe(true);
+    });
+
+    it('auto-heals legacy non-UUID IDs using healLegacyLibraryIds', () => {
+      const legacyItems: any[] = [
+        {
+          id: 'lib_legacy_123456789',
+          user_id: 'user_uuid_test',
+          title_id: 'tmdb_tv_73586',
+          status: 'active',
+          rating: 8,
+          is_private: false,
+          episodes_watched: ['ep_1'],
+          title: { id: 'tmdb_tv_73586', title: 'Yellowstone', media_type: 'tv' },
+        },
+      ];
+
+      // Auto-heal non-UUID ID to valid RFC 4122 UUID v4
+      const healed = healLegacyLibraryIds(legacyItems);
+      expect(healed.length).toBe(1);
+      expect(healed[0].id).not.toContain('lib_');
+      expect(isValidUUID(healed[0].id)).toBe(true);
+      expect((healed[0] as any).legacy_id).toBe('lib_legacy_123456789');
+    });
+
+    it('verifies 20261116000001_library_and_progress_strict_rls.sql aligns media IDs and owner policies', () => {
+      const migrationPath = path.resolve(
+        __dirname,
+        '../../supabase/migrations/20261116000001_library_and_progress_strict_rls.sql'
+      );
+      expect(fs.existsSync(migrationPath)).toBe(true);
+
+      const sql = fs.readFileSync(migrationPath, 'utf8');
+      expect(sql).toContain('user_libraries DROP CONSTRAINT IF EXISTS user_libraries_title_id_fkey');
+      expect(sql).toContain('user_episode_progress DROP CONSTRAINT IF EXISTS user_episode_progress_episode_id_fkey');
+      expect(sql).toContain('CREATE POLICY "user_libraries_owner_all"');
+      expect(sql).toContain('CREATE POLICY "user_episode_progress_owner_all"');
+      expect(sql).toContain('CREATE POLICY "user_reading_progress_owner_all"');
     });
   });
 });

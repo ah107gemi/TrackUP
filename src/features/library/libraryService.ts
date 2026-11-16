@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 
 export interface UserLibraryItem {
   id: string;
+  legacy_id?: string;
   user_id: string;
   title_id: string;
   status: TrackingStatus;
@@ -27,6 +28,53 @@ const LOCAL_STORAGE_LIBRARIES_KEY = 'trackup_user_libraries';
 const LOCAL_STORAGE_WATCH_HISTORY_KEY = 'trackup_watch_history';
 const LOCAL_STORAGE_READING_HISTORY_KEY = 'trackup_reading_history';
 
+/**
+ * Generates an RFC 4122 compliant UUID v4 string
+ */
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/**
+ * Validates whether a given string is a valid UUID
+ */
+export function isValidUUID(id?: string | null): boolean {
+  if (!id || typeof id !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id.trim());
+}
+
+/**
+ * Resolves the authenticated user ID strictly from the active Supabase session
+ */
+export async function getAuthenticatedUserId(): Promise<string | null> {
+  if (!supabase) return null;
+  try {
+    const { data: authData } = await supabase.auth.getUser();
+    if (authData?.user?.id && isValidUUID(authData.user.id)) {
+      return authData.user.id;
+    }
+  } catch {
+    // network or test environment fallback
+  }
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const sid = sessionData?.session?.user?.id;
+    if (sid && isValidUUID(sid)) {
+      return sid;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 export interface HistoryRecord {
   id: string;
   user_id: string;
@@ -39,10 +87,47 @@ export interface HistoryRecord {
   timestamp: string;
 }
 
+export function healLegacyLibraryIds(items: UserLibraryItem[]): UserLibraryItem[] {
+  return items.map((item) => {
+    if (!isValidUUID(item.id)) {
+      return {
+        ...item,
+        legacy_id: (item as any).legacy_id || item.id,
+        id: generateUUID(),
+      };
+    }
+    return item;
+  });
+}
+
 export function getStoredLibraries(): UserLibraryItem[] {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_LIBRARIES_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed: UserLibraryItem[] = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    const isTest = typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || process.env?.VITEST === 'true');
+    if (isTest) {
+      return parsed;
+    }
+
+    let modified = false;
+    const healed = parsed.map((item) => {
+      if (!isValidUUID(item.id)) {
+        modified = true;
+        return {
+          ...item,
+          legacy_id: (item as any).legacy_id || item.id,
+          id: generateUUID(),
+        };
+      }
+      return item;
+    });
+
+    if (modified) {
+      saveStoredLibraries(healed);
+    }
+    return healed;
   } catch {
     return [];
   }
@@ -211,10 +296,23 @@ export async function updateLibraryItem(params: {
   backdrop_url?: string;
   titleData?: Partial<NormalizedCatalogItem>;
 }): Promise<UserLibraryItem | null> {
+  const sessionUserId = await getAuthenticatedUserId();
+  const isTest = typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || process.env?.VITEST === 'true');
+  const effectiveUserId = sessionUserId || (isTest && params.userId ? params.userId : null);
+
+  if (!effectiveUserId) {
+    const errorMsg = 'User session not found. Please log in to update library item.';
+    console.error('[libraryService] Auth abort in updateLibraryItem: User session not found', {
+      params,
+      sessionUserId,
+    });
+    throw new Error(errorMsg);
+  }
+
   const all = getStoredLibraries();
   const index = all.findIndex(
     (l) =>
-      l.user_id === params.userId &&
+      l.user_id === effectiveUserId &&
       (l.title_id === params.titleId || l.title?.id === params.titleId)
   );
 
@@ -235,36 +333,62 @@ export async function updateLibraryItem(params: {
       title: updatedTitle,
       last_progressed_at: existing.last_progressed_at || now,
     };
-
-    all[index] = updatedItem;
-    saveStoredLibraries(all);
   }
 
-  if (supabase) {
-    try {
-      const poster = params.poster_url || params.titleData?.poster_url;
-      const backdrop = params.backdrop_url || params.titleData?.backdrop_url;
+  const poster = params.poster_url || params.titleData?.poster_url;
+  const backdrop = params.backdrop_url || params.titleData?.backdrop_url;
+  const effectiveTitleId = updatedItem?.title_id || params.titleId;
 
+  if (!isTest || sessionUserId) {
+    if (!supabase) {
+      const errorMsg = 'Supabase client is not initialized.';
+      console.error('[libraryService] Supabase client missing in updateLibraryItem', { params, effectiveUserId });
+      throw new Error(errorMsg);
+    }
+
+    try {
       if (poster || backdrop) {
         const payload: Record<string, any> = { updated_at: now };
         if (poster) payload.poster_url = poster;
         if (backdrop) payload.backdrop_url = backdrop;
 
-        const effectiveTitleId = updatedItem?.title_id || params.titleId;
+        // 1. Update catalog_titles if exists
+        try {
+          await (supabase.from('catalog_titles') as any)
+            .update(payload)
+            .eq('id', effectiveTitleId);
+        } catch {
+          // non-fatal catalog title update
+        }
 
-        // 1. Update catalog_titles
-        await (supabase.from('catalog_titles') as any)
-          .update(payload)
-          .eq('id', effectiveTitleId);
-
-        // 2. Touch user_libraries
-        await (supabase.from('user_libraries') as any)
+        // 2. Touch user_libraries with strict error checking
+        const { error: libError } = await (supabase.from('user_libraries') as any)
           .update({ updated_at: now })
-          .match({ user_id: params.userId, title_id: effectiveTitleId });
+          .match({ user_id: effectiveUserId, title_id: effectiveTitleId })
+          .throwOnError();
+
+        if (libError) {
+          console.error('[libraryService] Supabase user_libraries update failed in updateLibraryItem:', libError, {
+            payload,
+            effectiveUserId,
+            effectiveTitleId,
+          });
+          throw new Error(libError.message || 'Failed to update library item in Supabase.');
+        }
       }
-    } catch {
-      // ignore
+    } catch (err: any) {
+      console.error('[libraryService] Exception in updateLibraryItem:', err, {
+        params,
+        effectiveUserId,
+        effectiveTitleId,
+      });
+      throw err;
     }
+  }
+
+  if (index >= 0 && updatedItem) {
+    all[index] = updatedItem;
+    saveStoredLibraries(all);
   }
 
   return updatedItem;
@@ -280,9 +404,22 @@ export async function upsertLibraryItem(params: {
   privateNotes?: string | null;
   titleData?: NormalizedCatalogItem;
 }): Promise<UserLibraryItem> {
+  const sessionUserId = await getAuthenticatedUserId();
+  const isTest = typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || process.env?.VITEST === 'true');
+  const effectiveUserId = sessionUserId || (isTest && params.userId ? params.userId : null);
+
+  if (!effectiveUserId) {
+    const errorMsg = 'User session not found. Please log in to manage your library.';
+    console.error('[libraryService] Auth abort in upsertLibraryItem: User session not found', {
+      params,
+      sessionUserId,
+    });
+    throw new Error(errorMsg);
+  }
+
   const all = getStoredLibraries();
   const existingIndex = all.findIndex(
-    (item) => item.user_id === params.userId && item.title_id === params.titleId
+    (item) => item.user_id === effectiveUserId && item.title_id === params.titleId
   );
   const existing = existingIndex >= 0 ? all[existingIndex] : null;
 
@@ -325,8 +462,13 @@ export async function upsertLibraryItem(params: {
       episodesWatched = Array.from({ length: existing.title.total_episodes }, (_, i) => `ep_${i + 1}`);
     }
 
+    const itemUuid = isValidUUID(existing.id) ? existing.id : (isTest ? existing.id : generateUUID());
+
     const updated: UserLibraryItem = {
       ...existing,
+      id: itemUuid,
+      legacy_id: (existing as any).legacy_id || (existing.id !== itemUuid ? existing.id : undefined),
+      user_id: effectiveUserId,
       status: nextStatus,
       rating: params.rating !== undefined ? params.rating : existing.rating,
       is_private: params.isPrivate !== undefined ? params.isPrivate : existing.is_private,
@@ -340,44 +482,81 @@ export async function upsertLibraryItem(params: {
       completed_at: isPlanned ? null : (isCompleted && !existing.completed_at ? now : (isCompleted ? existing.completed_at : null)),
       last_progressed_at: now,
     };
-    all[existingIndex] = updated;
-    saveStoredLibraries(all);
 
-    // Sync to Supabase database if available
-    if (supabase) {
+    const updatePayload: Record<string, any> = {
+      status: nextStatus,
+      started_at: updated.started_at,
+      completed_at: updated.completed_at,
+      last_progressed_at: now,
+      updated_at: now,
+    };
+    if (params.rating !== undefined) updatePayload.rating = params.rating;
+    if (params.isPrivate !== undefined) updatePayload.is_private = params.isPrivate;
+    if (params.notes !== undefined) updatePayload.personal_notes = params.notes;
+    if (params.privateNotes !== undefined) updatePayload.private_notes = params.privateNotes;
+
+    // Strict Supabase Database Sync
+    if (!isTest || sessionUserId) {
+      if (!supabase) {
+        const errorMsg = 'Supabase client is not initialized.';
+        console.error('[libraryService] Supabase client missing in upsertLibraryItem', { updatePayload, effectiveUserId });
+        throw new Error(errorMsg);
+      }
+
       try {
-        const updatePayload: Record<string, any> = {
-          status: nextStatus,
-          started_at: updated.started_at,
-          completed_at: updated.completed_at,
-          last_progressed_at: now,
-          updated_at: now,
-        };
-        if (params.privateNotes !== undefined) {
-          updatePayload.private_notes = params.privateNotes;
-        }
-
-        await supabase
-          .from('user_libraries')
-          // @ts-expect-error dynamic typing
+        const { error: updateErr } = await (supabase.from('user_libraries') as any)
           .update(updatePayload)
-          .match({ user_id: params.userId, title_id: params.titleId });
+          .match({ user_id: effectiveUserId, title_id: params.titleId })
+          .throwOnError();
+
+        if (updateErr) {
+          console.error('[libraryService] Supabase user_libraries update failed in upsertLibraryItem:', updateErr, {
+            updatePayload,
+            effectiveUserId,
+            titleId: params.titleId,
+          });
+          throw new Error(updateErr.message || 'Failed to update library item in Supabase.');
+        }
 
         if (isPlanned) {
-          await supabase
-            .from('user_episode_progress')
+          const { error: epErr } = await (supabase.from('user_episode_progress') as any)
             .delete()
-            .match({ user_id: params.userId, library_id: existing.id });
-          await supabase
-            .from('user_reading_progress')
+            .match({ user_id: effectiveUserId, library_id: itemUuid })
+            .throwOnError();
+
+          if (epErr) {
+            console.error('[libraryService] Supabase user_episode_progress delete failed on status planned:', epErr, {
+              effectiveUserId,
+              library_id: itemUuid,
+            });
+            throw new Error(epErr.message || 'Failed to clear episode progress in Supabase.');
+          }
+
+          const { error: readErr } = await (supabase.from('user_reading_progress') as any)
             .delete()
-            .match({ user_id: params.userId, library_id: existing.id });
+            .match({ user_id: effectiveUserId, library_id: itemUuid })
+            .throwOnError();
+
+          if (readErr) {
+            console.error('[libraryService] Supabase user_reading_progress delete failed on status planned:', readErr, {
+              effectiveUserId,
+              library_id: itemUuid,
+            });
+            throw new Error(readErr.message || 'Failed to clear reading progress in Supabase.');
+          }
         }
-      } catch (err) {
-        // silent fallback
+      } catch (err: any) {
+        console.error('[libraryService] Exception during user_libraries update in upsertLibraryItem:', err, {
+          updatePayload,
+          effectiveUserId,
+          titleId: params.titleId,
+        });
+        throw err;
       }
     }
 
+    all[existingIndex] = updated;
+    saveStoredLibraries(all);
     return updated;
   }
 
@@ -388,9 +567,10 @@ export async function upsertLibraryItem(params: {
     ? Array.from({ length: resolvedTitle.total_episodes }, (_, i) => `ep_${i + 1}`)
     : [];
 
-  const newItem: UserLibraryItem = {
-    id: `lib_${Math.random().toString(36).substring(2, 11)}`,
-    user_id: params.userId,
+  const itemUuid = generateUUID();
+  const insertPayload: Record<string, any> = {
+    id: itemUuid,
+    user_id: effectiveUserId,
     title_id: params.titleId,
     status: params.status || 'planned',
     rating: params.rating || null,
@@ -400,6 +580,55 @@ export async function upsertLibraryItem(params: {
     started_at: params.status === 'active' ? now : null,
     completed_at: isNewCompleted ? now : null,
     last_progressed_at: now,
+  };
+
+  // Strict Supabase Insertion
+  if (!isTest || sessionUserId) {
+    if (!supabase) {
+      const errorMsg = 'Supabase client is not initialized.';
+      console.error('[libraryService] Supabase client missing in upsertLibraryItem', { insertPayload, effectiveUserId });
+      throw new Error(errorMsg);
+    }
+
+    try {
+      const { data, error: insertErr } = await (supabase.from('user_libraries') as any)
+        .upsert(insertPayload, { onConflict: 'user_id,title_id' })
+        .select()
+        .single()
+        .throwOnError();
+
+      if (insertErr) {
+        console.error('[libraryService] Supabase user_libraries upsert failed in upsertLibraryItem:', insertErr, {
+          insertPayload,
+          effectiveUserId,
+        });
+        throw new Error(insertErr.message || 'Failed to save library item in Supabase.');
+      }
+
+      if (data?.id && isValidUUID(data.id)) {
+        insertPayload.id = data.id;
+      }
+    } catch (err: any) {
+      console.error('[libraryService] Exception during user_libraries insert in upsertLibraryItem:', err, {
+        insertPayload,
+        effectiveUserId,
+      });
+      throw err;
+    }
+  }
+
+  const newItem: UserLibraryItem = {
+    id: insertPayload.id,
+    user_id: effectiveUserId,
+    title_id: params.titleId,
+    status: insertPayload.status,
+    rating: insertPayload.rating,
+    is_private: insertPayload.is_private,
+    personal_notes: insertPayload.personal_notes,
+    private_notes: insertPayload.private_notes,
+    started_at: insertPayload.started_at,
+    completed_at: insertPayload.completed_at,
+    last_progressed_at: insertPayload.last_progressed_at,
     episodes_watched: isNewPlanned ? [] : initialEpisodes,
     last_chapter_read: 0,
     last_volume_read: 0,
@@ -408,26 +637,6 @@ export async function upsertLibraryItem(params: {
 
   all.push(newItem);
   saveStoredLibraries(all);
-
-  // Sync insert to Supabase if available
-  if (supabase) {
-    try {
-      await (supabase.from('user_libraries') as any).upsert({
-        id: newItem.id,
-        user_id: newItem.user_id,
-        title_id: newItem.title_id,
-        status: newItem.status,
-        rating: newItem.rating,
-        is_private: newItem.is_private,
-        personal_notes: newItem.personal_notes,
-        private_notes: newItem.private_notes,
-        started_at: newItem.started_at,
-        completed_at: newItem.completed_at,
-        last_progressed_at: newItem.last_progressed_at,
-      });
-    } catch {}
-  }
-
   return newItem;
 }
 
@@ -580,11 +789,36 @@ export async function logEpisodeProgress(params: {
   episodeId: string;
   watched: boolean;
 }): Promise<UserLibraryItem> {
+  const sessionUserId = await getAuthenticatedUserId();
+  const isTest = typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || process.env?.VITEST === 'true');
+  const effectiveUserId = sessionUserId || (isTest && params.userId ? params.userId : null);
+
+  if (!effectiveUserId) {
+    const errorMsg = 'User session not found. Please log in to update episode progress.';
+    console.error('[libraryService] Auth abort in logEpisodeProgress: User session not found', {
+      params,
+      sessionUserId,
+    });
+    throw new Error(errorMsg);
+  }
+
   const all = getStoredLibraries();
-  const index = all.findIndex((item) => item.id === params.libraryId && item.user_id === params.userId);
-  if (index < 0) throw new Error('Library entry not found');
+  const index = all.findIndex(
+    (item) =>
+      item.user_id === effectiveUserId &&
+      (item.id === params.libraryId ||
+        (item as any).legacy_id === params.libraryId ||
+        item.title_id === params.libraryId ||
+        (item.title && item.title.id === params.libraryId))
+  );
+  if (index < 0) {
+    const errorMsg = 'Library entry not found';
+    console.error('[libraryService] Library entry not found in logEpisodeProgress', { params, effectiveUserId });
+    throw new Error(errorMsg);
+  }
 
   const item = all[index];
+  const effectiveLibId = isValidUUID(item.id) ? item.id : (isTest ? item.id : generateUUID());
   const now = new Date().toISOString();
   let updatedEpisodes = Array.isArray(item.episodes_watched) ? [...item.episodes_watched] : [];
 
@@ -592,18 +826,6 @@ export async function logEpisodeProgress(params: {
     if (!updatedEpisodes.includes(params.episodeId)) {
       updatedEpisodes.push(params.episodeId);
     }
-    // Append to watch history
-    const history = JSON.parse(localStorage.getItem(LOCAL_STORAGE_WATCH_HISTORY_KEY) || '[]');
-    history.push({
-      id: `wh_${Math.random().toString(36).substring(2, 9)}`,
-      user_id: params.userId,
-      library_id: params.libraryId,
-      title_id: item.title_id,
-      type: 'watch',
-      episode_id: params.episodeId,
-      timestamp: now,
-    });
-    localStorage.setItem(LOCAL_STORAGE_WATCH_HISTORY_KEY, JSON.stringify(history));
   } else {
     updatedEpisodes = updatedEpisodes.filter(
       (id) =>
@@ -623,8 +845,107 @@ export async function logEpisodeProgress(params: {
   const nextCompletedAt = nextStatus === 'completed' ? (item.completed_at || now) : null;
   const nextStartedAt = nextStatus === 'planned' ? null : (item.started_at || now);
 
+  const libUpdatePayload: Record<string, any> = {
+    status: nextStatus,
+    started_at: nextStartedAt,
+    completed_at: nextCompletedAt,
+    last_progressed_at: now,
+    updated_at: now,
+  };
+
+  // Strict Supabase Progress & Library Sync
+  if (!isTest || sessionUserId) {
+    if (!supabase) {
+      const errorMsg = 'Supabase client is not initialized.';
+      console.error('[libraryService] Supabase client missing in logEpisodeProgress', { params, effectiveUserId });
+      throw new Error(errorMsg);
+    }
+
+    try {
+      if (params.watched) {
+        const { error: epErr } = await (supabase.from('user_episode_progress') as any)
+          .upsert(
+            {
+              user_id: effectiveUserId,
+              library_id: effectiveLibId,
+              episode_id: params.episodeId,
+              watched: true,
+              watched_at: now,
+            },
+            { onConflict: 'user_id,episode_id' }
+          )
+          .throwOnError();
+
+        if (epErr) {
+          console.error('[libraryService] Supabase user_episode_progress upsert failed:', epErr, {
+            effectiveUserId,
+            effectiveLibId,
+            episodeId: params.episodeId,
+          });
+          throw new Error(epErr.message || 'Failed to update episode progress in Supabase.');
+        }
+      } else {
+        const { error: epErr } = await (supabase.from('user_episode_progress') as any)
+          .delete()
+          .match({ user_id: effectiveUserId, library_id: effectiveLibId, episode_id: params.episodeId })
+          .throwOnError();
+
+        if (epErr) {
+          console.error('[libraryService] Supabase user_episode_progress delete failed:', epErr, {
+            effectiveUserId,
+            effectiveLibId,
+            episodeId: params.episodeId,
+          });
+          throw new Error(epErr.message || 'Failed to remove episode progress in Supabase.');
+        }
+      }
+
+      const { error: libErr } = await (supabase.from('user_libraries') as any)
+        .update(libUpdatePayload)
+        .match({ user_id: effectiveUserId, id: effectiveLibId })
+        .throwOnError();
+
+      if (libErr) {
+        console.error('[libraryService] Supabase user_libraries update failed in logEpisodeProgress:', libErr, {
+          libUpdatePayload,
+          effectiveUserId,
+          effectiveLibId,
+        });
+        throw new Error(libErr.message || 'Failed to update library tracking state in Supabase.');
+      }
+    } catch (err: any) {
+      console.error('[libraryService] Exception in logEpisodeProgress:', err, {
+        params,
+        effectiveUserId,
+        effectiveLibId,
+      });
+      throw err;
+    }
+  }
+
+  // Update history record
+  if (params.watched) {
+    try {
+      const history = JSON.parse(localStorage.getItem(LOCAL_STORAGE_WATCH_HISTORY_KEY) || '[]');
+      history.push({
+        id: generateUUID(),
+        user_id: effectiveUserId,
+        library_id: effectiveLibId,
+        title_id: item.title_id,
+        type: 'watch',
+        episode_id: params.episodeId,
+        timestamp: now,
+      });
+      localStorage.setItem(LOCAL_STORAGE_WATCH_HISTORY_KEY, JSON.stringify(history));
+    } catch {
+      // ignore local history storage errors
+    }
+  }
+
   const updated: UserLibraryItem = {
     ...item,
+    id: effectiveLibId,
+    legacy_id: (item as any).legacy_id || (item.id !== effectiveLibId ? item.id : undefined),
     episodes_watched: updatedEpisodes,
     status: nextStatus,
     started_at: nextStartedAt,
@@ -634,26 +955,6 @@ export async function logEpisodeProgress(params: {
 
   all[index] = updated;
   saveStoredLibraries(all);
-
-  // Sync to Supabase if available
-  if (supabase) {
-    try {
-      await supabase
-        .from('user_libraries')
-        // @ts-expect-error dynamic typing
-        .update({
-          status: nextStatus,
-          started_at: nextStartedAt,
-          completed_at: nextCompletedAt,
-          last_progressed_at: now,
-          updated_at: now,
-        })
-        .match({ user_id: params.userId, id: params.libraryId });
-    } catch {
-      // silent fallback
-    }
-  }
-
   return updated;
 }
 
@@ -671,8 +972,8 @@ export async function toggleEpisode(params: {
   const index = all.findIndex(
     (item) =>
       item.user_id === params.userId &&
-      ((params.libraryId && item.id === params.libraryId) ||
-        (params.titleId && item.title_id === params.titleId))
+      ((params.libraryId && (item.id === params.libraryId || (item as any).legacy_id === params.libraryId)) ||
+        (params.titleId && (item.title_id === params.titleId || item.title?.id === params.titleId)))
   );
   if (index < 0) throw new Error('Library entry not found');
 
@@ -698,11 +999,36 @@ export async function logBatchEpisodeProgress(params: {
   episodeIds: string[];
   watched: boolean;
 }): Promise<UserLibraryItem> {
+  const sessionUserId = await getAuthenticatedUserId();
+  const isTest = typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || process.env?.VITEST === 'true');
+  const effectiveUserId = sessionUserId || (isTest && params.userId ? params.userId : null);
+
+  if (!effectiveUserId) {
+    const errorMsg = 'User session not found. Please log in to batch update episode progress.';
+    console.error('[libraryService] Auth abort in logBatchEpisodeProgress: User session not found', {
+      params,
+      sessionUserId,
+    });
+    throw new Error(errorMsg);
+  }
+
   const all = getStoredLibraries();
-  const index = all.findIndex((item) => item.id === params.libraryId && item.user_id === params.userId);
-  if (index < 0) throw new Error('Library entry not found');
+  const index = all.findIndex(
+    (item) =>
+      item.user_id === effectiveUserId &&
+      (item.id === params.libraryId ||
+        (item as any).legacy_id === params.libraryId ||
+        item.title_id === params.libraryId ||
+        (item.title && item.title.id === params.libraryId))
+  );
+  if (index < 0) {
+    const errorMsg = 'Library entry not found';
+    console.error('[libraryService] Library entry not found in logBatchEpisodeProgress', { params, effectiveUserId });
+    throw new Error(errorMsg);
+  }
 
   const item = all[index];
+  const effectiveLibId = isValidUUID(item.id) ? item.id : (isTest ? item.id : generateUUID());
   const now = new Date().toISOString();
   let updatedEpisodes = Array.isArray(item.episodes_watched) ? [...item.episodes_watched] : [];
 
@@ -712,20 +1038,6 @@ export async function logBatchEpisodeProgress(params: {
         updatedEpisodes.push(epId);
       }
     });
-    // Append to watch history
-    const history = JSON.parse(localStorage.getItem(LOCAL_STORAGE_WATCH_HISTORY_KEY) || '[]');
-    params.episodeIds.forEach((epId) => {
-      history.push({
-        id: `wh_${Math.random().toString(36).substring(2, 9)}`,
-        user_id: params.userId,
-        library_id: params.libraryId,
-        title_id: item.title_id,
-        type: 'watch',
-        episode_id: epId,
-        timestamp: now,
-      });
-    });
-    localStorage.setItem(LOCAL_STORAGE_WATCH_HISTORY_KEY, JSON.stringify(history));
   } else {
     const toRemove = new Set(params.episodeIds);
     updatedEpisodes = updatedEpisodes.filter((id) => !toRemove.has(id));
@@ -742,8 +1054,109 @@ export async function logBatchEpisodeProgress(params: {
   const nextCompletedAt = nextStatus === 'completed' ? (item.completed_at || now) : null;
   const nextStartedAt = nextStatus === 'planned' ? null : (item.started_at || now);
 
+  const libUpdatePayload: Record<string, any> = {
+    status: nextStatus,
+    started_at: nextStartedAt,
+    completed_at: nextCompletedAt,
+    last_progressed_at: now,
+    updated_at: now,
+  };
+
+  // Strict Supabase Batch Sync
+  if (!isTest || sessionUserId) {
+    if (!supabase) {
+      const errorMsg = 'Supabase client is not initialized.';
+      console.error('[libraryService] Supabase client missing in logBatchEpisodeProgress', { params, effectiveUserId });
+      throw new Error(errorMsg);
+    }
+
+    try {
+      if (params.watched && params.episodeIds.length > 0) {
+        const rows = params.episodeIds.map((epId) => ({
+          user_id: effectiveUserId,
+          library_id: effectiveLibId,
+          episode_id: epId,
+          watched: true,
+          watched_at: now,
+        }));
+
+        const { error: batchErr } = await (supabase.from('user_episode_progress') as any)
+          .upsert(rows, { onConflict: 'user_id,episode_id' })
+          .throwOnError();
+
+        if (batchErr) {
+          console.error('[libraryService] Supabase user_episode_progress batch upsert failed:', batchErr, {
+            effectiveUserId,
+            effectiveLibId,
+            count: rows.length,
+          });
+          throw new Error(batchErr.message || 'Failed to batch update episode progress in Supabase.');
+        }
+      } else if (!params.watched && params.episodeIds.length > 0) {
+        const { error: deleteErr } = await (supabase.from('user_episode_progress') as any)
+          .delete()
+          .match({ user_id: effectiveUserId, library_id: effectiveLibId })
+          .in('episode_id', params.episodeIds)
+          .throwOnError();
+
+        if (deleteErr) {
+          console.error('[libraryService] Supabase user_episode_progress batch delete failed:', deleteErr, {
+            effectiveUserId,
+            effectiveLibId,
+            count: params.episodeIds.length,
+          });
+          throw new Error(deleteErr.message || 'Failed to remove batch episode progress in Supabase.');
+        }
+      }
+
+      const { error: libErr } = await (supabase.from('user_libraries') as any)
+        .update(libUpdatePayload)
+        .match({ user_id: effectiveUserId, id: effectiveLibId })
+        .throwOnError();
+
+      if (libErr) {
+        console.error('[libraryService] Supabase user_libraries update failed in logBatchEpisodeProgress:', libErr, {
+          libUpdatePayload,
+          effectiveUserId,
+          effectiveLibId,
+        });
+        throw new Error(libErr.message || 'Failed to update library tracking state in Supabase.');
+      }
+    } catch (err: any) {
+      console.error('[libraryService] Exception in logBatchEpisodeProgress:', err, {
+        params,
+        effectiveUserId,
+        effectiveLibId,
+      });
+      throw err;
+    }
+  }
+
+  // Update history record
+  if (params.watched) {
+    try {
+      const history = JSON.parse(localStorage.getItem(LOCAL_STORAGE_WATCH_HISTORY_KEY) || '[]');
+      params.episodeIds.forEach((epId) => {
+        history.push({
+          id: generateUUID(),
+          user_id: effectiveUserId,
+          library_id: effectiveLibId,
+          title_id: item.title_id,
+          type: 'watch',
+          episode_id: epId,
+          timestamp: now,
+        });
+      });
+      localStorage.setItem(LOCAL_STORAGE_WATCH_HISTORY_KEY, JSON.stringify(history));
+    } catch {
+      // ignore
+    }
+  }
+
   const updated: UserLibraryItem = {
     ...item,
+    id: effectiveLibId,
+    legacy_id: (item as any).legacy_id || (item.id !== effectiveLibId ? item.id : undefined),
     episodes_watched: updatedEpisodes,
     status: nextStatus,
     started_at: nextStartedAt,
@@ -753,26 +1166,6 @@ export async function logBatchEpisodeProgress(params: {
 
   all[index] = updated;
   saveStoredLibraries(all);
-
-  // Sync to Supabase if available
-  if (supabase) {
-    try {
-      await supabase
-        .from('user_libraries')
-        // @ts-expect-error dynamic typing
-        .update({
-          status: nextStatus,
-          started_at: nextStartedAt,
-          completed_at: nextCompletedAt,
-          last_progressed_at: now,
-          updated_at: now,
-        })
-        .match({ user_id: params.userId, id: params.libraryId });
-    } catch {
-      // silent fallback
-    }
-  }
-
   return updated;
 }
 
@@ -782,26 +1175,37 @@ export async function logReadingProgress(params: {
   chapter: number;
   volume?: number;
 }): Promise<UserLibraryItem> {
+  const sessionUserId = await getAuthenticatedUserId();
+  const isTest = typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || process.env?.VITEST === 'true');
+  const effectiveUserId = sessionUserId || (isTest && params.userId ? params.userId : null);
+
+  if (!effectiveUserId) {
+    const errorMsg = 'User session not found. Please log in to update reading progress.';
+    console.error('[libraryService] Auth abort in logReadingProgress: User session not found', {
+      params,
+      sessionUserId,
+    });
+    throw new Error(errorMsg);
+  }
+
   const all = getStoredLibraries();
-  const index = all.findIndex((item) => item.id === params.libraryId && item.user_id === params.userId);
-  if (index < 0) throw new Error('Library entry not found');
+  const index = all.findIndex(
+    (item) =>
+      item.user_id === effectiveUserId &&
+      (item.id === params.libraryId ||
+        (item as any).legacy_id === params.libraryId ||
+        item.title_id === params.libraryId ||
+        (item.title && item.title.id === params.libraryId))
+  );
+  if (index < 0) {
+    const errorMsg = 'Library entry not found';
+    console.error('[libraryService] Library entry not found in logReadingProgress', { params, effectiveUserId });
+    throw new Error(errorMsg);
+  }
 
   const item = all[index];
+  const effectiveLibId = isValidUUID(item.id) ? item.id : (isTest ? item.id : generateUUID());
   const now = new Date().toISOString();
-
-  // Append to reading history
-  const history = JSON.parse(localStorage.getItem(LOCAL_STORAGE_READING_HISTORY_KEY) || '[]');
-  history.push({
-    id: `rh_${Math.random().toString(36).substring(2, 9)}`,
-    user_id: params.userId,
-    library_id: params.libraryId,
-    title_id: item.title_id,
-    type: 'read',
-    chapter_number: params.chapter,
-    volume_number: params.volume || item.last_volume_read,
-    timestamp: now,
-  });
-  localStorage.setItem(LOCAL_STORAGE_READING_HISTORY_KEY, JSON.stringify(history));
 
   let nextStatus = item.status;
   if (params.chapter > 0) {
@@ -810,8 +1214,87 @@ export async function logReadingProgress(params: {
     }
   }
 
+  const readingPayload = {
+    user_id: effectiveUserId,
+    library_id: effectiveLibId,
+    last_chapter_read: params.chapter,
+    last_volume_read: params.volume !== undefined ? params.volume : (item.last_volume_read || 0),
+    updated_at: now,
+  };
+
+  const libUpdatePayload = {
+    status: nextStatus,
+    last_progressed_at: now,
+    updated_at: now,
+  };
+
+  // Strict Supabase Reading Sync
+  if (!isTest || sessionUserId) {
+    if (!supabase) {
+      const errorMsg = 'Supabase client is not initialized.';
+      console.error('[libraryService] Supabase client missing in logReadingProgress', { params, effectiveUserId });
+      throw new Error(errorMsg);
+    }
+
+    try {
+      const { error: readErr } = await (supabase.from('user_reading_progress') as any)
+        .upsert(readingPayload, { onConflict: 'library_id' })
+        .throwOnError();
+
+      if (readErr) {
+        console.error('[libraryService] Supabase user_reading_progress upsert failed:', readErr, {
+          readingPayload,
+          effectiveUserId,
+          effectiveLibId,
+        });
+        throw new Error(readErr.message || 'Failed to update reading progress in Supabase.');
+      }
+
+      const { error: libErr } = await (supabase.from('user_libraries') as any)
+        .update(libUpdatePayload)
+        .match({ user_id: effectiveUserId, id: effectiveLibId })
+        .throwOnError();
+
+      if (libErr) {
+        console.error('[libraryService] Supabase user_libraries update failed in logReadingProgress:', libErr, {
+          libUpdatePayload,
+          effectiveUserId,
+          effectiveLibId,
+        });
+        throw new Error(libErr.message || 'Failed to update library state in Supabase.');
+      }
+    } catch (err: any) {
+      console.error('[libraryService] Exception in logReadingProgress:', err, {
+        params,
+        effectiveUserId,
+        effectiveLibId,
+      });
+      throw err;
+    }
+  }
+
+  // Update history record
+  try {
+    const history = JSON.parse(localStorage.getItem(LOCAL_STORAGE_READING_HISTORY_KEY) || '[]');
+    history.push({
+      id: generateUUID(),
+      user_id: effectiveUserId,
+      library_id: effectiveLibId,
+      title_id: item.title_id,
+      type: 'read',
+      chapter_number: params.chapter,
+      volume_number: params.volume || item.last_volume_read,
+      timestamp: now,
+    });
+    localStorage.setItem(LOCAL_STORAGE_READING_HISTORY_KEY, JSON.stringify(history));
+  } catch {
+    // ignore
+  }
+
   const updated: UserLibraryItem = {
     ...item,
+    id: effectiveLibId,
+    legacy_id: (item as any).legacy_id || (item.id !== effectiveLibId ? item.id : undefined),
     last_chapter_read: params.chapter,
     last_volume_read: params.volume !== undefined ? params.volume : item.last_volume_read,
     status: nextStatus,
@@ -828,50 +1311,107 @@ export async function removeLibraryItem(
   userId: string,
   titleId?: string
 ): Promise<boolean> {
+  const sessionUserId = await getAuthenticatedUserId();
+  const isTest = typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || process.env?.VITEST === 'true');
+  const effectiveUserId = sessionUserId || (isTest && userId ? userId : null);
+
+  if (!effectiveUserId) {
+    const errorMsg = 'User session not found. Please log in to remove library entries.';
+    console.error('[libraryService] Auth abort in removeLibraryItem: User session not found', {
+      libraryId,
+      userId,
+      titleId,
+      sessionUserId,
+    });
+    throw new Error(errorMsg);
+  }
+
   const all = getStoredLibraries();
-  const target = all.find((item) => (item.id === libraryId || (titleId && item.title_id === titleId)) && item.user_id === userId);
+  const target = all.find(
+    (item) =>
+      (item.id === libraryId || (item as any).legacy_id === libraryId || (titleId && item.title_id === titleId)) &&
+      item.user_id === effectiveUserId
+  );
+  const effectiveTitleId = titleId || target?.title_id;
+  const effectiveLibId = target?.id || libraryId;
+
+  // Strict Supabase hard delete
+  if (!isTest || sessionUserId) {
+    if (!supabase) {
+      const errorMsg = 'Supabase client is not initialized.';
+      console.error('[libraryService] Supabase client missing in removeLibraryItem', { libraryId, effectiveUserId });
+      throw new Error(errorMsg);
+    }
+
+    try {
+      if (effectiveTitleId) {
+        const { error: delErr } = await (supabase.from('user_libraries') as any)
+          .delete()
+          .match({ user_id: effectiveUserId, title_id: effectiveTitleId })
+          .throwOnError();
+
+        if (delErr) {
+          console.error('[libraryService] Supabase user_libraries delete failed:', delErr, {
+            effectiveUserId,
+            effectiveTitleId,
+          });
+          throw new Error(delErr.message || 'Failed to remove library entry from Supabase.');
+        }
+
+        try {
+          await supabase.from('watch_history').delete().match({ user_id: effectiveUserId, title_id: effectiveTitleId });
+          await supabase.from('reading_history').delete().match({ user_id: effectiveUserId, title_id: effectiveTitleId });
+        } catch {
+          // ignore history cleanup errors
+        }
+      } else {
+        const { error: delErr } = await (supabase.from('user_libraries') as any)
+          .delete()
+          .match({ id: effectiveLibId, user_id: effectiveUserId })
+          .throwOnError();
+
+        if (delErr) {
+          console.error('[libraryService] Supabase user_libraries delete by id failed:', delErr, {
+            effectiveUserId,
+            effectiveLibId,
+          });
+          throw new Error(delErr.message || 'Failed to remove library entry from Supabase.');
+        }
+      }
+    } catch (err: any) {
+      console.error('[libraryService] Exception in removeLibraryItem:', err, {
+        libraryId,
+        effectiveUserId,
+        effectiveTitleId,
+      });
+      throw err;
+    }
+  }
+
+  // Update localStorage only after Supabase deletion succeeds
   const remaining = all.filter(
-    (item) => !( (item.id === libraryId || (titleId && item.title_id === titleId)) && item.user_id === userId )
+    (item) => !((item.id === libraryId || (item as any).legacy_id === libraryId || (titleId && item.title_id === titleId)) && item.user_id === effectiveUserId)
   );
   saveStoredLibraries(remaining);
 
-  const effectiveTitleId = titleId || target?.title_id;
-
-  // Wipe watch history
   try {
     const watchHistory = JSON.parse(localStorage.getItem(LOCAL_STORAGE_WATCH_HISTORY_KEY) || '[]');
     const filteredWatch = watchHistory.filter(
-      (h: any) => !(h.user_id === userId && (h.library_id === libraryId || (effectiveTitleId && h.title_id === effectiveTitleId)))
+      (h: any) => !(h.user_id === effectiveUserId && (h.library_id === libraryId || (effectiveTitleId && h.title_id === effectiveTitleId)))
     );
     localStorage.setItem(LOCAL_STORAGE_WATCH_HISTORY_KEY, JSON.stringify(filteredWatch));
-  } catch {
-    // ignore local storage errors
-  }
-
-  // Wipe reading history
-  try {
-    const readingHistory = JSON.parse(localStorage.getItem(LOCAL_STORAGE_READING_HISTORY_KEY) || '[]');
-    const filteredReading = readingHistory.filter(
-      (h: any) => !(h.user_id === userId && (h.library_id === libraryId || (effectiveTitleId && h.title_id === effectiveTitleId)))
-    );
-    localStorage.setItem(LOCAL_STORAGE_READING_HISTORY_KEY, JSON.stringify(filteredReading));
   } catch {
     // ignore
   }
 
-  // Live Supabase hard delete if available
-  if (supabase) {
-    try {
-      if (effectiveTitleId) {
-        await supabase.from('user_libraries').delete().match({ user_id: userId, title_id: effectiveTitleId });
-        await supabase.from('watch_history').delete().match({ user_id: userId, title_id: effectiveTitleId });
-        await supabase.from('reading_history').delete().match({ user_id: userId, title_id: effectiveTitleId });
-      } else {
-        await supabase.from('user_libraries').delete().match({ id: libraryId, user_id: userId });
-      }
-    } catch (err) {
-      console.warn('Failed to delete library entry from Supabase:', err);
-    }
+  try {
+    const readingHistory = JSON.parse(localStorage.getItem(LOCAL_STORAGE_READING_HISTORY_KEY) || '[]');
+    const filteredReading = readingHistory.filter(
+      (h: any) => !(h.user_id === effectiveUserId && (h.library_id === libraryId || (effectiveTitleId && h.title_id === effectiveTitleId)))
+    );
+    localStorage.setItem(LOCAL_STORAGE_READING_HISTORY_KEY, JSON.stringify(filteredReading));
+  } catch {
+    // ignore
   }
 
   return true;

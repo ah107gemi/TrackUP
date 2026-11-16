@@ -11,6 +11,8 @@ import {
   Search,
   Check,
   ChevronDown,
+  AlertCircle,
+  X,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../auth/AuthContext';
@@ -64,6 +66,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const incrementEpisode = useIncrementEpisode();
   const incrementChapter = useIncrementChapter();
   const upsertMutation = useUpsertLibrary();
+
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (actionError) {
+      const timer = setTimeout(() => setActionError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [actionError]);
 
   const currentFilters = domain === 'watch' ? watchLibraryFilters : readLibraryFilters;
   const setFilters = domain === 'watch' ? setWatchLibraryFilters : setReadLibraryFilters;
@@ -233,41 +244,69 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
     if (item.title.media_type === 'tv' || item.title.media_type === 'anime_series') {
       const nextEpNum = item.episodes_watched.length + 1;
-      incrementEpisode.mutate({
-        libraryId: item.id,
-        userId: user.id,
-        episodeId: `ep_${nextEpNum}`,
-        watched: true,
-      });
+      incrementEpisode.mutate(
+        {
+          libraryId: item.id,
+          userId: user.id,
+          episodeId: `ep_${nextEpNum}`,
+          watched: true,
+        },
+        {
+          onError: (err: any) => {
+            setActionError(err?.message || 'Failed to update episode progress.');
+          },
+        }
+      );
     } else if (item.title.media_type === 'manga' || item.title.media_type === 'manhwa') {
-      incrementChapter.mutate({
-        libraryId: item.id,
-        userId: user.id,
-        chapter: item.last_chapter_read + 1,
-      });
+      incrementChapter.mutate(
+        {
+          libraryId: item.id,
+          userId: user.id,
+          chapter: item.last_chapter_read + 1,
+        },
+        {
+          onError: (err: any) => {
+            setActionError(err?.message || 'Failed to update reading progress.');
+          },
+        }
+      );
     }
   };
 
   const handleFractionalProgress = (e: React.MouseEvent, item: (typeof library)[0]) => {
     e.stopPropagation();
     if (!user) return;
-    incrementChapter.mutate({
-      libraryId: item.id,
-      userId: user.id,
-      chapter: item.last_chapter_read + 0.5,
-    });
+    incrementChapter.mutate(
+      {
+        libraryId: item.id,
+        userId: user.id,
+        chapter: item.last_chapter_read + 0.5,
+      },
+      {
+        onError: (err: any) => {
+          setActionError(err?.message || 'Failed to update reading progress.');
+        },
+      }
+    );
   };
 
   const handleQuickAddReading = (e: React.MouseEvent, item: NormalizedCatalogItem) => {
     e.stopPropagation();
     if (!user) return;
 
-    upsertMutation.mutate({
-      userId: user.id,
-      titleId: item.id,
-      status: 'active',
-      titleData: item,
-    });
+    upsertMutation.mutate(
+      {
+        userId: user.id,
+        titleId: item.id,
+        status: 'active',
+        titleData: item,
+      },
+      {
+        onError: (err: any) => {
+          setActionError(err?.message || 'Failed to add title to library.');
+        },
+      }
+    );
 
     setAddedItemIds((prev) => new Set(prev).add(item.id));
   };
@@ -838,6 +877,19 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             </div>
           )}
         </>
+      )}
+      {/* Library error toast */}
+      {actionError && (
+        <div
+          data-testid="library-error-toast"
+          className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-600/95 text-white text-sm font-medium shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-2"
+        >
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{actionError}</span>
+          <button onClick={() => setActionError(null)} className="ml-2 hover:opacity-80">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )}
     </div>
   );

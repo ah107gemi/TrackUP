@@ -19,6 +19,8 @@ import {
   Lock,
   Check,
   BookmarkPlus,
+  AlertCircle,
+  X,
 } from 'lucide-react';
 import {
   getCatalogTitleById,
@@ -28,7 +30,6 @@ import {
   type CastMember,
 } from './catalogService';
 import type { NormalizedCatalogItem } from '../../lib/validators';
-import { supabase } from '../../lib/supabase';
 import { resolvePosterUrl, resolveBackdropUrl } from '../../lib/imageUtils';
 import { canHealTitle, healTitleMetadata } from './metadataHealer';
 import { MediaPosterCard } from '../../components/shared/MediaPosterCard';
@@ -122,6 +123,16 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
   // Custom Lists "Add to List" Modal state
   const [isAddToListOpen, setIsAddToListOpen] = useState(false);
+
+  // Library / tracking action error toast
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (actionError) {
+      const timer = setTimeout(() => setActionError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [actionError]);
 
   const heroRef = useRef<HTMLDivElement>(null);
   const { setScrolledHeaderTitle } = useUIStore();
@@ -325,22 +336,36 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     if (newStatus === 'planned') {
       setLocalEpisodes([]);
     }
-    upsertMutation.mutate({
-      userId: activeUserId,
-      titleId: title.id,
-      status: newStatus,
-      titleData: title,
-    });
+    upsertMutation.mutate(
+      {
+        userId: activeUserId,
+        titleId: title.id,
+        status: newStatus,
+        titleData: title,
+      },
+      {
+        onError: (err: any) => {
+          setActionError(err?.message || 'Failed to update tracking status.');
+        },
+      }
+    );
   };
 
   const handleRatingChange = (newRating: number) => {
     setLocalRating(newRating || null);
-    upsertMutation.mutate({
-      userId: activeUserId,
-      titleId: title.id,
-      rating: newRating || null,
-      titleData: title,
-    });
+    upsertMutation.mutate(
+      {
+        userId: activeUserId,
+        titleId: title.id,
+        rating: newRating || null,
+        titleData: title,
+      },
+      {
+        onError: (err: any) => {
+          setActionError(err?.message || 'Failed to update rating.');
+        },
+      }
+    );
   };
 
   const handleToggleFavorite = async () => {
@@ -507,51 +532,19 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       libId = created.id;
     }
 
-    episodeMutation.mutate({
-      libraryId: libId,
-      userId: activeUserId,
-      episodeId: ep.id,
-      watched: !isWatched,
-    });
-
-    // Supabase direct backend sync ensuring exact season boundary and progress table sync
-    if (supabase) {
-      try {
-        if (!isWatched) {
-          await (supabase.from('user_episode_progress') as any).upsert(
-            {
-              user_id: activeUserId,
-              library_id: libId,
-              episode_id: ep.id,
-              watched: true,
-              watched_at: new Date().toISOString(),
-            },
-            { onConflict: 'user_id,episode_id' }
-          );
-        } else {
-          await supabase
-            .from('user_episode_progress')
-            .delete()
-            .match({ user_id: activeUserId, library_id: libId, episode_id: ep.id });
-        }
-      } catch {
-        // silent fallback
+    episodeMutation.mutate(
+      {
+        libraryId: libId,
+        userId: activeUserId,
+        episodeId: ep.id,
+        watched: !isWatched,
+      },
+      {
+        onError: (err: any) => {
+          setActionError(err?.message || 'Failed to update episode progress.');
+        },
       }
-
-      try {
-        await (supabase.from('user_libraries') as any)
-          .update({
-            episodes_watched: updatedEpisodes,
-            status: targetStatus,
-            completed_at: targetStatus === 'completed' ? (existingEntry?.completed_at || new Date().toISOString()) : null,
-            last_progressed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .match({ user_id: activeUserId, id: libId });
-      } catch {
-        // silent fallback
-      }
-    }
+    );
   };
 
   const handleToggleEpisode = toggleEpisodeWatched;
@@ -624,44 +617,19 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       libId = created.id;
     }
 
-    batchEpisodeMutation.mutate({
-      libraryId: libId,
-      userId: activeUserId,
-      episodeIds: allToMark,
-      watched: true,
-    });
-
-    if (supabase) {
-      try {
-        const rows = allToMark.map((epId) => ({
-          user_id: activeUserId,
-          library_id: libId,
-          episode_id: epId,
-          watched: true,
-          watched_at: new Date().toISOString(),
-        }));
-        await (supabase.from('user_episode_progress') as any).upsert(
-          rows,
-          { onConflict: 'user_id,episode_id' }
-        );
-      } catch {
-        // silent fallback
+    batchEpisodeMutation.mutate(
+      {
+        libraryId: libId,
+        userId: activeUserId,
+        episodeIds: allToMark,
+        watched: true,
+      },
+      {
+        onError: (err: any) => {
+          setActionError(err?.message || 'Failed to mark episodes as watched.');
+        },
       }
-
-      try {
-        await (supabase.from('user_libraries') as any)
-          .update({
-            episodes_watched: updatedEpisodes,
-            status: targetStatus,
-            completed_at: targetStatus === 'completed' ? (existingEntry?.completed_at || new Date().toISOString()) : null,
-            last_progressed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .match({ user_id: activeUserId, id: libId });
-      } catch {
-        // silent fallback
-      }
-    }
+    );
   };
 
   const handleCancelCatchUp = () => {
@@ -710,44 +678,19 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       libId = created.id;
     }
 
-    batchEpisodeMutation.mutate({
-      libraryId: libId,
-      userId: activeUserId,
-      episodeIds: allEpIds,
-      watched: true,
-    });
-
-    if (supabase) {
-      try {
-        const rows = allEpIds.map((epId) => ({
-          user_id: activeUserId,
-          library_id: libId,
-          episode_id: epId,
-          watched: true,
-          watched_at: new Date().toISOString(),
-        }));
-        await (supabase.from('user_episode_progress') as any).upsert(
-          rows,
-          { onConflict: 'user_id,episode_id' }
-        );
-      } catch {
-        // silent fallback
+    batchEpisodeMutation.mutate(
+      {
+        libraryId: libId,
+        userId: activeUserId,
+        episodeIds: allEpIds,
+        watched: true,
+      },
+      {
+        onError: (err: any) => {
+          setActionError(err?.message || 'Failed to mark season episodes as watched.');
+        },
       }
-
-      try {
-        await (supabase.from('user_libraries') as any)
-          .update({
-            episodes_watched: updatedEpisodes,
-            status: targetStatus,
-            completed_at: targetStatus === 'completed' ? (existingEntry?.completed_at || new Date().toISOString()) : null,
-            last_progressed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .match({ user_id: activeUserId, id: libId });
-      } catch {
-        // silent fallback
-      }
-    }
+    );
   };
 
   const handleBatchUnmarkSeason = async () => {
@@ -828,38 +771,19 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       libId = created.id;
     }
 
-    batchEpisodeMutation.mutate({
-      libraryId: libId,
-      userId: activeUserId,
-      episodeIds: seasonEpIds,
-      watched: false,
-    });
-
-    if (supabase) {
-      try {
-        await supabase
-          .from('user_episode_progress')
-          .delete()
-          .match({ user_id: activeUserId, library_id: libId })
-          .in('episode_id', seasonEpIds);
-      } catch {
-        // silent fallback
+    batchEpisodeMutation.mutate(
+      {
+        libraryId: libId,
+        userId: activeUserId,
+        episodeIds: seasonEpIds,
+        watched: false,
+      },
+      {
+        onError: (err: any) => {
+          setActionError(err?.message || 'Failed to unmark season episodes.');
+        },
       }
-
-      try {
-        await (supabase.from('user_libraries') as any)
-          .update({
-            episodes_watched: updatedEpisodes,
-            status: targetStatus,
-            completed_at: targetStatus === 'completed' ? (existingEntry?.completed_at || new Date().toISOString()) : null,
-            last_progressed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .match({ user_id: activeUserId, id: libId });
-      } catch {
-        // silent fallback
-      }
-    }
+    );
   };
 
   const handleStepChapter = async (delta: number) => {
@@ -894,11 +818,18 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       });
       libId = created.id;
     }
-    chapterMutation.mutate({
-      libraryId: libId,
-      userId: activeUserId,
-      chapter: newCh,
-    });
+    chapterMutation.mutate(
+      {
+        libraryId: libId,
+        userId: activeUserId,
+        chapter: newCh,
+      },
+      {
+        onError: (err: any) => {
+          setActionError(err?.message || 'Failed to update reading progress.');
+        },
+      }
+    );
   };
 
   const handleSetCustomChapter = async (val: number) => {
@@ -915,12 +846,19 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
     setLocalStatus(targetStatus);
     if (existingEntry && existingEntry.status !== targetStatus) {
-      upsertMutation.mutate({
-        userId: activeUserId,
-        titleId: title.id,
-        status: targetStatus,
-        titleData: title,
-      });
+      upsertMutation.mutate(
+        {
+          userId: activeUserId,
+          titleId: title.id,
+          status: targetStatus,
+          titleData: title,
+        },
+        {
+          onError: (err: any) => {
+            setActionError(err?.message || 'Failed to update status.');
+          },
+        }
+      );
     }
 
     let libId = existingEntry?.id;
@@ -933,22 +871,36 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
       });
       libId = created.id;
     }
-    chapterMutation.mutate({
-      libraryId: libId,
-      userId: activeUserId,
-      chapter: val,
-    });
+    chapterMutation.mutate(
+      {
+        libraryId: libId,
+        userId: activeUserId,
+        chapter: val,
+      },
+      {
+        onError: (err: any) => {
+          setActionError(err?.message || 'Failed to update reading progress.');
+        },
+      }
+    );
   };
 
   const handleToggleMovieComplete = () => {
     const target = currentStatus === 'completed' ? 'planned' : 'completed';
     setLocalStatus(target);
-    upsertMutation.mutate({
-      userId: activeUserId,
-      titleId: title.id,
-      status: target,
-      titleData: title,
-    });
+    upsertMutation.mutate(
+      {
+        userId: activeUserId,
+        titleId: title.id,
+        status: target,
+        titleData: title,
+      },
+      {
+        onError: (err: any) => {
+          setActionError(err?.message || 'Failed to update movie tracking status.');
+        },
+      }
+    );
   };
 
   return (
@@ -1797,6 +1749,20 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
       {/* TMDB Mandatory Attribution Footer */}
       <TmdbAttribution className="mt-12" />
+
+      {/* Library / tracking error toast */}
+      {actionError && (
+        <div
+          data-testid="library-error-toast"
+          className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-600/95 text-white text-sm font-medium shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-2"
+        >
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{actionError}</span>
+          <button onClick={() => setActionError(null)} className="ml-2 hover:opacity-80">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
     </ErrorBoundary>
   );
