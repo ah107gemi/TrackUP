@@ -188,5 +188,121 @@ describe('Cross-Season State Isolation and Season Unmark Bulk Action', () => {
       expect(updated.episodes_watched).toEqual([]);
       expect(updated.status).toBe('planned');
     });
+
+    it('batch marking the Full Show marks all episodes across all seasons and sets status to completed', async () => {
+      const userId = 'user_full_show_mark_test';
+      const libraryEntry = {
+        id: 'lib_multi_full_show',
+        user_id: userId,
+        title_id: mockMultiSeasonShow.id,
+        status: 'planned' as const,
+        rating: null,
+        is_private: false,
+        personal_notes: null,
+        started_at: null,
+        completed_at: null,
+        last_progressed_at: '2024-01-01',
+        episodes_watched: ['ep_s1_e1'],
+        last_chapter_read: 0,
+        last_volume_read: 0,
+        title: mockMultiSeasonShow,
+      };
+
+      saveStoredLibraries([libraryEntry]);
+
+      // All show episodes across both Season 1 and Season 2
+      const allShowEpIds = [
+        'ep_s1_e1', 'ep_s1_e2', 'ep_s1_e3',
+        'ep_s2_e1', 'ep_s2_e2', 'ep_s2_e3'
+      ];
+
+      const updated = await logBatchEpisodeProgress({
+        libraryId: 'lib_multi_full_show',
+        userId,
+        episodeIds: allShowEpIds,
+        watched: true,
+      });
+
+      expect(updated.episodes_watched).toEqual(allShowEpIds);
+      expect(updated.status).toBe('completed');
+    });
+
+    it('batch unmarking the Full Show unmarks all episodes across all seasons and demotes status to planned', async () => {
+      const userId = 'user_full_show_unmark_test';
+      const libraryEntry = {
+        id: 'lib_multi_full_show_unmark',
+        user_id: userId,
+        title_id: mockMultiSeasonShow.id,
+        status: 'completed' as const,
+        rating: null,
+        is_private: false,
+        personal_notes: null,
+        started_at: '2024-01-01',
+        completed_at: '2024-02-15',
+        last_progressed_at: '2024-02-15',
+        episodes_watched: [
+          'ep_s1_e1', 'ep_s1_e2', 'ep_s1_e3',
+          'ep_s2_e1', 'ep_s2_e2', 'ep_s2_e3'
+        ],
+        last_chapter_read: 0,
+        last_volume_read: 0,
+        title: mockMultiSeasonShow,
+      };
+
+      saveStoredLibraries([libraryEntry]);
+
+      const allShowEpIds = [
+        'ep_s1_e1', 'ep_s1_e2', 'ep_s1_e3',
+        'ep_s2_e1', 'ep_s2_e2', 'ep_s2_e3'
+      ];
+
+      const updated = await logBatchEpisodeProgress({
+        libraryId: 'lib_multi_full_show_unmark',
+        userId,
+        episodeIds: allShowEpIds,
+        watched: false,
+      });
+
+      expect(updated.episodes_watched).toEqual([]);
+      expect(updated.status).toBe('planned');
+    });
+  });
+
+  describe('3. Catch Up / Mark Previous Episodes Prompt Condition Logic', () => {
+    it('evaluates catch-up eligibility strictly between episode 2 and the penultimate episode', () => {
+      // Helper replicating TitleDetailPage catch-up evaluation
+      const shouldPromptCatchUp = (
+        epNum: number,
+        totalEpisodesInSeason: number,
+        unmarkedPreviousCount: number
+      ) => {
+        const isBetweenTwoAndPenultimate =
+          epNum >= 2 && (totalEpisodesInSeason > 0 ? epNum < totalEpisodesInSeason : false);
+        return isBetweenTwoAndPenultimate && unmarkedPreviousCount > 0;
+      };
+
+      const seasonTotal = 10;
+
+      // Episode 1 (first episode): never prompts catch-up
+      expect(shouldPromptCatchUp(1, seasonTotal, 0)).toBe(false);
+
+      // Episode 2: prompts catch-up if episode 1 is unmarked
+      expect(shouldPromptCatchUp(2, seasonTotal, 1)).toBe(true);
+      // Episode 2: does not prompt if previous is already marked
+      expect(shouldPromptCatchUp(2, seasonTotal, 0)).toBe(false);
+
+      // Middle episodes (3 through 9): prompt catch-up if earlier episodes unmarked
+      expect(shouldPromptCatchUp(5, seasonTotal, 3)).toBe(true);
+      expect(shouldPromptCatchUp(9, seasonTotal, 4)).toBe(true); // Penultimate episode 9
+
+      // Episode 10 (finale / last episode): does not prompt catch-up (standard mark/complete)
+      expect(shouldPromptCatchUp(10, seasonTotal, 5)).toBe(false);
+
+      // In a 3-episode season (like Season 1 in mockMultiSeasonShow):
+      // Ep 1 = first, Ep 2 = penultimate, Ep 3 = finale
+      expect(shouldPromptCatchUp(1, 3, 0)).toBe(false);
+      expect(shouldPromptCatchUp(2, 3, 1)).toBe(true);
+      expect(shouldPromptCatchUp(3, 3, 2)).toBe(false);
+    });
   });
 });

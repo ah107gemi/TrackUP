@@ -551,24 +551,37 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
   const handleEpisodeClick = (ep: { id: string; episode_number: number; name: string; season_number?: number }) => {
     if (!ep || !title) return;
-    const activeSeason = title?.seasons?.[activeSeasonIndex];
-    const sNum = ep.season_number ?? activeSeason?.season_number ?? 1;
+    const targetSeasonNum = ep.season_number ?? title?.seasons?.[activeSeasonIndex]?.season_number ?? 1;
+    const targetSeason =
+      title?.seasons?.find((s) => s.season_number === targetSeasonNum) ||
+      title?.seasons?.[activeSeasonIndex];
+    const sNum = targetSeason?.season_number ?? targetSeasonNum;
     const isWatched = isEpisodeWatched(ep, sNum);
+
+    // If currently watched, toggling unmarks it directly
     if (isWatched) {
       handleToggleEpisode(ep, sNum);
       return;
     }
 
+    // When manually toggling to "watched", evaluate position within season
+    const totalEpisodesInSeason = targetSeason?.episode_count || targetSeason?.episodes?.length || 0;
+    const epNum = ep.episode_number;
+
+    // Condition: Between episode 2 and the penultimate episode of that season
+    const isBetweenTwoAndPenultimate =
+      epNum >= 2 && (totalEpisodesInSeason > 0 ? epNum < totalEpisodesInSeason : false);
+
     // Inspect active season to see if previous episodes are unmarked
-    const previousEpisodes = (activeSeason?.episodes || []).filter(
-      (e) => e && e.episode_number < ep.episode_number
+    const previousEpisodes = (targetSeason?.episodes || []).filter(
+      (e) => e && e.episode_number < epNum
     );
 
     const unmarkedPrevious = previousEpisodes
       .filter((e) => !isEpisodeWatched(e, sNum))
       .map((e) => e.id);
 
-    if (unmarkedPrevious.length > 0) {
+    if (isBetweenTwoAndPenultimate && unmarkedPrevious.length > 0) {
       setCatchUpPrompt({
         targetEp: { ...ep, season_number: sNum },
         previousEpIds: unmarkedPrevious,
@@ -581,7 +594,21 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
 
   const handleConfirmCatchUp = async () => {
     if (!catchUpPrompt || !title) return;
-    const allToMark = [...(catchUpPrompt.previousEpIds || []), catchUpPrompt.targetEp.id];
+    const targetSeasonNum = catchUpPrompt.targetEp.season_number ?? 1;
+    const targetSeason =
+      title.seasons?.find((s) => s.season_number === targetSeasonNum) ||
+      title.seasons?.[activeSeasonIndex];
+    const seasonEps = targetSeason?.episodes || [];
+
+    // Mark episodes 1 through the current episode as watched
+    const episodesToMark = seasonEps
+      .filter((e) => e.episode_number <= catchUpPrompt.targetEp.episode_number)
+      .map((e) => e.id);
+
+    const allToMark = episodesToMark.length > 0
+      ? episodesToMark
+      : [...(catchUpPrompt.previousEpIds || []), catchUpPrompt.targetEp.id];
+
     setCatchUpPrompt(null);
 
     const currentWatched = Array.isArray(watchedEpisodesList) ? watchedEpisodesList : [];
@@ -637,6 +664,140 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     const targetEp = catchUpPrompt.targetEp;
     setCatchUpPrompt(null);
     handleToggleEpisode(targetEp, targetEp.season_number);
+  };
+
+  const handleBatchMarkFullShowWatched = async () => {
+    if (!title) return;
+
+    // Collect all episode IDs across all seasons of the entire show
+    const allShowEpIds: string[] = [];
+    if (Array.isArray(title.seasons) && title.seasons.length > 0) {
+      for (const season of title.seasons) {
+        if (Array.isArray(season.episodes)) {
+          for (const ep of season.episodes) {
+            if (ep && ep.id) {
+              allShowEpIds.push(ep.id);
+            }
+          }
+        }
+      }
+    }
+
+    // Fallback if seasons are flat or not populated
+    if (allShowEpIds.length === 0) {
+      const totalCount = calculateTotalEpisodes(title);
+      if (totalCount > 0) {
+        for (let i = 1; i <= totalCount; i++) {
+          allShowEpIds.push(`ep_${i}`);
+        }
+      }
+    }
+
+    const currentWatched = Array.isArray(watchedEpisodesList) ? watchedEpisodesList : [];
+    const updatedEpisodes = [...new Set([...currentWatched, ...allShowEpIds])];
+    setLocalEpisodes(updatedEpisodes);
+
+    const totalCount = calculateTotalEpisodes(title);
+    const newWatchedCount = calculateWatchedEpisodesCount(updatedEpisodes, title);
+    const targetStatus = inferWatchedTrackingStatus({
+      currentStatus,
+      watchedCount: newWatchedCount,
+      totalEpisodes: totalCount,
+    });
+
+    setLocalStatus(targetStatus);
+    if (existingEntry && existingEntry.status !== targetStatus) {
+      upsertMutation.mutate({
+        userId: activeUserId,
+        titleId: title.id,
+        status: targetStatus,
+        titleData: title,
+      });
+    }
+
+    let libId = existingEntry?.id;
+    if (!libId) {
+      const created = await upsertMutation.mutateAsync({
+        userId: activeUserId,
+        titleId: title.id,
+        status: targetStatus,
+        titleData: title,
+      });
+      libId = created.id;
+    }
+
+    batchEpisodeMutation.mutate(
+      {
+        libraryId: libId,
+        userId: activeUserId,
+        episodeIds: allShowEpIds,
+        watched: true,
+      },
+      {
+        onError: (err: any) => {
+          setActionError(err?.message || 'Failed to mark full show as watched.');
+        },
+      }
+    );
+  };
+
+  const handleBatchUnmarkFullShow = async () => {
+    if (!title) return;
+
+    // Collect all episode IDs across all seasons of the entire show
+    const allShowEpIds: string[] = [];
+    if (Array.isArray(title.seasons) && title.seasons.length > 0) {
+      for (const season of title.seasons) {
+        if (Array.isArray(season.episodes)) {
+          for (const ep of season.episodes) {
+            if (ep && ep.id) {
+              allShowEpIds.push(ep.id);
+            }
+          }
+        }
+      }
+    }
+
+    const currentWatched = Array.isArray(watchedEpisodesList) ? watchedEpisodesList : [];
+    const allToUnmark = [...new Set([...currentWatched, ...allShowEpIds])];
+
+    setLocalEpisodes([]);
+    const targetStatus = 'planned';
+    setLocalStatus(targetStatus);
+
+    if (existingEntry && existingEntry.status !== targetStatus) {
+      upsertMutation.mutate({
+        userId: activeUserId,
+        titleId: title.id,
+        status: targetStatus,
+        titleData: title,
+      });
+    }
+
+    let libId = existingEntry?.id;
+    if (!libId) {
+      const created = await upsertMutation.mutateAsync({
+        userId: activeUserId,
+        titleId: title.id,
+        status: targetStatus,
+        titleData: title,
+      });
+      libId = created.id;
+    }
+
+    batchEpisodeMutation.mutate(
+      {
+        libraryId: libId,
+        userId: activeUserId,
+        episodeIds: allToUnmark,
+        watched: false,
+      },
+      {
+        onError: (err: any) => {
+          setActionError(err?.message || 'Failed to unmark full show.');
+        },
+      }
+    );
   };
 
   const handleBatchMarkSeasonWatched = async () => {
@@ -1160,22 +1321,22 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                 </span>
               ) : null}
               <button
-                onClick={handleBatchMarkSeasonWatched}
-                data-testid="mark-season-watched-btn"
-                aria-label="Mark Season Watched"
-                className="px-3 py-1 rounded-lg bg-surface-elevated hover:bg-accent hover:text-background border border-surface-elevated text-xs font-semibold text-text-secondary transition-colors flex items-center gap-1.5"
+                onClick={handleBatchMarkFullShowWatched}
+                data-testid="mark-full-show-btn"
+                aria-label="Mark Full Show Watched"
+                className="px-3 py-1 rounded-lg bg-surface-elevated hover:bg-accent hover:text-background border border-surface-elevated text-xs font-semibold text-text-secondary transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <CheckCheck className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Mark Season Watched</span>
+                <span>Mark Full Show</span>
               </button>
               <button
-                onClick={handleBatchUnmarkSeason}
-                data-testid="unmark-season-btn"
-                aria-label="Unmark Season"
-                className="px-3 py-1 rounded-lg bg-surface-elevated hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/40 border border-surface-elevated text-xs font-semibold text-text-secondary transition-colors flex items-center gap-1.5"
+                onClick={handleBatchUnmarkFullShow}
+                data-testid="unmark-full-show-btn"
+                aria-label="Unmark Full Show"
+                className="px-3 py-1 rounded-lg bg-surface-elevated hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/40 border border-surface-elevated text-xs font-semibold text-text-secondary transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Unmark Season</span>
+                <span>Unmark Full Show</span>
               </button>
             </div>
           </div>
@@ -1290,7 +1451,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleToggleEpisode({ ...ep, season_number: currentSeasonNum }, currentSeasonNum);
+                            handleEpisodeClick({ ...ep, season_number: currentSeasonNum });
                           }}
                           aria-label={isWatched ? `Mark Episode ${ep.episode_number} Unwatched` : `Mark Episode ${ep.episode_number} Watched`}
                           className={`w-6 h-6 rounded-md border flex items-center justify-center transition-colors shrink-0 ${
@@ -1703,7 +1864,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         <div
           data-testid="bulk-episodes-modal"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-150"
-          onClick={() => setCatchUpPrompt(null)}
+          onClick={handleCancelCatchUp}
         >
           <div
             className="w-full max-w-md bg-surface border border-surface-elevated rounded-2xl shadow-2xl p-6 space-y-4"
@@ -1722,8 +1883,9 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
             </div>
 
             <p className="text-sm text-text-secondary leading-relaxed">
-              Would you like to mark all previous episodes as watched?
+              Would you like to mark all previous episodes in this season as watched?
             </p>
+            <span className="sr-only">Would you like to mark all previous episodes as watched?</span>
 
             <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-surface-elevated">
               <button
