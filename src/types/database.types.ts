@@ -20,7 +20,8 @@ export type TrackingStatus =
   | 'completed'
   | 'paused'
   | 'dropped'
-  | 'reconsuming';
+  | 'reconsuming'
+  | 'watching';
 
 export type RelationshipType =
   | 'adaptation'

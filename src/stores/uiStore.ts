@@ -28,6 +28,8 @@ interface UIState {
   setMobileDrawerOpen: (open: boolean) => void;
   omnisearchOpen: boolean;
   setOmnisearchOpen: (open: boolean) => void;
+  quickAddOpen: boolean;
+  setQuickAddOpen: (open: boolean) => void;
   authModalOpen: boolean;
   setAuthModalOpen: (open: boolean) => void;
   profileModalOpen: boolean;
@@ -57,6 +59,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   setMobileDrawerOpen: (open) => set({ mobileDrawerOpen: open }),
   omnisearchOpen: false,
   setOmnisearchOpen: (open) => set({ omnisearchOpen: open }),
+  quickAddOpen: false,
+  setQuickAddOpen: (open) => set({ quickAddOpen: open }),
   authModalOpen: false,
   setAuthModalOpen: (open) => set({ authModalOpen: open }),
   profileModalOpen: false,

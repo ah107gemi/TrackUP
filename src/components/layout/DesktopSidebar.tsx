@@ -14,6 +14,7 @@ import {
   User as UserIcon,
   Settings,
   LogIn,
+  Plus,
 } from 'lucide-react';
 import { useUIStore, NavigationTab } from '../../stores/uiStore';
 import { useAuth } from '../../features/auth/AuthContext';
@@ -45,6 +46,7 @@ export const DesktopSidebar: React.FC = () => {
     setActiveTab,
     setAuthModalOpen,
     setProfileModalOpen,
+    setQuickAddOpen,
   } = useUIStore();
   const { user, profile } = useAuth();
 
@@ -89,6 +91,19 @@ export const DesktopSidebar: React.FC = () => {
 
       {/* Navigation Items */}
       <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
+        {/* Quick Add Button */}
+        <button
+          onClick={() => setQuickAddOpen(true)}
+          data-testid="sidebar-quick-add-btn"
+          title={sidebarCollapsed ? 'Quick Add' : undefined}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 mb-2 rounded-xl text-sm font-bold bg-accent/15 hover:bg-accent text-accent hover:text-background border border-accent/30 transition-all shadow-sm cursor-pointer ${
+            sidebarCollapsed ? 'justify-center px-0' : ''
+          }`}
+        >
+          <Plus className="w-5 h-5 shrink-0" />
+          {!sidebarCollapsed && <span>Quick Add</span>}
+        </button>
+
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;

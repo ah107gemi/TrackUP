@@ -3,6 +3,7 @@ import { DesktopSidebar } from './DesktopSidebar';
 import { TopUtilityBar } from './TopUtilityBar';
 import { BottomNavBar } from './BottomNavBar';
 import { OmnisearchModal } from './OmnisearchModal';
+import { QuickAddModal } from './QuickAddModal';
 import { AuthModal } from '../../features/auth/AuthModal';
 import { ProfileModal } from '../../features/auth/ProfileModal';
 import { AuthGuard } from '../../features/auth/AuthGuard';
@@ -374,6 +375,7 @@ export const AppShell: React.FC = () => {
       </div>
 
       {/* Global Modals */}
+      <QuickAddModal onSelectTitle={handleSelectTitle} />
       <OmnisearchModal onSelectTitle={handleSelectTitle} />
       <AuthModal />
       <ProfileModal onSelectTitle={handleSelectTitle} />

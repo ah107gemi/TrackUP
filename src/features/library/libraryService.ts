@@ -448,7 +448,8 @@ export async function upsertLibraryItem(params: {
   const now = new Date().toISOString();
 
   if (existingIndex >= 0 && existing) {
-    const nextStatus = params.status !== undefined ? params.status : existing.status;
+    const rawStatus = params.status !== undefined ? params.status : existing.status;
+    const nextStatus: TrackingStatus = (rawStatus === ('watching' as any) ? 'active' : rawStatus) as TrackingStatus;
     const isPlanned = nextStatus === 'planned';
     const isCompleted = nextStatus === 'completed';
     const isEpisodic = existing.title.media_type === 'tv' || existing.title.media_type === 'anime_series';
@@ -560,8 +561,10 @@ export async function upsertLibraryItem(params: {
     return updated;
   }
 
-  const isNewPlanned = (params.status || 'planned') === 'planned';
-  const isNewCompleted = !isNewPlanned && (params.status || 'planned') === 'completed';
+  const rawStatus = params.status || 'planned';
+  const effectiveStatus: TrackingStatus = (rawStatus === ('watching' as any) ? 'active' : rawStatus) as TrackingStatus;
+  const isNewPlanned = effectiveStatus === 'planned';
+  const isNewCompleted = !isNewPlanned && effectiveStatus === 'completed';
   const isNewEpisodic = resolvedTitle.media_type === 'tv' || resolvedTitle.media_type === 'anime_series';
   const initialEpisodes = (!isNewPlanned && isNewCompleted && isNewEpisodic && resolvedTitle.total_episodes)
     ? Array.from({ length: resolvedTitle.total_episodes }, (_, i) => `ep_${i + 1}`)
@@ -572,12 +575,12 @@ export async function upsertLibraryItem(params: {
     id: itemUuid,
     user_id: effectiveUserId,
     title_id: params.titleId,
-    status: params.status || 'planned',
+    status: effectiveStatus,
     rating: params.rating || null,
     is_private: params.isPrivate || false,
     personal_notes: params.notes || null,
     private_notes: params.privateNotes || null,
-    started_at: params.status === 'active' ? now : null,
+    started_at: effectiveStatus === 'active' ? now : null,
     completed_at: isNewCompleted ? now : null,
     last_progressed_at: now,
   };

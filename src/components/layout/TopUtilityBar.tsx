@@ -1,11 +1,12 @@
 import React from 'react';
-import { Search, User as UserIcon, LogIn, LogOut } from 'lucide-react';
+import { Search, User as UserIcon, LogIn, LogOut, Plus } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuth } from '../../features/auth/AuthContext';
 
 export const TopUtilityBar: React.FC = () => {
   const {
     setOmnisearchOpen,
+    setQuickAddOpen,
     setAuthModalOpen,
     setProfileModalOpen,
     scrolledHeaderTitle,
@@ -61,8 +62,20 @@ export const TopUtilityBar: React.FC = () => {
           </div>
         </div>
 
-      {/* Right Controls: Omnisearch trigger + Auth action */}
-      <div className="flex items-center gap-3">
+      {/* Right Controls: Quick Add + Omnisearch trigger + Auth action */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Quick Add trigger */}
+        <button
+          onClick={() => setQuickAddOpen(true)}
+          data-testid="quick-add-trigger"
+          aria-label="Quick Add"
+          title="Quick Add media (track without opening detail)"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-background font-semibold text-xs transition-all shadow-md group cursor-pointer shrink-0"
+        >
+          <Plus className="w-4 h-4 text-background group-hover:rotate-90 transition-transform" />
+          <span className="hidden sm:inline">Quick Add</span>
+        </button>
+
         {/* Omnisearch trigger */}
         <button
           onClick={() => setOmnisearchOpen(true)}
