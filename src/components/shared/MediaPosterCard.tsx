@@ -179,11 +179,11 @@ export const MediaPosterCard: React.FC<MediaPosterCardProps> = ({ item, onClick 
               {formatRuntime(item.runtime_minutes) || 'Feature'}
             </span>
           )}
-          {(mediaType === 'tv' || mediaType === 'anime_series') && totalEps && totalEps > 0 ? (
+          {(mediaType === 'tv' || mediaType === 'anime_series') && (
             <span className="font-mono text-[11px] text-accent">
-              {totalEps} eps
+              {totalEps && totalEps > 0 ? `${totalEps} eps` : 'Ongoing'}
             </span>
-          ) : null}
+          )}
           {(mediaType === 'manga' || mediaType === 'manhwa') && (
             <span className="font-mono text-[11px] text-accent">
               {totalChs && totalChs > 0

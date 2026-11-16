@@ -32,6 +32,7 @@ import {
 import type { NormalizedCatalogItem } from '../../lib/validators';
 import { resolvePosterUrl, resolveBackdropUrl } from '../../lib/imageUtils';
 import { canHealTitle, healTitleMetadata } from './metadataHealer';
+import { isMediaOngoing } from './normalizers';
 import { MediaPosterCard } from '../../components/shared/MediaPosterCard';
 import { TmdbAttribution } from '../../components/shared/TmdbAttribution';
 import { useAuth } from '../auth/AuthContext';
@@ -262,6 +263,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
   }
 
   const isReading = title?.media_type === 'manga' || title?.media_type === 'manhwa';
+  const isOngoing = isReading && isMediaOngoing(title);
   const isEpisodic = title?.media_type === 'tv' || title?.media_type === 'anime_series';
   const isSingleWatch = title?.media_type === 'movie' || title?.media_type === 'anime_film';
 
@@ -954,7 +956,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     let targetStatus: TrackingStatus = currentStatus;
     if (newCh === 0) {
       targetStatus = 'planned';
-    } else if (title.total_chapters && newCh >= title.total_chapters) {
+    } else if (!isOngoing && title.total_chapters && newCh >= title.total_chapters) {
       targetStatus = 'completed';
     } else if (currentStatus === 'planned' || currentStatus === 'completed') {
       targetStatus = 'active';
@@ -999,7 +1001,7 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
     let targetStatus: TrackingStatus = currentStatus;
     if (val === 0) {
       targetStatus = 'planned';
-    } else if (title.total_chapters && val >= title.total_chapters) {
+    } else if (!isOngoing && title.total_chapters && val >= title.total_chapters) {
       targetStatus = 'completed';
     } else if (currentStatus === 'planned' || currentStatus === 'completed') {
       targetStatus = 'active';
@@ -1315,11 +1317,9 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
               </h2>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
-              {totalEpCount ? (
-                <span className="text-xs font-mono text-text-muted">
-                  {displayWatchedCount} / {totalEpCount} Watched
-                </span>
-              ) : null}
+              <span className="text-xs font-mono text-text-muted">
+                {displayWatchedCount} / {totalEpCount && totalEpCount > 0 ? totalEpCount : 'Ongoing'} Watched
+              </span>
               <button
                 onClick={handleBatchMarkFullShowWatched}
                 data-testid="mark-full-show-btn"
@@ -1537,11 +1537,11 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                 Reading Progress (Chapters)
               </h2>
             </div>
-            {title.total_chapters && (
-              <span className="text-xs font-mono text-text-muted">
-                {title.total_chapters} Total Chapters
-              </span>
-            )}
+            <span className="text-xs font-mono text-text-muted">
+              {isOngoing || !title.total_chapters || title.total_chapters <= 0
+                ? 'Ongoing'
+                : `${title.total_chapters} Total Chapters`}
+            </span>
           </div>
 
           <div className="grid grid-cols-1 gap-4">
@@ -1552,11 +1552,9 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
                   <p className="text-xs text-text-secondary font-medium">Chapter Progress</p>
                   <p className="text-2xl font-bold font-mono text-accent mt-1">
                     Ch. {currentChapter}{' '}
-                    {title.total_chapters && (
-                      <span className="text-sm font-normal text-text-muted">
-                        / {title.total_chapters}
-                      </span>
-                    )}
+                    <span className="text-sm font-normal text-text-muted">
+                      / {isOngoing || !title.total_chapters || title.total_chapters <= 0 ? 'Ongoing' : title.total_chapters}
+                    </span>
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5">

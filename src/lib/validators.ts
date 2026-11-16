@@ -87,6 +87,7 @@ export const NormalizedCatalogItemSchema = z.object({
   chapters: z.number().nullable().optional(),
   total_volumes: z.number().int().nullable().optional(),
   volumes: z.number().int().nullable().optional(),
+  synonyms: z.array(z.string()).optional(),
   runtime_minutes: z.number().int().nullable().optional(),
   tmdb_id: z.number().int().nullable().optional(),
   imdb_id: z.string().nullable().optional(),

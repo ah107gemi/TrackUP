@@ -327,57 +327,76 @@ export async function searchAniList(
         return true;
       });
 
-      const searchIds = new Set(filtered.map((m) => m.id));
-      const sequelIds = new Set<number>();
+      const cleanQ = query.trim().toLowerCase();
+      const isSpecificSequelQuery = /(season|\bpart\b|\bcour\b|\b2nd\b|\b3rd\b|\b4th\b|\bii\b|\biii\b|\biv\b|\b\d+\b)/i.test(cleanQ);
 
-      for (const m of filtered) {
-        for (const edge of (m as any).relations?.edges || []) {
-          if (!edge.node?.id || !searchIds.has(edge.node.id)) continue;
+      if (!isSpecificSequelQuery) {
+        const searchIds = new Set(filtered.map((m) => m.id));
+        const sequelIds = new Set<number>();
 
-          if (edge.relationType === 'SEQUEL') {
-            const target = filtered.find((x) => x.id === edge.node.id);
-            if (target) {
-              const targetTitle = (target.title?.english || target.title?.romaji || '').toLowerCase();
-              const isExplicitSequel = /season|part\s*\d|final|2nd|3rd|4th|cour/i.test(targetTitle);
-              if (isExplicitSequel || (m.format === 'TV' && target.format === 'TV')) {
-                sequelIds.add(target.id);
+        for (const m of filtered) {
+          for (const edge of (m as any).relations?.edges || []) {
+            if (!edge.node?.id || !searchIds.has(edge.node.id)) continue;
+
+            if (edge.relationType === 'SEQUEL') {
+              const target = filtered.find((x) => x.id === edge.node.id);
+              if (target) {
+                const targetTitle = (target.title?.english || target.title?.romaji || '').toLowerCase();
+                const isExplicitSequel = /season|part\s*\d|final|2nd|3rd|4th|cour/i.test(targetTitle);
+                if (isExplicitSequel || (m.format === 'TV' && target.format === 'TV')) {
+                  const targetMatchesQuery = targetTitle.includes(cleanQ);
+                  const parentMatchesQuery = ((m.title?.english || m.title?.romaji || '').toLowerCase()).includes(cleanQ);
+                  if (parentMatchesQuery && !targetMatchesQuery) {
+                    sequelIds.add(target.id);
+                  }
+                }
               }
             }
           }
         }
+        filtered = filtered.filter((m) => !sequelIds.has(m.id));
       }
-      filtered = filtered.filter((m) => !sequelIds.has(m.id));
     }
 
-    // Sort by exact title match boost across romaji, english, native, and synonyms
+    // Sort by fuzzy match & alias relevance across romaji, english, native, and synonyms
     const cleanQ = query.trim().toLowerCase();
+    const normalizeFuzzy = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cleanQFuzzy = normalizeFuzzy(cleanQ);
+    const queryTokens = cleanQ.split(/\s+/).filter(Boolean);
+
     if (cleanQ) {
       filtered.sort((a, b) => {
-        const aTitles = [
-          a.title?.english,
-          a.title?.romaji,
-          a.title?.native,
-          ...(Array.isArray(a.synonyms) ? a.synonyms : []),
-        ]
-          .filter((t): t is string => typeof t === 'string' && Boolean(t))
-          .map((t) => t.toLowerCase());
+        const getTitleStrings = (item: any): string[] => {
+          return [
+            item.title?.english,
+            item.title?.romaji,
+            item.title?.native,
+            ...(Array.isArray(item.synonyms) ? item.synonyms : []),
+          ]
+            .filter((t): t is string => typeof t === 'string' && Boolean(t))
+            .map((t) => t.toLowerCase());
+        };
 
-        const bTitles = [
-          b.title?.english,
-          b.title?.romaji,
-          b.title?.native,
-          ...(Array.isArray(b.synonyms) ? b.synonyms : []),
-        ]
-          .filter((t): t is string => typeof t === 'string' && Boolean(t))
-          .map((t) => t.toLowerCase());
+        const scoreItem = (titles: string[]): number => {
+          let best = 0;
+          for (const t of titles) {
+            const fT = normalizeFuzzy(t);
+            if (t === cleanQ || fT === cleanQFuzzy) {
+              best = Math.max(best, 1000);
+            } else if (t.startsWith(cleanQ) || fT.startsWith(cleanQFuzzy)) {
+              best = Math.max(best, 500);
+            } else if (t.includes(cleanQ) || fT.includes(cleanQFuzzy)) {
+              best = Math.max(best, 300);
+            } else if (queryTokens.length > 1 && queryTokens.every((tok) => t.includes(tok) || fT.includes(tok))) {
+              best = Math.max(best, 200);
+            }
+          }
+          return best;
+        };
 
-        const aExact = aTitles.some((t) => t === cleanQ) ? 1 : 0;
-        const bExact = bTitles.some((t) => t === cleanQ) ? 1 : 0;
-        if (aExact !== bExact) return bExact - aExact;
-
-        const aStarts = aTitles.some((t) => t.startsWith(cleanQ)) ? 1 : 0;
-        const bStarts = bTitles.some((t) => t.startsWith(cleanQ)) ? 1 : 0;
-        if (aStarts !== bStarts) return bStarts - aStarts;
+        const scoreA = scoreItem(getTitleStrings(a));
+        const scoreB = scoreItem(getTitleStrings(b));
+        if (scoreA !== scoreB) return scoreB - scoreA;
 
         return 0;
       });

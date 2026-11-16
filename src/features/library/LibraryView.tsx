@@ -126,7 +126,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     if (item.status === 'completed') {
       return `${(total && total > 0 ? total : null) || (watchedLen > 0 ? watchedLen : null) || 12} eps`;
     }
-    return `${watchedLen}${total && total > 0 ? ` / ${total}` : ''} eps`;
+    return `${watchedLen} / ${total && total > 0 ? total : 'Ongoing'} eps`;
   };
 
   useEffect(() => {
@@ -476,11 +476,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           >
                             {item.media_type}
                           </span>
-                          {item.total_chapters && (
-                            <span className="text-[10px] text-text-muted font-mono">
-                              {item.total_chapters} chs
-                            </span>
-                          )}
+                          <span className="text-[10px] text-text-muted font-mono">
+                            {item.total_chapters && item.total_chapters > 0
+                              ? `${item.total_chapters} chs`
+                              : 'Ongoing'}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -691,11 +691,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       ) : (
                         <span className="font-mono text-accent">
                           Ch. {item.last_chapter_read || 0}
-                          {item.title?.total_chapters
-                            ? ` / ${item.title.total_chapters}`
-                            : item.title?.total_volumes
-                            ? ` / ${item.title.total_volumes} vols`
-                            : ''}
+                          {` / ${item.title?.total_chapters && item.title.total_chapters > 0 ? item.title.total_chapters : 'Ongoing'}`}
                         </span>
                       )}
                       {item.rating && (
@@ -746,12 +742,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           ? getEpProgressDisplay(item)
                           : item.title?.media_type === 'movie' || item.title?.media_type === 'anime_film'
                           ? (formatRuntime(item.title?.runtime_minutes) || 'Feature')
-                          : `Ch. ${item.last_chapter_read || 0}${
-                              item.title?.total_chapters
-                                ? ` / ${item.title.total_chapters}`
-                                : item.title?.total_volumes
-                                ? ` / ${item.title.total_volumes} vols`
-                                : ''
+                          : `Ch. ${item.last_chapter_read || 0} / ${
+                              item.title?.total_chapters && item.title.total_chapters > 0
+                                ? item.title.total_chapters
+                                : 'Ongoing'
                             }`}
                       </span>
                       {item.title?.media_type !== 'movie' && item.title?.media_type !== 'anime_film' && item.status !== 'completed' && (
@@ -836,11 +830,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         ) : (
                           <span className="text-accent">
                             Ch. {item.last_chapter_read || 0}
-                            {item.title?.total_chapters
-                              ? ` / ${item.title.total_chapters}`
-                              : item.title?.total_volumes
-                              ? ` / ${item.title.total_volumes} vols`
-                              : ''}
+                            {` / ${item.title?.total_chapters && item.title.total_chapters > 0 ? item.title.total_chapters : 'Ongoing'}`}
                           </span>
                         )}
                       </td>

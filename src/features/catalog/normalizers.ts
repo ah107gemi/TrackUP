@@ -67,6 +67,7 @@ export interface TmdbTvPayload {
   episodes?: number;
   total_episodes?: number;
   seasons?: TmdbSeasonPayload[];
+  alternative_titles?: { results?: { title: string }[] } | { titles?: { title: string }[] };
 }
 
 export interface AniListMediaPayload {
@@ -131,6 +132,24 @@ export function normalizeTmdbMovie(payload: TmdbMoviePayload): NormalizedCatalog
 
   const genres = payload.genres?.map((g) => g.name) || [];
 
+  const altMovieTitles =
+    Array.isArray((payload as any).alternative_titles?.results)
+      ? (payload as any).alternative_titles.results.map((r: any) => r.title)
+      : Array.isArray((payload as any).alternative_titles?.titles)
+      ? (payload as any).alternative_titles.titles.map((t: any) => t.title)
+      : [];
+
+  const movieSynonyms = Array.from(
+    new Set(
+      [
+        payload.title,
+        payload.original_title,
+        ...altMovieTitles,
+        ...(Array.isArray((payload as any).synonyms) ? (payload as any).synonyms : []),
+      ].filter((s): s is string => typeof s === 'string' && Boolean(s.trim()))
+    )
+  );
+
   return {
     id: `tmdb_movie_${payload.id}`,
     media_type: mediaType,
@@ -147,6 +166,7 @@ export function normalizeTmdbMovie(payload: TmdbMoviePayload): NormalizedCatalog
     origin_country: payload.origin_country?.[0] || (isJapaneseLang ? 'JP' : 'US'),
     status: 'released',
     runtime_minutes: payload.runtime || null,
+    synonyms: movieSynonyms.length > 0 ? movieSynonyms : undefined,
     tmdb_id: payload.id,
     imdb_id: null,
     anilist_id: null,
@@ -190,9 +210,17 @@ export function normalizeTmdbTv(payload: TmdbTvPayload): NormalizedCatalogItem {
 
   const genres = payload.genres?.map((g) => g.name) || [];
 
-  // Map seasons array (filter out season 0 / specials)
+  // Map seasons array (filter out season 0 / specials unless strictly necessary)
   const rawSeasons = Array.isArray(payload.seasons) ? payload.seasons : [];
-  const validSeasons = rawSeasons.filter((s) => typeof s.season_number === 'number' && s.season_number > 0);
+  let validSeasons = rawSeasons.filter((s) => typeof s.season_number === 'number' && s.season_number > 0);
+
+  // If no season > 0 exists but season 0 has valid episodes, fallback to season 0 (e.g. miniseries/standalone pilot)
+  if (validSeasons.length === 0 && rawSeasons.length > 0) {
+    const s0 = rawSeasons.filter((s) => typeof s.episode_count === 'number' && s.episode_count > 0);
+    if (s0.length > 0) {
+      validSeasons = s0;
+    }
+  }
 
   const mappedSeasons = validSeasons.map((s) => {
     const epCount =
@@ -231,23 +259,64 @@ export function normalizeTmdbTv(payload: TmdbTvPayload): NormalizedCatalogItem {
 
   const sumSeasonEpisodes = mappedSeasons.reduce((acc, s) => acc + s.episode_count, 0);
 
-  const episodesCount =
+  const rawEpCount =
     typeof payload.number_of_episodes === 'number' && payload.number_of_episodes > 0
       ? payload.number_of_episodes
-      : sumSeasonEpisodes > 0
-      ? sumSeasonEpisodes
       : typeof (payload as any).episodes === 'number' && (payload as any).episodes > 0
       ? (payload as any).episodes
       : typeof (payload as any).total_episodes === 'number' && (payload as any).total_episodes > 0
       ? (payload as any).total_episodes
       : null;
 
+  // Aggregate across all valid seasons if API returned fragmented or null season data
+  const episodesCount =
+    rawEpCount && sumSeasonEpisodes > 0
+      ? Math.max(rawEpCount, sumSeasonEpisodes)
+      : rawEpCount || (sumSeasonEpisodes > 0 ? sumSeasonEpisodes : null);
+
+  // If seasons array is missing/empty but episode count is known (e.g. miniseries like Dahmer), synthesize Season 1
+  if (mappedSeasons.length === 0 && episodesCount && episodesCount > 0) {
+    mappedSeasons.push({
+      id: `tmdb_season_${payload.id}_1`,
+      season_number: 1,
+      name: payload.name ? `${payload.name} (Miniseries)` : 'Miniseries',
+      overview: payload.overview || null,
+      episode_count: episodesCount,
+      episodes: Array.from({ length: episodesCount }, (_, idx) => ({
+        id: `tmdb_ep_${payload.id}_1_${idx + 1}`,
+        episode_number: idx + 1,
+        name: `Episode ${idx + 1}`,
+        overview: null,
+        runtime_minutes: 50,
+        air_date: payload.first_air_date || null,
+      })),
+    });
+  }
+
   const totalSeasons =
     typeof payload.number_of_seasons === 'number' && payload.number_of_seasons > 0
-      ? payload.number_of_seasons
+      ? Math.max(payload.number_of_seasons, mappedSeasons.length)
       : mappedSeasons.length > 0
       ? mappedSeasons.length
       : null;
+
+  const altTvTitles =
+    Array.isArray((payload as any).alternative_titles?.results)
+      ? (payload as any).alternative_titles.results.map((r: any) => r.title)
+      : Array.isArray((payload as any).alternative_titles?.titles)
+      ? (payload as any).alternative_titles.titles.map((t: any) => t.title)
+      : [];
+
+  const tvSynonyms = Array.from(
+    new Set(
+      [
+        payload.name,
+        payload.original_name,
+        ...altTvTitles,
+        ...(Array.isArray((payload as any).synonyms) ? (payload as any).synonyms : []),
+      ].filter((s): s is string => typeof s === 'string' && Boolean(s.trim()))
+    )
+  );
 
   return {
     id: `tmdb_tv_${payload.id}`,
@@ -268,6 +337,7 @@ export function normalizeTmdbTv(payload: TmdbTvPayload): NormalizedCatalogItem {
     episodes: episodesCount,
     total_seasons: totalSeasons,
     seasons: mappedSeasons.length > 0 ? mappedSeasons : undefined,
+    synonyms: tvSynonyms.length > 0 ? tvSynonyms : undefined,
     tmdb_id: payload.id,
     imdb_id: null,
     anilist_id: null,
@@ -351,6 +421,17 @@ export function normalizeAniListMedia(
   }
 
   const rawTitle = payload.title || {};
+  const synonyms = Array.from(
+    new Set(
+      [
+        rawTitle.english,
+        rawTitle.romaji,
+        rawTitle.native,
+        ...(Array.isArray(payload.synonyms) ? payload.synonyms : []),
+      ].filter((s): s is string => typeof s === 'string' && Boolean(s.trim()))
+    )
+  );
+
   const title =
     (typeof rawTitle.english === 'string' && rawTitle.english.trim()) ||
     (typeof rawTitle.romaji === 'string' && rawTitle.romaji.trim()) ||
@@ -471,6 +552,7 @@ export function normalizeAniListMedia(
     chapters: chaptersCount,
     total_volumes: volumesCount,
     volumes: volumesCount,
+    synonyms: synonyms.length > 0 ? synonyms : undefined,
     anilist_id: numericId,
     mal_id: payload.idMal || null,
     tmdb_id: null,
@@ -497,3 +579,23 @@ export function normalizeTMDBMedia(payload: TmdbMoviePayload | TmdbTvPayload | a
 }
 
 export const normalizeTmdbMedia = normalizeTMDBMedia;
+
+/**
+ * Determines if a media title (especially manga or manhwa) is ongoing.
+ * Returns true if status is releasing/ongoing/hiatus/paused, or if not completed/finished/ended,
+ * or if total_chapters is missing, null, or <= 0.
+ */
+export function isMediaOngoing(
+  item: { status?: string | null; total_chapters?: number | null } | null | undefined
+): boolean {
+  if (!item) return false;
+  if (item.total_chapters == null || item.total_chapters <= 0) return true;
+  const s = (item.status || '').toLowerCase().trim();
+  if (s === 'releasing' || s === 'ongoing' || s === 'hiatus' || s === 'paused') {
+    return true;
+  }
+  if (s === 'completed' || s === 'finished' || s === 'ended' || s === 'cancelled') {
+    return false;
+  }
+  return true;
+}

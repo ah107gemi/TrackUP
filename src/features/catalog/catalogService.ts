@@ -463,6 +463,50 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     ],
   },
 
+  // 2f. TV SHOW / MINISERIES (Dahmer)
+  {
+    id: 'tmdb_tv_113988',
+    media_type: 'tv',
+    title: 'Dahmer – Monster: The Jeffrey Dahmer Story',
+    original_title: 'Dahmer – Monster: The Jeffrey Dahmer Story',
+    release_year: 2022,
+    release_date: '2022-09-21',
+    synopsis:
+      'Across more than a decade, 17 teen boys and young men were murdered by convicted killer Jeffrey Dahmer. How did he evade arrest for so long?',
+    poster_url: 'https://image.tmdb.org/t/p/w500/f2PVrphK0u81ES256lw3oAZuF3x.jpg',
+    backdrop_url: 'https://image.tmdb.org/t/p/w1280/1i1N0C9qEs51ZgnfZf92v2Tz6e.jpg',
+    genres: ['Drama', 'Crime'],
+    origin_country: 'US',
+    status: 'ended',
+    total_seasons: 1,
+    total_episodes: 10,
+    episodes: 10,
+    tmdb_id: 113988,
+    synonyms: ['Dahmer', 'Monster: The Jeffrey Dahmer Story', 'Jeffrey Dahmer'],
+    cast: [
+      { id: 'c_dahmer_1', name: 'Evan Peters', character: 'Jeffrey Dahmer', profile_url: null },
+      { id: 'c_dahmer_2', name: 'Richard Jenkins', character: 'Lionel Dahmer', profile_url: null },
+      { id: 'c_dahmer_3', name: 'Niecy Nash', character: 'Glenda Cleveland', profile_url: null },
+    ],
+    seasons: [
+      {
+        id: 'dahmer_s1',
+        season_number: 1,
+        name: 'Miniseries',
+        overview: 'The complete story of Jeffrey Dahmer.',
+        episode_count: 10,
+        episodes: Array.from({ length: 10 }, (_, i) => ({
+          id: `dahmer_e1_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'Bad Meat' : `Episode ${i + 1}`,
+          overview: null,
+          runtime_minutes: 50,
+          air_date: '2022-09-21',
+        })),
+      },
+    ],
+  },
+
   // 3. ANIME SERIES
   {
     id: 'anilist_anime_154587',
@@ -613,6 +657,146 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     ],
   },
 
+  // 3c. ANIME SERIES (Dr. STONE)
+  {
+    id: 'anime_dr_stone_105333',
+    media_type: 'anime_series',
+    title: 'Dr. STONE',
+    original_title: 'Dr.STONE',
+    release_year: 2019,
+    release_date: '2019-07-05',
+    synopsis:
+      'One fateful day, all of humanity was petrified by a blinding flash of light. After several millennia, high schooler Taiju awakens and finds himself lost in a world of statues. However, he is not alone; his science-loving friend Senku has been working for a few months and has a grand plan in mind—to kickstart civilization with science!',
+    poster_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx105333-hGpn4iS1m6o8.jpg',
+    backdrop_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/105333-PswK9kYn6wH3.jpg',
+    genres: ['Animation', 'Action', 'Adventure', 'Comedy', 'Sci-Fi'],
+    origin_country: 'JP',
+    status: 'completed',
+    total_seasons: 3,
+    total_episodes: 58,
+    episodes: 58,
+    anilist_id: 105333,
+    mal_id: 38691,
+    tmdb_id: 86031,
+    synonyms: ['Dr. STONE', 'Dr STONE', 'Dr.STONE', 'Doctor Stone', 'Stone Wars', 'New World'],
+    cast: [
+      { id: 'c_dr_1', name: 'Yuusuke Kobayashi', character: 'Senkuu Ishigami', profile_url: null },
+      { id: 'c_dr_2', name: 'Makoto Furukawa', character: 'Taiju Ooki', profile_url: null },
+    ],
+    seasons: [
+      {
+        id: 'drstone_s1',
+        season_number: 1,
+        name: 'Season 1',
+        overview: 'Senku begins rebuilding civilization from scratch.',
+        episode_count: 24,
+        episodes: Array.from({ length: 24 }, (_, i) => ({
+          id: `drstone_e1_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'Stone World' : `Episode ${i + 1}`,
+          overview: null,
+          runtime_minutes: 24,
+          air_date: '2019-07-05',
+        })),
+      },
+      {
+        id: 'drstone_s2',
+        season_number: 2,
+        name: 'Season 2: Stone Wars',
+        overview: 'The Kingdom of Science clashes with the Tsukasa Empire.',
+        episode_count: 11,
+        episodes: Array.from({ length: 11 }, (_, i) => ({
+          id: `drstone_e2_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'Stone Wars Beginning' : `Episode ${i + 1}`,
+          overview: null,
+          runtime_minutes: 24,
+          air_date: '2021-01-14',
+        })),
+      },
+      {
+        id: 'drstone_s3',
+        season_number: 3,
+        name: 'Season 3: New World',
+        overview: 'Senku and friends take to the high seas in search of the petrification secret.',
+        episode_count: 23,
+        episodes: Array.from({ length: 23 }, (_, i) => ({
+          id: `drstone_e3_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'New World Map' : `Episode ${i + 1}`,
+          overview: null,
+          runtime_minutes: 24,
+          air_date: '2023-04-06',
+        })),
+      },
+    ],
+  },
+
+  // 3d. ANIME SERIES (Mushoku Tensei)
+  {
+    id: 'anilist_anime_108465',
+    media_type: 'anime_series',
+    title: 'Mushoku Tensei: Jobless Reincarnation',
+    original_title: '無職転生 ～異世界行ったら本気だす～',
+    release_year: 2021,
+    release_date: '2021-01-11',
+    synopsis:
+      'When a 34-year-old underachiever gets run over by a truck, his story doesn\'t end there. Reincarnated in a new world as an infant named Rudeus Greyrat, he resolves to seize every opportunity and live his new life to the fullest with magic and grit.',
+    poster_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx108465-4fP2U1NlYI08.jpg',
+    backdrop_url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/108465-bYcMvL6Jk9e0.jpg',
+    genres: ['Animation', 'Action', 'Adventure', 'Drama', 'Fantasy'],
+    origin_country: 'JP',
+    status: 'completed',
+    total_seasons: 2,
+    total_episodes: 48,
+    episodes: 48,
+    anilist_id: 108465,
+    mal_id: 39535,
+    tmdb_id: 99581,
+    synonyms: [
+      'Mushoku Tensei',
+      'Jobless Reincarnation',
+      'Mushoku Tensei: Isekai Ittara Honki Dasu',
+      'Mushoku Tensei Season 2',
+    ],
+    cast: [
+      { id: 'c_mt_1', name: 'Yumi Uchiyama', character: 'Rudeus Greyrat', profile_url: null },
+      { id: 'c_mt_2', name: 'Ai Kakuma', character: 'Eris Boreas Greyrat', profile_url: null },
+    ],
+    seasons: [
+      {
+        id: 'mushoku_s1',
+        season_number: 1,
+        name: 'Season 1',
+        overview: 'Rudeus begins his magical journey and encounters Eris.',
+        episode_count: 23,
+        episodes: Array.from({ length: 23 }, (_, i) => ({
+          id: `mushoku_e1_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'Jobless Reincarnation' : `Episode ${i + 1}`,
+          overview: null,
+          runtime_minutes: 24,
+          air_date: '2021-01-11',
+        })),
+      },
+      {
+        id: 'mushoku_s2',
+        season_number: 2,
+        name: 'Season 2',
+        overview: 'Rudeus enters Ranoa Magic Academy and reunites with Sylphiette.',
+        episode_count: 25,
+        episodes: Array.from({ length: 25 }, (_, i) => ({
+          id: `mushoku_e2_${i + 1}`,
+          episode_number: i + 1,
+          name: i === 0 ? 'The Brokenhearted Mage' : `Episode ${i + 1}`,
+          overview: null,
+          runtime_minutes: 24,
+          air_date: '2023-07-03',
+        })),
+      },
+    ],
+  },
+
   // 4. ANIME FILM
   {
     id: 'film_spirited_away_129',
@@ -701,6 +885,28 @@ export const MOCK_CATALOG_FIXTURES: (NormalizedCatalogItem & {
     total_chapters: 185,
     total_volumes: 6,
     anilist_id: 108344,
+    synonyms: ['TBATE', 'The Beginning After the End', 'Beginning After the End'],
+  },
+
+  // 6c. MANHWA (Tower of God)
+  {
+    id: 'manhwa_tower_of_god_30090',
+    media_type: 'manhwa',
+    title: 'Tower of God',
+    original_title: '신의 탑',
+    release_year: 2010,
+    release_date: '2010-06-30',
+    synopsis:
+      'What do you desire? Money and wealth? Honor and pride? Authority and power? Revenge? Or something that transcends them all? Whatever you desire—it\'s here in the Tower.',
+    poster_url: 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx30090-J33j32XQ4Q6L.jpg',
+    backdrop_url: 'https://s4.anilist.co/file/anilistcdn/media/manga/banner/30090-p2s0X5P4W7L1.jpg',
+    genres: ['Action', 'Adventure', 'Drama', 'Fantasy', 'Mystery'],
+    origin_country: 'KR',
+    status: 'releasing',
+    total_chapters: 600,
+    total_volumes: 14,
+    anilist_id: 30090,
+    synonyms: ['Tower of God', 'Sin-ui Tap', 'Kami no Tou'],
   },
 
   // 7. POPULAR ANIME SERIES (Solo Leveling Anime)
@@ -946,11 +1152,14 @@ export function deduplicateAndFilterCatalogResults(
   items: NormalizedCatalogItem[],
   effectiveDomain: SearchDomain
 ): NormalizedCatalogItem[] {
-  // 1. Quality Check: discard any results missing a valid poster path
-  const qualityItems = items.filter((item) => {
+  // 1. Quality Check: prefer items with valid posters, but preserve items if no better variant exists
+  let qualityItems = items.filter((item) => {
     if (!item || !item.id || !item.title) return false;
     return hasValidPoster(item);
   });
+  if (qualityItems.length === 0 && items.length > 0) {
+    qualityItems = items.filter((item) => Boolean(item && item.id && item.title));
+  }
 
   // 2. Prepend base image URL to any relative poster or backdrop paths
   for (const item of qualityItems) {
@@ -968,10 +1177,23 @@ export function deduplicateAndFilterCatalogResults(
     }
   }
 
-  // 3. Group by standardized title
+  // 3. Group by standardized title and aliases
   const groups = new Map<string, NormalizedCatalogItem[]>();
   for (const item of qualityItems) {
-    const key = standardizeTitleKey(item.title) || item.id;
+    let key = standardizeTitleKey(item.title);
+    if (!key && item.original_title) {
+      key = standardizeTitleKey(item.original_title);
+    }
+    if (Array.isArray(item.synonyms)) {
+      for (const syn of item.synonyms) {
+        const synKey = standardizeTitleKey(syn);
+        if (synKey && groups.has(synKey)) {
+          key = synKey;
+          break;
+        }
+      }
+    }
+    key = key || item.id;
     const existing = groups.get(key);
     if (existing) {
       existing.push(item);
@@ -1082,14 +1304,15 @@ export function deduplicateAndFilterCatalogResults(
         backdrop_url: finalBackdrop,
         backdrop_path: finalBackdrop,
         genres: Array.from(new Set([...(primary.genres || []), ...(tmdb?.genres || [])])),
+        synonyms: Array.from(new Set([...(primary.synonyms || []), ...(tmdb?.synonyms || [])])),
         tmdb_id: primary.tmdb_id || tmdb?.tmdb_id || null,
         imdb_id: primary.imdb_id || tmdb?.imdb_id || null,
-        seasons: primary.seasons || tmdb?.seasons,
+        seasons: (primary.seasons && primary.seasons.length > 1) ? primary.seasons : (tmdb?.seasons || primary.seasons),
       };
 
       deduplicated.push(mergedAnime);
     } else {
-      // Live-action (e.g. Yellowstone, Breaking Bad): strictly prioritize TMDB
+      // Live-action (e.g. Yellowstone, Breaking Bad, Dahmer): strictly prioritize TMDB
       const tmdbCandidates = group
         .filter((i) => i.id.startsWith('tmdb_') || Boolean(i.tmdb_id))
         .sort((a, b) => getItemPriorityScore(b, effectiveDomain) - getItemPriorityScore(a, effectiveDomain));
@@ -1112,6 +1335,7 @@ export function deduplicateAndFilterCatalogResults(
         backdrop_url: primary.backdrop_url || other?.backdrop_url || null,
         backdrop_path: primary.backdrop_path || other?.backdrop_path || null,
         seasons: primary.seasons || other?.seasons,
+        synonyms: Array.from(new Set([...(primary.synonyms || []), ...(other?.synonyms || [])])),
         tmdb_id: primary.tmdb_id || other?.tmdb_id || null,
       };
 
@@ -1133,23 +1357,46 @@ export async function searchCatalog(
     domain ||
     (mediaType === 'manga' || mediaType === 'manhwa' ? 'read' : 'watch');
 
-  // 1. Local curated fixtures matching domain, category & query
+  // 1. Local curated fixtures matching domain, category & query (with fuzzy & alias support)
   const localMatches = MOCK_CATALOG_FIXTURES.filter((item) => {
     const isReadingItem = item.media_type === 'manga' || item.media_type === 'manhwa';
 
     if (effectiveDomain === 'watch' && isReadingItem) return false;
     if (effectiveDomain === 'read' && !isReadingItem) return false;
 
-    const matchesType = mediaType === 'all' || item.media_type === mediaType;
+    // Anime series matches both 'anime_series' and 'tv' category filters
+    const matchesType =
+      mediaType === 'all' ||
+      item.media_type === mediaType ||
+      (mediaType === 'tv' && item.media_type === 'anime_series');
     if (!matchesType) return false;
 
     if (!normalizedQuery) return true;
 
-    return (
-      item.title.toLowerCase().includes(normalizedQuery) ||
-      (item.original_title && item.original_title.toLowerCase().includes(normalizedQuery)) ||
-      item.genres.some((g) => g.toLowerCase().includes(normalizedQuery))
-    );
+    const candidateStrings = [
+      item.title,
+      item.original_title,
+      ...(Array.isArray(item.synonyms) ? item.synonyms : []),
+      ...item.genres,
+    ]
+      .filter((s): s is string => typeof s === 'string' && Boolean(s))
+      .map((s) => s.toLowerCase());
+
+    const cleanQ = normalizedQuery;
+    const cleanQFuzzy = cleanQ.replace(/[^a-z0-9]/g, '');
+    const tokens = cleanQ.split(/\s+/).filter(Boolean);
+
+    return candidateStrings.some((s) => {
+      const sFuzzy = s.replace(/[^a-z0-9]/g, '');
+      if (s.includes(cleanQ) || sFuzzy.includes(cleanQFuzzy)) return true;
+      if (
+        tokens.length > 1 &&
+        tokens.every((tok) => s.includes(tok) || sFuzzy.includes(tok.replace(/[^a-z0-9]/g, '')))
+      ) {
+        return true;
+      }
+      return false;
+    });
   });
 
   const rawCandidates: NormalizedCatalogItem[] = [...localMatches];
@@ -1162,8 +1409,10 @@ export async function searchCatalog(
       const readingType: MediaType = mediaType === 'manhwa' ? 'manhwa' : 'manga';
       promises.push(searchAniList(query, readingType));
     } else {
+      // In watch domain, anime should be searched for 'all', 'tv', 'anime_series', and 'anime_film'
       const isAnime =
         mediaType === 'all' ||
+        mediaType === 'tv' ||
         mediaType === 'anime_series' ||
         mediaType === 'anime_film';
 
@@ -1229,19 +1478,45 @@ export async function searchCatalog(
   // 3. Strict Post-Fetch Quality Filtering & Deduplication
   const deduplicated = deduplicateAndFilterCatalogResults(rawCandidates, effectiveDomain);
 
-  // 4. Popularity & Relevance sorting: exact matches and prefix matches rank first
+  // 4. Popularity & Relevance sorting: exact matches, aliases, and prefix matches rank first
   if (normalizedQuery.length >= 2) {
+    const cleanQ = normalizedQuery;
+    const cleanQFuzzy = cleanQ.replace(/[^a-z0-9]/g, '');
+    const tokens = cleanQ.split(/\s+/).filter(Boolean);
+
+    const scoreRelevance = (item: NormalizedCatalogItem): number => {
+      const candidates = [
+        item.title,
+        item.original_title,
+        ...(Array.isArray(item.synonyms) ? item.synonyms : []),
+      ]
+        .filter((t): t is string => typeof t === 'string' && Boolean(t))
+        .map((t) => t.toLowerCase());
+
+      let best = 0;
+      for (const t of candidates) {
+        const tFuzzy = t.replace(/[^a-z0-9]/g, '');
+        if (t === cleanQ || tFuzzy === cleanQFuzzy) {
+          best = Math.max(best, 1000);
+        } else if (t.startsWith(cleanQ) || tFuzzy.startsWith(cleanQFuzzy)) {
+          best = Math.max(best, 500);
+        } else if (t.includes(cleanQ) || tFuzzy.includes(cleanQFuzzy)) {
+          best = Math.max(best, 250);
+        } else if (
+          tokens.length > 1 &&
+          tokens.every((tok) => t.includes(tok) || tFuzzy.includes(tok.replace(/[^a-z0-9]/g, '')))
+        ) {
+          best = Math.max(best, 150);
+        }
+      }
+
+      return best;
+    };
+
     deduplicated.sort((a, b) => {
-      const aTitle = a.title.toLowerCase();
-      const bTitle = b.title.toLowerCase();
-
-      const aExact = aTitle === normalizedQuery ? 1 : 0;
-      const bExact = bTitle === normalizedQuery ? 1 : 0;
-      if (aExact !== bExact) return bExact - aExact;
-
-      const aStarts = aTitle.startsWith(normalizedQuery) ? 1 : 0;
-      const bStarts = bTitle.startsWith(normalizedQuery) ? 1 : 0;
-      if (aStarts !== bStarts) return bStarts - aStarts;
+      const scoreA = scoreRelevance(a);
+      const scoreB = scoreRelevance(b);
+      if (scoreA !== scoreB) return scoreB - scoreA;
 
       return 0;
     });
@@ -1298,6 +1573,12 @@ export async function getCatalogTitleById(
     if (!isNaN(numId)) {
       const liveAniList = await fetchAniListMediaById(numId);
       if (liveAniList) return liveAniList;
+
+      // Fallback to fixture matching anilist_id or id if network drops
+      const fixtureMatch = MOCK_CATALOG_FIXTURES.find(
+        (f) => f.id === id || f.anilist_id === numId
+      );
+      if (fixtureMatch) return fixtureMatch;
     }
   }
 
