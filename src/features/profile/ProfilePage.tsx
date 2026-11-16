@@ -39,6 +39,7 @@ import {
 import { CategoryFavoritesView } from '../favorites/CategoryFavoritesView';
 import { CustomListsSection } from '../custom-lists/CustomListsSection';
 import { formatWatchTime } from '../../lib/dateUtils';
+import { resolvePosterUrl } from '../../lib/imageUtils';
 import { supabase } from '../../lib/supabase';
 import { clearUserLibrary } from '../library/libraryService';
 import { ChangePasswordModal } from '../auth/ChangePasswordModal';
@@ -123,6 +124,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
 
   // Background Banner state
   const [editBannerUrl, setEditBannerUrl] = useState<string | null>(null);
+  const [selectedShowcase, setSelectedShowcase] = useState<'tv' | 'movies' | 'anime' | 'reading' | null>(null);
   const [bannerTab, setBannerTab] = useState<'upload' | 'library'>('upload');
   const [bannerUploading, setBannerUploading] = useState(false);
   const [bannerUploadError, setBannerUploadError] = useState<string | null>(null);
@@ -955,6 +957,104 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   const totalEpisodesWatched = tvEpisodesWatched + animeEpisodesWatched;
   const combinedWatchTimeMinutes = tvWatchTimeMinutes + animeWatchTimeMinutes;
 
+  const showcaseConfig = useMemo(() => {
+    if (selectedShowcase === 'tv') {
+      return {
+        title: 'TV Series Showcase',
+        Icon: Tv,
+        iconColor: 'text-purple-400',
+        iconBg: 'bg-purple-500/15 border-purple-500/30',
+        pillColor: 'text-purple-400 bg-purple-500/15 border-purple-500/30',
+        watchTimePill: `${formatWatchTime(tvWatchTimeMinutes)} • ${tvSeriesItems.length} Shows`,
+        description: 'Detailed metrics and tracked multi-season television titles.',
+        stats: [
+          { label: 'Watched', value: `${tvEpisodesWatched} eps`, subtext: `${tvCompletedCount} Finished` },
+          { label: 'Watching', value: `${tvActiveCount} Shows`, subtext: 'In Progress' },
+          { label: 'Completed', value: `${tvCompletedCount} Shows`, subtext: 'Full Series' },
+          { label: 'Total', value: `${tvSeriesItems.length} Shows`, subtext: 'In Library' },
+        ],
+        items: tvSeriesItems,
+      };
+    }
+    if (selectedShowcase === 'movies') {
+      const rate = movieItems.length > 0 ? Math.round((moviesCompletedCount / movieItems.length) * 100) : 0;
+      return {
+        title: 'Movies Showcase',
+        Icon: Film,
+        iconColor: 'text-blue-400',
+        iconBg: 'bg-blue-500/15 border-blue-500/30',
+        pillColor: 'text-blue-400 bg-blue-500/15 border-blue-500/30',
+        watchTimePill: `${formatWatchTime(movieWatchTimeMinutes)} • ${movieItems.length} Films`,
+        description: 'Detailed metrics and logged feature films in your collection.',
+        stats: [
+          { label: 'Watched', value: `${moviesCompletedCount} Films`, subtext: `${rate}% Completion` },
+          { label: 'Watchlist', value: `${moviesPlannedCount} Films`, subtext: 'Plan to watch' },
+          { label: 'Runtime', value: formatWatchTime(movieWatchTimeMinutes), subtext: 'Total Logged' },
+          { label: 'Total', value: `${movieItems.length} Films`, subtext: 'In Library' },
+        ],
+        items: movieItems,
+      };
+    }
+    if (selectedShowcase === 'anime') {
+      return {
+        title: 'Anime Showcase',
+        Icon: Sparkles,
+        iconColor: 'text-accent',
+        iconBg: 'bg-accent/15 border-accent/30',
+        pillColor: 'text-accent bg-accent/15 border-accent/30',
+        watchTimePill: `${formatWatchTime(animeWatchTimeMinutes)} • ${animeItems.length} Anime`,
+        description: 'Detailed metrics and tracked anime series and films.',
+        stats: [
+          { label: 'Watched', value: `${animeEpisodesWatched} eps`, subtext: `${animeCompletedCount} Completed` },
+          { label: 'Airing', value: `${animeActiveCount} Anime`, subtext: 'Watching' },
+          { label: 'Completed', value: `${animeCompletedCount} Anime`, subtext: 'Finished' },
+          { label: 'Total', value: `${animeItems.length} Anime`, subtext: 'In Library' },
+        ],
+        items: animeItems,
+      };
+    }
+    if (selectedShowcase === 'reading') {
+      return {
+        title: 'Manga & Manhwa Showcase',
+        Icon: BookOpen,
+        iconColor: 'text-rose-400',
+        iconBg: 'bg-rose-500/15 border-rose-500/30',
+        pillColor: 'text-rose-400 bg-rose-500/15 border-rose-500/30',
+        watchTimePill: `${formatWatchTime(readingTimeMinutes)} • ${readingItems.length} Titles`,
+        description: 'Detailed metrics and logged Japanese Manga and Korean Manhwa.',
+        stats: [
+          { label: 'Chapters', value: `${totalChaptersRead} chs`, subtext: `${readingCompletedCount} Finished` },
+          { label: 'Reading', value: `${readingActiveCount} Titles`, subtext: 'In Progress' },
+          { label: 'Completed', value: `${readingCompletedCount} Titles`, subtext: 'Finished' },
+          { label: 'Total', value: `${readingItems.length} Titles`, subtext: 'In Library' },
+        ],
+        items: readingItems,
+      };
+    }
+    return null;
+  }, [
+    selectedShowcase,
+    tvWatchTimeMinutes,
+    tvSeriesItems,
+    tvEpisodesWatched,
+    tvCompletedCount,
+    tvActiveCount,
+    movieWatchTimeMinutes,
+    movieItems,
+    moviesCompletedCount,
+    moviesPlannedCount,
+    animeWatchTimeMinutes,
+    animeItems,
+    animeEpisodesWatched,
+    animeCompletedCount,
+    animeActiveCount,
+    readingTimeMinutes,
+    readingItems,
+    totalChaptersRead,
+    readingCompletedCount,
+    readingActiveCount,
+  ]);
+
   return (
     <div data-testid="profile-page" className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-200">
       {/* Profile Hero Header */}
@@ -1216,230 +1316,176 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
         </div>
       </div>
 
-      {/* Tracking Overview & Showcases */}
-      <div className="space-y-4">
+      {/* 1. Tracking Overview & Showcases (Compact Summary Headers) */}
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-text-primary tracking-tight">
+            <h2 className="text-lg sm:text-xl font-bold text-text-primary tracking-tight">
               Tracking Overview & Showcases
             </h2>
-            <p className="text-xs text-text-secondary mt-0.5">
-              Breakdown for Series, Movies, Anime, and Manga/Manhwa.
+            <p className="text-xs text-text-muted mt-0.5">
+              Click any category to view detailed stats and tracked media
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* 1. TV Series Section */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* 1. TV Series Compact Summary Header */}
           <div
             data-testid="profile-section-tv"
-            className="p-5 rounded-2xl bg-surface border border-surface-elevated space-y-3 relative overflow-hidden"
+            onClick={() => setSelectedShowcase('tv')}
+            className="group p-3 sm:p-3.5 rounded-xl bg-surface border border-surface-elevated hover:border-purple-500/50 hover:bg-surface-elevated/60 transition-all duration-200 cursor-pointer flex items-center justify-between gap-3 shadow-sm select-none"
           >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-purple-400">
-                <Tv className="w-5 h-5" />
-                <h3 className="font-bold text-sm text-text-primary">TV Series</h3>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-2 rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-400 shrink-0 group-hover:scale-105 transition-transform">
+                <Tv className="w-4 h-4" />
               </div>
-              <span className="text-xs font-mono font-bold text-purple-400 px-2 py-0.5 rounded bg-purple-500/15 border border-purple-500/30">
-                {tvSeriesItems.length} Shows
+              <span className="font-bold text-xs sm:text-sm text-text-primary group-hover:text-purple-400 transition-colors truncate">
+                TV Series
               </span>
             </div>
 
-            <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-surface-elevated/80 border border-surface-elevated">
-              <Clock className="w-4 h-4 text-purple-400 shrink-0" />
-              <div>
-                <p className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Watch Time</p>
-                <p data-testid="tv-watch-time" className="text-sm font-bold font-mono text-text-primary">
-                  {formatWatchTime(tvWatchTimeMinutes)}
-                </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <div
+                data-testid="tv-watch-time"
+                className="text-[11px] font-mono font-bold text-purple-300 px-2 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/30 flex items-center gap-1.5"
+              >
+                <span>{formatWatchTime(tvWatchTimeMinutes)}</span>
+                <span className="text-purple-400/40">•</span>
+                <span>{tvSeriesItems.length} Shows</span>
               </div>
-            </div>
-
-            <p className="text-xs text-text-secondary">
-              Track multi-season episodes, upcoming airings, and next episodes to watch.
-            </p>
-
-            <div className="pt-2 border-t border-surface-elevated/70 flex flex-col gap-1 text-xs text-text-muted font-mono">
-              <div className="flex items-center justify-between">
-                <span className="text-text-primary font-semibold">{tvEpisodesWatched} eps watched</span>
-                <span className="text-purple-400">{tvCompletedCount} Finished</span>
-              </div>
-              <div className="flex items-center justify-between text-[11px]">
-                <span>{tvActiveCount} Watching</span>
-                <span>{tvSeriesItems.length} Shows total</span>
-              </div>
+              <ChevronRight className="w-3.5 h-3.5 text-text-muted group-hover:text-purple-400 group-hover:translate-x-0.5 transition-all" />
             </div>
           </div>
 
-          {/* 2. Movies Section */}
+          {/* 2. Movies Compact Summary Header */}
           <div
             data-testid="profile-section-movies"
-            className="p-5 rounded-2xl bg-surface border border-surface-elevated space-y-3 relative overflow-hidden"
+            onClick={() => setSelectedShowcase('movies')}
+            className="group p-3 sm:p-3.5 rounded-xl bg-surface border border-surface-elevated hover:border-blue-500/50 hover:bg-surface-elevated/60 transition-all duration-200 cursor-pointer flex items-center justify-between gap-3 shadow-sm select-none"
           >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-blue-400">
-                <Film className="w-5 h-5" />
-                <h3 className="font-bold text-sm text-text-primary">Movies</h3>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-2 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-400 shrink-0 group-hover:scale-105 transition-transform">
+                <Film className="w-4 h-4" />
               </div>
-              <span className="text-xs font-mono font-bold text-blue-400 px-2 py-0.5 rounded bg-blue-500/15 border border-blue-500/30">
-                {movieItems.length} Films
+              <span className="font-bold text-xs sm:text-sm text-text-primary group-hover:text-blue-400 transition-colors truncate">
+                Movies
               </span>
             </div>
 
-            <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-surface-elevated/80 border border-surface-elevated">
-              <Clock className="w-4 h-4 text-blue-400 shrink-0" />
-              <div>
-                <p className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Watch Time</p>
-                <p data-testid="movies-watch-time" className="text-sm font-bold font-mono text-text-primary">
-                  {formatWatchTime(movieWatchTimeMinutes)}
-                </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <div
+                data-testid="movies-watch-time"
+                className="text-[11px] font-mono font-bold text-blue-300 px-2 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 flex items-center gap-1.5"
+              >
+                <span>{formatWatchTime(movieWatchTimeMinutes)}</span>
+                <span className="text-blue-400/40">•</span>
+                <span>{movieItems.length} Films</span>
               </div>
-            </div>
-
-            <p className="text-xs text-text-secondary">
-              Log theatrical and streaming films, ratings, and runtime achievements.
-            </p>
-
-            <div className="pt-2 border-t border-surface-elevated/70 flex flex-col gap-1 text-xs text-text-muted font-mono">
-              <div className="flex items-center justify-between">
-                <span className="text-text-primary font-semibold">{moviesCompletedCount} watched</span>
-                <span className="text-blue-400">{moviesPlannedCount} Watchlist</span>
-              </div>
-              <div className="flex items-center justify-between text-[11px]">
-                <span>{movieItems.length} Films total</span>
-                <span>{movieItems.length > 0 ? `${Math.round((moviesCompletedCount / movieItems.length) * 100)}%` : '0%'}</span>
-              </div>
+              <ChevronRight className="w-3.5 h-3.5 text-text-muted group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all" />
             </div>
           </div>
 
-          {/* 3. Anime Section */}
+          {/* 3. Anime Compact Summary Header */}
           <div
             data-testid="profile-section-anime"
-            className="p-5 rounded-2xl bg-surface border border-surface-elevated space-y-3 relative overflow-hidden"
+            onClick={() => setSelectedShowcase('anime')}
+            className="group p-3 sm:p-3.5 rounded-xl bg-surface border border-surface-elevated hover:border-accent/50 hover:bg-surface-elevated/60 transition-all duration-200 cursor-pointer flex items-center justify-between gap-3 shadow-sm select-none"
           >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-accent">
-                <Sparkles className="w-5 h-5" />
-                <h3 className="font-bold text-sm text-text-primary">Anime</h3>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-2 rounded-lg bg-accent/15 border border-accent/30 text-accent shrink-0 group-hover:scale-105 transition-transform">
+                <Sparkles className="w-4 h-4" />
               </div>
-              <span className="text-xs font-mono font-bold text-accent px-2 py-0.5 rounded bg-accent/15 border border-accent/30">
-                {animeItems.length} Anime
+              <span className="font-bold text-xs sm:text-sm text-text-primary group-hover:text-accent transition-colors truncate">
+                Anime
               </span>
             </div>
 
-            <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-surface-elevated/80 border border-surface-elevated">
-              <Clock className="w-4 h-4 text-accent shrink-0" />
-              <div>
-                <p className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Watch Time</p>
-                <p data-testid="anime-watch-time" className="text-sm font-bold font-mono text-text-primary">
-                  {formatWatchTime(animeWatchTimeMinutes)}
-                </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <div
+                data-testid="anime-watch-time"
+                className="text-[11px] font-mono font-bold text-accent px-2 py-0.5 rounded-full bg-accent/15 border border-accent/30 flex items-center gap-1.5"
+              >
+                <span>{formatWatchTime(animeWatchTimeMinutes)}</span>
+                <span className="text-accent/40">•</span>
+                <span>{animeItems.length} Anime</span>
               </div>
-            </div>
-
-            <p className="text-xs text-text-secondary">
-              Synchronize weekly airing anime seasons, OVA specials, and films.
-            </p>
-
-            <div className="pt-2 border-t border-surface-elevated/70 flex flex-col gap-1 text-xs text-text-muted font-mono">
-              <div className="flex items-center justify-between">
-                <span className="text-text-primary font-semibold">{animeEpisodesWatched} eps watched</span>
-                <span className="text-accent">{animeCompletedCount} Completed</span>
-              </div>
-              <div className="flex items-center justify-between text-[11px]">
-                <span>{animeActiveCount} Airing</span>
-                <span>{animeItems.length} Anime total</span>
-              </div>
+              <ChevronRight className="w-3.5 h-3.5 text-text-muted group-hover:text-accent group-hover:translate-x-0.5 transition-all" />
             </div>
           </div>
 
-          {/* 4. Manga & Manhwa Section */}
+          {/* 4. Manga & Manhwa Compact Summary Header */}
           <div
             data-testid="profile-section-reading"
-            className="p-5 rounded-2xl bg-surface border border-surface-elevated space-y-3 relative overflow-hidden"
+            onClick={() => setSelectedShowcase('reading')}
+            className="group p-3 sm:p-3.5 rounded-xl bg-surface border border-surface-elevated hover:border-rose-500/50 hover:bg-surface-elevated/60 transition-all duration-200 cursor-pointer flex items-center justify-between gap-3 shadow-sm select-none"
           >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-rose-400">
-                <BookOpen className="w-5 h-5" />
-                <h3 className="font-bold text-sm text-text-primary">Manga & Manhwa</h3>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-2 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-400 shrink-0 group-hover:scale-105 transition-transform">
+                <BookOpen className="w-4 h-4" />
               </div>
-              <span className="text-xs font-mono font-bold text-rose-400 px-2 py-0.5 rounded bg-rose-500/15 border border-rose-500/30">
-                {readingItems.length} Titles
+              <span className="font-bold text-xs sm:text-sm text-text-primary group-hover:text-rose-400 transition-colors truncate">
+                Manga & Manhwa
               </span>
             </div>
 
-            <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-surface-elevated/80 border border-surface-elevated">
-              <Clock className="w-4 h-4 text-rose-400 shrink-0" />
-              <div>
-                <p className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Reading Time</p>
-                <p data-testid="reading-watch-time" className="text-sm font-bold font-mono text-text-primary">
-                  {formatWatchTime(readingTimeMinutes)}
-                </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <div
+                data-testid="reading-watch-time"
+                className="text-[11px] font-mono font-bold text-rose-300 px-2 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30 flex items-center gap-1.5"
+              >
+                <span>{formatWatchTime(readingTimeMinutes)}</span>
+                <span className="text-rose-400/40">•</span>
+                <span>{readingItems.length} Titles</span>
               </div>
-            </div>
-
-            <p className="text-xs text-text-secondary">
-              Granular chapter-by-chapter reading stepper with adaptation links.
-            </p>
-
-            <div className="pt-2 border-t border-surface-elevated/70 flex flex-col gap-1 text-xs text-text-muted font-mono">
-              <div className="flex items-center justify-between">
-                <span className="text-text-primary font-semibold">{totalChaptersRead} chs read</span>
-                <span className="text-rose-400">{readingCompletedCount} Finished</span>
-              </div>
-              <div className="flex items-center justify-between text-[11px]">
-                <span>{readingActiveCount} Reading</span>
-                <span>{readingItems.length} Titles total</span>
-              </div>
+              <ChevronRight className="w-3.5 h-3.5 text-text-muted group-hover:text-rose-400 group-hover:translate-x-0.5 transition-all" />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Category Favorites Section */}
-      <div className="space-y-4">
+      {/* 2. Favorite Collections (Compact Rows) */}
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-text-primary tracking-tight">
+            <h2 className="text-lg sm:text-xl font-bold text-text-primary tracking-tight">
               Favorite Collections
             </h2>
             <p className="text-xs text-text-muted mt-0.5">
               Explore top pinned titles across specialized media categories
             </p>
           </div>
-          <span className="text-xs font-mono text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-lg">
+          <span className="text-xs font-mono text-accent bg-accent/10 border border-accent/20 px-2.5 py-0.5 rounded-lg">
             {favorites.length} Pinned Total
           </span>
         </div>
 
-        {/* 4 Clickable Category Tiles */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* 4 Compact Rows */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
           {/* 1. TV Shows */}
           <button
             type="button"
             onClick={() => handleSelectCategory('tv')}
             data-testid="favorite-category-tv"
-            className="group relative p-5 rounded-2xl bg-surface border border-surface-elevated hover:border-purple-500/50 hover:bg-surface-elevated/70 text-left transition-all duration-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between"
+            className="group relative flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-surface border border-surface-elevated hover:border-purple-500/50 hover:bg-surface-elevated/70 text-left transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md select-none"
           >
-            <div className="flex items-start justify-between">
-              <div className="p-3 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-400 group-hover:scale-110 transition-transform">
-                <Tv className="w-5 h-5" />
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-1.5 rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-400 shrink-0 group-hover:scale-105 transition-transform">
+                <Tv className="w-4 h-4" />
               </div>
-              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30">
+              <div className="min-w-0">
+                <span className="text-xs sm:text-sm font-bold text-text-primary group-hover:text-purple-400 transition-colors truncate block">
+                  TV Shows
+                </span>
+              </div>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 font-mono shrink-0">
                 {filterFavoritesByCategory(favorites, 'tv').length}
               </span>
             </div>
-            <div className="mt-4">
-              <h3 className="text-sm font-bold text-text-primary group-hover:text-purple-400 transition-colors">
-                Favorite TV Shows
-              </h3>
-              <p className="text-xs text-text-muted mt-1 line-clamp-1">
-                Top television series & shows
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-surface-elevated flex items-center justify-between text-xs text-purple-400 font-semibold">
+
+            <div className="flex items-center gap-1 text-[11px] font-semibold text-purple-400 shrink-0 ml-2 group-hover:translate-x-0.5 transition-transform">
               <span>View Collection</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              <ChevronRight className="w-3.5 h-3.5" />
             </div>
           </button>
 
@@ -1448,27 +1494,25 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             type="button"
             onClick={() => handleSelectCategory('movie')}
             data-testid="favorite-category-movie"
-            className="group relative p-5 rounded-2xl bg-surface border border-surface-elevated hover:border-blue-500/50 hover:bg-surface-elevated/70 text-left transition-all duration-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between"
+            className="group relative flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-surface border border-surface-elevated hover:border-blue-500/50 hover:bg-surface-elevated/70 text-left transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md select-none"
           >
-            <div className="flex items-start justify-between">
-              <div className="p-3 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400 group-hover:scale-110 transition-transform">
-                <Film className="w-5 h-5" />
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-1.5 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-400 shrink-0 group-hover:scale-105 transition-transform">
+                <Film className="w-4 h-4" />
               </div>
-              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+              <div className="min-w-0">
+                <span className="text-xs sm:text-sm font-bold text-text-primary group-hover:text-blue-400 transition-colors truncate block">
+                  Movies
+                </span>
+              </div>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 font-mono shrink-0">
                 {filterFavoritesByCategory(favorites, 'movie').length}
               </span>
             </div>
-            <div className="mt-4">
-              <h3 className="text-sm font-bold text-text-primary group-hover:text-blue-400 transition-colors">
-                Favorite Movies
-              </h3>
-              <p className="text-xs text-text-muted mt-1 line-clamp-1">
-                Top cinema & feature films
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-surface-elevated flex items-center justify-between text-xs text-blue-400 font-semibold">
+
+            <div className="flex items-center gap-1 text-[11px] font-semibold text-blue-400 shrink-0 ml-2 group-hover:translate-x-0.5 transition-transform">
               <span>View Collection</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              <ChevronRight className="w-3.5 h-3.5" />
             </div>
           </button>
 
@@ -1477,27 +1521,25 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             type="button"
             onClick={() => handleSelectCategory('anime')}
             data-testid="favorite-category-anime"
-            className="group relative p-5 rounded-2xl bg-surface border border-surface-elevated hover:border-accent/50 hover:bg-surface-elevated/70 text-left transition-all duration-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between"
+            className="group relative flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-surface border border-surface-elevated hover:border-accent/50 hover:bg-surface-elevated/70 text-left transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md select-none"
           >
-            <div className="flex items-start justify-between">
-              <div className="p-3 rounded-xl bg-accent/15 border border-accent/30 text-accent group-hover:scale-110 transition-transform">
-                <Sparkles className="w-5 h-5" />
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-1.5 rounded-lg bg-accent/15 border border-accent/30 text-accent shrink-0 group-hover:scale-105 transition-transform">
+                <Sparkles className="w-4 h-4" />
               </div>
-              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-accent/20 text-accent border border-accent/30">
+              <div className="min-w-0">
+                <span className="text-xs sm:text-sm font-bold text-text-primary group-hover:text-accent transition-colors truncate block">
+                  Anime
+                </span>
+              </div>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-accent/20 text-accent border border-accent/30 font-mono shrink-0">
                 {filterFavoritesByCategory(favorites, 'anime').length}
               </span>
             </div>
-            <div className="mt-4">
-              <h3 className="text-sm font-bold text-text-primary group-hover:text-accent transition-colors">
-                Favorite Anime
-              </h3>
-              <p className="text-xs text-text-muted mt-1 line-clamp-1">
-                Top anime series & movies
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-surface-elevated flex items-center justify-between text-xs text-accent font-semibold">
+
+            <div className="flex items-center gap-1 text-[11px] font-semibold text-accent shrink-0 ml-2 group-hover:translate-x-0.5 transition-transform">
               <span>View Collection</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              <ChevronRight className="w-3.5 h-3.5" />
             </div>
           </button>
 
@@ -1506,27 +1548,25 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             type="button"
             onClick={() => handleSelectCategory('reading')}
             data-testid="favorite-category-reading"
-            className="group relative p-5 rounded-2xl bg-surface border border-surface-elevated hover:border-cyan-500/50 hover:bg-surface-elevated/70 text-left transition-all duration-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between"
+            className="group relative flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-surface border border-surface-elevated hover:border-cyan-500/50 hover:bg-surface-elevated/70 text-left transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md select-none"
           >
-            <div className="flex items-start justify-between">
-              <div className="p-3 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 group-hover:scale-110 transition-transform">
-                <BookOpen className="w-5 h-5" />
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-1.5 rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 shrink-0 group-hover:scale-105 transition-transform">
+                <BookOpen className="w-4 h-4" />
               </div>
-              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+              <div className="min-w-0">
+                <span className="text-xs sm:text-sm font-bold text-text-primary group-hover:text-cyan-400 transition-colors truncate block">
+                  Manga & Manhwa
+                </span>
+              </div>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono shrink-0">
                 {filterFavoritesByCategory(favorites, 'reading').length}
               </span>
             </div>
-            <div className="mt-4">
-              <h3 className="text-sm font-bold text-text-primary group-hover:text-cyan-400 transition-colors">
-                Favorite Manga & Manhwa
-              </h3>
-              <p className="text-xs text-text-muted mt-1 line-clamp-1">
-                Top Japanese Manga & Korean Manhwa
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-surface-elevated flex items-center justify-between text-xs text-cyan-400 font-semibold">
+
+            <div className="flex items-center gap-1 text-[11px] font-semibold text-cyan-400 shrink-0 ml-2 group-hover:translate-x-0.5 transition-transform">
               <span>View Collection</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              <ChevronRight className="w-3.5 h-3.5" />
             </div>
           </button>
         </div>
@@ -1919,6 +1959,158 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           onClose={handleCloseAvatarCropper}
           onConfirmCrop={handleConfirmAvatarCrop}
         />
+      )}
+
+      {/* Interactive Tracking Showcase Modal */}
+      {selectedShowcase && showcaseConfig && (
+        <div
+          data-testid="tracking-showcase-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-background/80 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setSelectedShowcase(null)}
+        >
+          <div
+            className="w-full max-w-2xl bg-surface border border-surface-elevated rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col max-h-[85vh] space-y-4 animate-in zoom-in-95 duration-200 select-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-surface-elevated/80">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-xl border ${showcaseConfig.iconBg} ${showcaseConfig.iconColor}`}>
+                  <showcaseConfig.Icon className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-bold text-text-primary">
+                      {showcaseConfig.title}
+                    </h3>
+                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${showcaseConfig.pillColor}`}>
+                      {showcaseConfig.watchTimePill}
+                    </span>
+                  </div>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    {showcaseConfig.description}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedShowcase(null)}
+                data-testid="close-showcase-modal"
+                className="p-1.5 rounded-xl bg-surface-elevated hover:bg-surface-elevated/80 text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                aria-label="Close showcase modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Detailed Stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {showcaseConfig.stats.map((stat, idx) => (
+                <div
+                  key={idx}
+                  className="p-3 rounded-xl bg-surface-elevated/50 border border-surface-elevated flex flex-col justify-center"
+                >
+                  <p className="text-[10px] text-text-muted uppercase font-bold tracking-wider">
+                    {stat.label}
+                  </p>
+                  <p className="text-sm sm:text-base font-extrabold font-mono text-text-primary mt-0.5">
+                    {stat.value}
+                  </p>
+                  {stat.subtext && (
+                    <p className="text-[10px] text-text-secondary mt-0.5 truncate">
+                      {stat.subtext}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Media Items Grid */}
+            <div className="flex-1 min-h-0 flex flex-col space-y-2 pt-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider">
+                  Tracked Titles ({showcaseConfig.items.length})
+                </h4>
+                <span className="text-[10px] text-text-muted">
+                  Click title to view details
+                </span>
+              </div>
+
+              {showcaseConfig.items.length === 0 ? (
+                <div className="py-12 text-center text-text-muted text-xs bg-surface-elevated/30 rounded-2xl border border-dashed border-surface-elevated">
+                  No tracked titles in this category yet.
+                </div>
+              ) : (
+                <div className="overflow-y-auto pr-1 flex-1 min-h-0">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {showcaseConfig.items.map((item) => {
+                      const poster = resolvePosterUrl(item.title?.poster_url);
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => {
+                            setSelectedShowcase(null);
+                            if (onSelectTitle) {
+                              onSelectTitle(item.title_id);
+                            }
+                          }}
+                          className="group relative rounded-xl bg-surface-elevated/60 border border-surface-elevated overflow-hidden hover:border-accent/50 transition-all cursor-pointer flex flex-col justify-between hover:shadow-lg hover:-translate-y-0.5"
+                        >
+                          <div className="aspect-[2/3] w-full bg-surface-elevated relative overflow-hidden">
+                            <img
+                              src={poster}
+                              alt={item.title?.title || 'Title'}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              loading="lazy"
+                              onError={(e) => {
+                                e.currentTarget.src = '/assets/trackup-logo.jpg';
+                              }}
+                            />
+                            <span
+                              className={`absolute top-1.5 left-1.5 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded backdrop-blur-md ${
+                                item.status === 'completed'
+                                  ? 'bg-emerald-500/80 text-white'
+                                  : item.status === 'active'
+                                  ? 'bg-blue-500/80 text-white'
+                                  : 'bg-amber-500/80 text-white'
+                              }`}
+                            >
+                              {item.status === 'active'
+                                ? 'Watching'
+                                : item.status === 'completed'
+                                ? 'Completed'
+                                : 'Planned'}
+                            </span>
+                            {item.rating && (
+                              <span className="absolute top-1.5 right-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/80 backdrop-blur-md text-accent font-mono">
+                                ★ {item.rating}
+                              </span>
+                            )}
+                          </div>
+                          <div className="p-2 space-y-1">
+                            <p className="text-xs font-bold text-text-primary group-hover:text-accent transition-colors line-clamp-1">
+                              {item.title?.title}
+                            </p>
+                            <p className="text-[10px] font-mono text-text-muted truncate">
+                              {item.title.media_type === 'tv' || item.title.media_type === 'anime_series' ? (
+                                `${item.episodes_watched?.length || 0} eps watched`
+                              ) : item.title.media_type === 'manga' || item.title.media_type === 'manhwa' ? (
+                                `Ch. ${item.last_chapter_read || 0}`
+                              ) : (
+                                item.title.release_year || 'Movie'
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Change Password Modal */}

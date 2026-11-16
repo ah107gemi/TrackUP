@@ -341,100 +341,73 @@ export const CustomListsSection: React.FC<CustomListsSectionProps> = ({
           )}
         </div>
       ) : (
-        /* COLLAPSED CUSTOM LISTS DISPLAY: Clickable Folders / Summary Cards */
+        /* COLLAPSED CUSTOM LISTS DISPLAY: Simplified space-saving cards */
         <div
           data-testid="custom-lists-folders-grid"
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
         >
           {lists.map((list) => {
             const itemCount = list.items?.length || 0;
-            const previewPosters = (list.items || [])
-              .map((i) => resolvePosterUrl(i.title?.poster_url))
-              .filter(Boolean)
-              .slice(0, 3);
 
             return (
               <div
                 key={list.id}
                 onClick={() => handleOpenListDetail(list.id)}
                 data-testid={`custom-list-card-${list.id}`}
-                className="group relative p-5 rounded-2xl bg-surface border border-surface-elevated hover:border-accent/50 hover:bg-surface/90 transition-all duration-200 cursor-pointer shadow-md hover:-translate-y-1 flex flex-col justify-between gap-4 select-none"
+                className="group p-3 sm:p-3.5 rounded-xl bg-surface border border-surface-elevated hover:border-accent/50 hover:bg-surface-elevated/50 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md flex items-center justify-between gap-3 select-none"
               >
-                <div className="space-y-3">
-                  {/* Top row: Folder Icon + Privacy Badge */}
-                  <div className="flex items-center justify-between">
-                    <div className="p-2.5 rounded-xl bg-accent/15 border border-accent/30 text-accent group-hover:scale-105 transition-transform">
-                      <Folder className="w-5 h-5" />
+                {/* Left: Folder icon + List Name + Status badge + Item Count */}
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="p-2 rounded-lg bg-accent/15 border border-accent/30 text-accent shrink-0 group-hover:scale-105 transition-transform">
+                    <Folder className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3
+                        data-testid={`custom-list-title-${list.id}`}
+                        className="text-xs sm:text-sm font-bold text-text-primary group-hover:text-accent transition-colors truncate"
+                      >
+                        {list.name}
+                      </h3>
+                      <span
+                        className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border flex items-center gap-1 shrink-0 ${
+                          list.is_private
+                            ? 'bg-surface-elevated text-text-muted border-surface-elevated'
+                            : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                        }`}
+                      >
+                        {list.is_private ? (
+                          <>
+                            <Lock className="w-2.5 h-2.5" />
+                            <span>Private</span>
+                          </>
+                        ) : (
+                          <>
+                            <Globe className="w-2.5 h-2.5" />
+                            <span>Public</span>
+                          </>
+                        )}
+                      </span>
                     </div>
-                    <span
-                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border flex items-center gap-1 ${
-                        list.is_private
-                          ? 'bg-surface-elevated text-text-muted border-surface-elevated'
-                          : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                      }`}
-                    >
-                      {list.is_private ? (
-                        <>
-                          <Lock className="w-3 h-3" />
-                          <span>Private</span>
-                        </>
-                      ) : (
-                        <>
-                          <Globe className="w-3 h-3" />
-                          <span>Public</span>
-                        </>
-                      )}
-                    </span>
-                  </div>
-
-                  {/* List Name and Description */}
-                  <div>
-                    <h3
-                      data-testid={`custom-list-title-${list.id}`}
-                      className="text-base font-bold text-text-primary group-hover:text-accent transition-colors line-clamp-1"
-                    >
-                      {list.name}
-                    </h3>
-                    {list.description ? (
-                      <p className="text-xs text-text-muted mt-1 line-clamp-2 leading-relaxed">
-                        {list.description}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-text-muted/60 mt-1 italic">
-                        No description provided.
-                      </p>
-                    )}
+                    <p className="font-mono text-[11px] text-text-muted mt-0.5">
+                      {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                    </p>
                   </div>
                 </div>
 
-                {/* Bottom row: Item Count & Thumbnail Previews Stack + View Affordance */}
-                <div className="pt-3 border-t border-surface-elevated/70 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {previewPosters.length > 0 && (
-                      <div className="flex -space-x-2 overflow-hidden">
-                        {previewPosters.map((url, idx) => (
-                          <img
-                            key={idx}
-                            src={url!}
-                            alt="Preview"
-                            className="inline-block w-6 h-8 rounded object-cover ring-2 ring-surface bg-surface-elevated shrink-0"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    <span className="font-mono text-xs font-semibold text-text-secondary">
-                      {itemCount} {itemCount === 1 ? 'title' : 'titles'}
-                    </span>
-                  </div>
-
-                  <span className="text-xs font-semibold text-accent flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                    <span>View</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
+                {/* Right: Interactive "View >" button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenListDetail(list.id);
+                  }}
+                  data-testid={`custom-list-view-btn-${list.id}`}
+                  className="text-xs font-semibold text-accent hover:text-accent-hover flex items-center gap-0.5 shrink-0 px-2.5 py-1 rounded-lg bg-accent/10 border border-accent/20 hover:bg-accent/20 transition-all cursor-pointer group-hover:translate-x-0.5"
+                >
+                  <span>View</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             );
           })}
