@@ -55,8 +55,8 @@ The user experience is built on an editorial, dark noir & gold luxury aesthetic 
   * Muted text: `#71717A` (`text-text-muted`)
 * **Typography:** Clean sans-serif system stack (`font-sans`), high-contrast hierarchy, uppercase tracking for category badges and section dividers (`tracking-wider`, `text-xs`).
 * **Layout & Navigation:**
-  * Mobile viewports: Sticky bottom navigation bar (`MobileBottomNav.tsx`) with touch targets of at least `44x44px`.
-  * Desktop viewports: Collapsible left sidebar (`Sidebar.tsx`) with persistent route shortcuts.
+  * Mobile viewports: Sticky bottom navigation bar (`BottomNavBar.tsx`) with touch targets of at least `44x44px`.
+  * Desktop viewports: Collapsible left sidebar (`DesktopSidebar.tsx`) with persistent route shortcuts.
   * Responsive grids: Media catalog grids strictly use balanced responsive columns (`grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6`).
 * **Media Cards & Aspect Ratios:**
   * Poster cards strictly enforce a `2:3` aspect ratio (`aspect-[2/3]`) using `object-cover`.

@@ -75,11 +75,11 @@ TrackUP tracks six distinct entertainment domains:
    * Movies & TV: The Movie Database (TMDB) API.
    * Anime & Manga/Manhwa: AniList GraphQL API.
 2. **Resilient Metadata Healing:**
-   * Handled by `src/services/metadataHealer.ts`.
+   * Handled by `src/features/catalog/metadataHealer.ts`.
    * Secondary fallback for anime and manga: Jikan v4 REST API (MyAnimeList wrapper).
    * **Strict Timeout Rule:** All Jikan requests must enforce a 3000ms timeout using `AbortSignal.timeout(3000)` to prevent blocking rendering during upstream rate limits.
 3. **Zero-Network Fixture Fallback:**
-   * `src/fixtures/mockCatalogFixtures.ts` provides offline and test-environment data when external APIs or network connectivity are unavailable.
+   * Curated development fixtures (`MOCK_CATALOG_FIXTURES` in `src/features/catalog/catalogService.ts`) provide offline and test-environment data when external APIs or network connectivity are unavailable.
 4. **Canonical Data Normalization:**
    * Metadata must map into a standard `CatalogTitle` interface containing:
      * `id`: Canonical string identifier.
@@ -167,10 +167,10 @@ TrackUP tracks six distinct entertainment domains:
 
 ### Layout & Navigation Shell
 * **Mobile Viewports (< 768px):**
-  * Persistent sticky bottom navigation bar (`MobileBottomNav.tsx`).
+  * Persistent sticky bottom navigation bar (`BottomNavBar.tsx`).
   * Minimum touch target dimensions: `44x44px` for all clickable icons, navigation tabs, and modal triggers.
 * **Desktop Viewports (>= 768px):**
-  * Collapsible left navigation sidebar (`Sidebar.tsx`).
+  * Collapsible left navigation sidebar (`DesktopSidebar.tsx`).
   * Expanded catalog grids with hover elevation.
 * **Catalog Grids:**
   * Responsive columns: `grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6`.
