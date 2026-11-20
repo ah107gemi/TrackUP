@@ -1,5 +1,7 @@
 # TrackUp Database Schema Documentation
 
+> **Historical Design Blueprint — October 25, 2026.** This document records initial project planning and is not the authoritative description of current implementation. For the active database schema, security policies, and operational application state, consult [`APP_STATE.md`](../APP_STATE.md).
+
 ## 1. Schema Principles
 - **100% RLS Coverage:** Every table in the `public` schema has Row-Level Security enabled.
 - **Normalization:** Factual entertainment metadata (posters, episodes, synopses) exists once in `catalog_*` and is never duplicated per-user.

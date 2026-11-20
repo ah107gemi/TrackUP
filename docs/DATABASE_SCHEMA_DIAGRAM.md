@@ -1,5 +1,7 @@
 # TrackUp Database Schema & Entity-Relationship Diagram
 
+> **Historical Design Blueprint — October 25, 2026.** This document records initial project planning and is not the authoritative description of current implementation. For the active database schema, security policies, and operational application state, consult [`APP_STATE.md`](../APP_STATE.md).
+
 ## 1. Architectural Overview
 The TrackUp PostgreSQL schema cleanly decouples shared media catalog metadata from private user libraries and domain-specific tracking mechanics (episodic watch tracking vs chapter reading progress).
 

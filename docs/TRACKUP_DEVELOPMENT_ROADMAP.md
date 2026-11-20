@@ -1,5 +1,7 @@
 # TRACKUP PHASED DEVELOPMENT ROADMAP
 
+> **Historical Design Blueprint — October 25, 2026.** This document records initial project planning and is not the authoritative description of current implementation. For the active database schema, security policies, and operational application state, consult [`APP_STATE.md`](../APP_STATE.md).
+
 Every phase is a self-contained, testable milestone. Antigravity must complete one phase, run its automated verification suite, and present the results before advancing to the next phase.
 
 ---

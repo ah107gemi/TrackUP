@@ -1,5 +1,7 @@
 # 3. TRACKUP_DATABASE_PLAN.md
 
+> **Historical Design Blueprint — October 25, 2026.** This document records initial project planning and is not the authoritative description of current implementation. For the active database schema, security policies, and operational application state, consult [`APP_STATE.md`](../APP_STATE.md).
+
 ```markdown
 # TRACKUP DATABASE ARCHITECTURE & SECURITY PLAN
 

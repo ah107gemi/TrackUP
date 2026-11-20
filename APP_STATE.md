@@ -302,10 +302,11 @@ Antigravity and developers MUST verify changes using the following working comma
 
 ---
 
-## Instructions for AI (Antigravity)
+## Documentation & Agent Workflow System
 
-1.  **Always read this file (`APP_STATE.md`) first** before attempting any modifications to the codebase or generating SQL.
-2.  Base all new React components and styling choices on the established "Core Stack" and "Design Language".
-3.  When writing SQL or Supabase logic, refer to the "Database & Security Matrix" section to ensure columns, foreign keys, and RLS policies are strictly accurate.
-4.  After successfully completing a major task or resolving a bug, update this file to reflect the new state.
-5.  **Git Safety Rule:** Propose changes to the user and request approval before pushing to `origin/main`. Do NOT push automatically without authorization.
+TrackUP enforces a four-tier persistent documentation architecture:
+
+*   **Primary Operational State:** This file ([`APP_STATE.md`](APP_STATE.md)) is the single source of truth for current architecture, active schema, synchronization contracts, and recent milestones. Always inspect this document first.
+*   **Operational Directives & Agent Rules:** Consult [`AGENTS.md`](AGENTS.md) for agent operational directives, design system constraints, database safety rules, and documentation maintenance workflows.
+*   **Engineering Standards & Playbooks:** Consult [`MASTER_DEVELOPMENT_PLAYBOOK.md`](MASTER_DEVELOPMENT_PLAYBOOK.md) for code patterns, React Query conventions, Supabase error handling, testing gates, and verification procedures.
+*   **Historical Archive:** Consult [`docs/ARCHIVE_HISTORY.md`](docs/ARCHIVE_HISTORY.md) for past development phases (Phases 1–7) and historical milestones.
