@@ -540,6 +540,8 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         userId: activeUserId,
         episodeId: ep.id,
         watched: !isWatched,
+        titleId: title.id,
+        titleData: title,
       },
       {
         onError: (err: any) => {
@@ -652,6 +654,8 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         userId: activeUserId,
         episodeIds: allToMark,
         watched: true,
+        titleId: title.id,
+        titleData: title,
       },
       {
         onError: (err: any) => {
@@ -734,6 +738,8 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         userId: activeUserId,
         episodeIds: allShowEpIds,
         watched: true,
+        titleId: title.id,
+        titleData: title,
       },
       {
         onError: (err: any) => {
@@ -793,6 +799,8 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         userId: activeUserId,
         episodeIds: allToUnmark,
         watched: false,
+        titleId: title.id,
+        titleData: title,
       },
       {
         onError: (err: any) => {
@@ -847,6 +855,8 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         userId: activeUserId,
         episodeIds: allEpIds,
         watched: true,
+        titleId: title.id,
+        titleData: title,
       },
       {
         onError: (err: any) => {
@@ -940,6 +950,8 @@ export const TitleDetailPage: React.FC<TitleDetailPageProps> = ({
         userId: activeUserId,
         episodeIds: seasonEpIds,
         watched: false,
+        titleId: title.id,
+        titleData: title,
       },
       {
         onError: (err: any) => {

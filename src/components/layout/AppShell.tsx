@@ -24,10 +24,12 @@ import {
   useIncrementEpisode,
   useIncrementChapter,
 } from '../../features/library/useLibrary';
+import { resolveNextEpisodeToWatch } from '../../features/library/libraryService';
 import {
   Plus,
   PlayCircle,
   Compass,
+  X,
 } from 'lucide-react';
 import { formatRuntime } from '../../lib/dateUtils';
 import { resolvePosterUrl } from '../../lib/imageUtils';
@@ -48,6 +50,14 @@ export const AppShell: React.FC = () => {
 
   const incrementEpisode = useIncrementEpisode();
   const incrementChapter = useIncrementChapter();
+  const [actionError, setActionError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (actionError) {
+      const timer = setTimeout(() => setActionError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [actionError]);
 
   const handleSelectTitle = (id: string) => {
     if (typeof window !== 'undefined' && window.history) {
@@ -266,16 +276,27 @@ export const AppShell: React.FC = () => {
                                   </span>
 
                                   {/* Quick +1 Action */}
-                                  {isEpisodic && user && (
+                                  {isEpisodic && user && item.status !== 'completed' && (
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        incrementEpisode.mutate({
-                                          libraryId: item.id,
-                                          userId: user.id,
-                                          episodeId: `ep_${item.episodes_watched.length + 1}`,
-                                          watched: true,
-                                        });
+                                        setActionError(null);
+                                        const nextEpId = resolveNextEpisodeToWatch(item);
+                                        incrementEpisode.mutate(
+                                          {
+                                            libraryId: item.id,
+                                            userId: user.id,
+                                            episodeId: nextEpId,
+                                            watched: true,
+                                            titleId: item.title_id,
+                                            titleData: item.title,
+                                          },
+                                          {
+                                            onError: (err: any) => {
+                                              setActionError(err?.message || 'Failed to update episode progress.');
+                                            },
+                                          }
+                                        );
                                       }}
                                       data-testid={`up-next-plus-episode-${item.id}`}
                                       className="px-2.5 py-1 rounded-lg bg-accent text-background font-bold text-xs flex items-center gap-1 hover:bg-accent-hover transition-colors shadow"
@@ -289,11 +310,19 @@ export const AppShell: React.FC = () => {
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        incrementChapter.mutate({
-                                          libraryId: item.id,
-                                          userId: user.id,
-                                          chapter: (item.last_chapter_read || 0) + 1,
-                                        });
+                                        setActionError(null);
+                                        incrementChapter.mutate(
+                                          {
+                                            libraryId: item.id,
+                                            userId: user.id,
+                                            chapter: (item.last_chapter_read || 0) + 1,
+                                          },
+                                          {
+                                            onError: (err: any) => {
+                                              setActionError(err?.message || 'Failed to update reading progress.');
+                                            },
+                                          }
+                                        );
                                       }}
                                       data-testid={`up-next-plus-chapter-${item.id}`}
                                       className="px-2.5 py-1 rounded-lg bg-accent text-background font-bold text-xs flex items-center gap-1 hover:bg-accent-hover transition-colors shadow"
@@ -382,6 +411,24 @@ export const AppShell: React.FC = () => {
 
       {/* Mobile Bottom Navigation Bar */}
       <BottomNavBar />
+
+      {/* Global Library / Progress Error Toast */}
+      {actionError && (
+        <div
+          data-testid="library-error-toast"
+          role="alert"
+          className="fixed bottom-20 sm:bottom-6 right-6 z-50 max-w-sm px-4 py-3 rounded-2xl bg-rose-500/90 text-white text-xs font-semibold shadow-2xl backdrop-blur-md flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-2"
+        >
+          <span>{actionError}</span>
+          <button
+            onClick={() => setActionError(null)}
+            className="p-1 rounded-lg hover:bg-white/20 transition-colors"
+            aria-label="Dismiss error notification"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

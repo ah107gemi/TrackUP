@@ -229,6 +229,45 @@ export async function fetchUserLibrary(userId: string): Promise<UserLibraryItem[
       ]);
 
       if (!res?.error && res?.data && res.data.length > 0) {
+        const epMap = new Map<string, string[]>();
+        const readMap = new Map<string, { last_chapter_read: number; last_volume_read: number }>();
+
+        try {
+          const epRes: any = await (supabase.from('user_episode_progress') as any)
+            ?.select?.('library_id, episode_id, watched')
+            ?.eq?.('user_id', userId)
+            ?.eq?.('watched', true);
+          if (epRes?.data && Array.isArray(epRes.data)) {
+            epRes.data.forEach((ep: any) => {
+              if (!ep.library_id || !ep.episode_id) return;
+              const existing = epMap.get(ep.library_id) || [];
+              if (!existing.includes(ep.episode_id)) {
+                existing.push(ep.episode_id);
+              }
+              epMap.set(ep.library_id, existing);
+            });
+          }
+        } catch {
+          // ignore error if table unmocked or offline
+        }
+
+        try {
+          const readRes: any = await (supabase.from('user_reading_progress') as any)
+            ?.select?.('library_id, last_chapter_read, last_volume_read')
+            ?.eq?.('user_id', userId);
+          if (readRes?.data && Array.isArray(readRes.data)) {
+            readRes.data.forEach((r: any) => {
+              if (!r.library_id) return;
+              readMap.set(r.library_id, {
+                last_chapter_read: Number(r.last_chapter_read) || 0,
+                last_volume_read: Number(r.last_volume_read) || 0,
+              });
+            });
+          }
+        } catch {
+          // ignore error if table unmocked or offline
+        }
+
         const remoteItems: UserLibraryItem[] = res.data.map((row: any) => {
           const cat = row.catalog_titles || {};
           const titleItem: NormalizedCatalogItem = {
@@ -252,6 +291,9 @@ export async function fetchUserLibrary(userId: string): Promise<UserLibraryItem[
             mal_id: cat.mal_id,
           };
 
+          const remoteEpisodes = epMap.get(row.id) || [];
+          const remoteReading = readMap.get(row.id) || { last_chapter_read: 0, last_volume_read: 0 };
+
           return {
             id: row.id,
             user_id: row.user_id,
@@ -264,18 +306,48 @@ export async function fetchUserLibrary(userId: string): Promise<UserLibraryItem[
             started_at: row.started_at,
             completed_at: row.completed_at,
             last_progressed_at: row.last_progressed_at,
-            episodes_watched: [],
-            last_chapter_read: 0,
-            last_volume_read: 0,
+            episodes_watched: remoteEpisodes,
+            last_chapter_read: remoteReading.last_chapter_read,
+            last_volume_read: remoteReading.last_volume_read,
             title: titleItem,
           };
         });
 
         const mergedMap = new Map<string, UserLibraryItem>();
         remoteItems.forEach((r) => mergedMap.set(r.title_id, r));
-        localItems.forEach((l) => mergedMap.set(l.title_id, l));
+        localItems.forEach((l) => {
+          const remote = mergedMap.get(l.title_id);
+          if (remote) {
+            // Keep remote.id as authoritative, while preserving combined episodes and reading progress
+            const combinedEpisodes = Array.from(
+              new Set([
+                ...(Array.isArray(remote.episodes_watched) ? remote.episodes_watched : []),
+                ...(Array.isArray(l.episodes_watched) ? l.episodes_watched : []),
+              ])
+            );
+            const combinedChapter = Math.max(l.last_chapter_read || 0, remote.last_chapter_read || 0);
+            const combinedVolume = Math.max(l.last_volume_read || 0, remote.last_volume_read || 0);
 
-        return Array.from(mergedMap.values());
+            mergedMap.set(l.title_id, {
+              ...l,
+              ...remote,
+              id: remote.id,
+              legacy_id: l.id !== remote.id ? l.id : (l as any).legacy_id,
+              episodes_watched: combinedEpisodes,
+              last_chapter_read: combinedChapter,
+              last_volume_read: combinedVolume,
+            });
+          } else {
+            mergedMap.set(l.title_id, l);
+          }
+        });
+
+        // Always sync the user's latest merged state into localStorage
+        const otherUsersItems = all.filter((item) => item.user_id !== userId);
+        const finalUserItems = Array.from(mergedMap.values());
+        saveStoredLibraries([...otherUsersItems, ...finalUserItems]);
+
+        return finalUserItems;
       }
     } catch {
       // Fallback smoothly to localItems
@@ -505,9 +577,11 @@ export async function upsertLibraryItem(params: {
       }
 
       try {
-        const { error: updateErr } = await (supabase.from('user_libraries') as any)
+        const { data: updateData, error: updateErr } = await (supabase.from('user_libraries') as any)
           .update(updatePayload)
           .match({ user_id: effectiveUserId, title_id: params.titleId })
+          .select('id')
+          .maybeSingle()
           .throwOnError();
 
         if (updateErr) {
@@ -519,29 +593,57 @@ export async function upsertLibraryItem(params: {
           throw new Error(updateErr.message || 'Failed to update library item in Supabase.');
         }
 
+        let authoritativeId = updateData?.id;
+        if (!authoritativeId) {
+          // If 0 rows were updated, row did not exist yet in Supabase - guarantee parent row exists!
+          const { data: upsertData, error: upsertErr } = await (supabase.from('user_libraries') as any)
+            .upsert(
+              {
+                id: itemUuid,
+                user_id: effectiveUserId,
+                title_id: params.titleId,
+                ...updatePayload,
+              },
+              { onConflict: 'user_id,title_id' }
+            )
+            .select('id')
+            .single()
+            .throwOnError();
+
+          if (upsertErr) {
+            console.error('[libraryService] Supabase user_libraries upsert fallback failed in upsertLibraryItem:', upsertErr);
+            throw new Error(upsertErr.message || 'Failed to upsert library item in Supabase.');
+          }
+          authoritativeId = upsertData?.id || itemUuid;
+        }
+
+        if (authoritativeId && isValidUUID(authoritativeId)) {
+          updated.id = authoritativeId;
+        }
+
         if (isPlanned) {
           const { error: epErr } = await (supabase.from('user_episode_progress') as any)
             .delete()
-            .match({ user_id: effectiveUserId, library_id: itemUuid })
+            .match({ user_id: effectiveUserId, library_id: updated.id })
             .throwOnError();
 
           if (epErr) {
             console.error('[libraryService] Supabase user_episode_progress delete failed on status planned:', epErr, {
               effectiveUserId,
-              library_id: itemUuid,
+              library_id: updated.id,
             });
             throw new Error(epErr.message || 'Failed to clear episode progress in Supabase.');
           }
 
           const { error: readErr } = await (supabase.from('user_reading_progress') as any)
             .delete()
-            .match({ user_id: effectiveUserId, library_id: itemUuid })
+            .match({ user_id: effectiveUserId, library_id: updated.id })
             .throwOnError();
 
           if (readErr) {
             console.error('[libraryService] Supabase user_reading_progress delete failed on status planned:', readErr, {
               effectiveUserId,
-              library_id: itemUuid,
+              library_id: updated.id,
             });
             throw new Error(readErr.message || 'Failed to clear reading progress in Supabase.');
           }
@@ -786,11 +888,216 @@ export function inferWatchedTrackingStatus(params: {
   return currentStatus;
 }
 
+/**
+ * Resolves the next episode ID to watch for a library item.
+ * Evaluates seasons/episodes catalog metadata if available,
+ * or inspects existing watched episodes to find the next sequential episode.
+ */
+export function resolveNextEpisodeToWatch(item: {
+  episodes_watched?: string[];
+  title?: NormalizedCatalogItem | null;
+}): string {
+  const watched = Array.isArray(item.episodes_watched) ? item.episodes_watched : [];
+
+  // Determine highest watched episode number across all watched IDs
+  let maxWatched = 0;
+  watched.forEach((id) => {
+    if (typeof id === 'string') {
+      const match = id.match(/(?:ep_?|episode_?|e|^)(\d+)$/i);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (!isNaN(n) && n > maxWatched) {
+          maxWatched = n;
+        }
+      }
+    }
+  });
+
+  const targetNextNumber = maxWatched > 0 ? maxWatched + 1 : (watched.length + 1);
+
+  // If seasons & episodes exist on title, attempt to find the catalog episode matching targetNextNumber
+  if (item.title?.seasons && Array.isArray(item.title.seasons)) {
+    let globalEpOffset = 0;
+    for (const season of item.title.seasons) {
+      if (Array.isArray(season.episodes)) {
+        for (const ep of season.episodes) {
+          const globalEpNumber = globalEpOffset + ep.episode_number;
+          if (ep.episode_number === targetNextNumber || globalEpNumber === targetNextNumber) {
+            return ep.id || `ep_${targetNextNumber}`;
+          }
+        }
+        globalEpOffset += (season.episode_count || season.episodes.length || 0);
+      }
+    }
+
+    // Fallback: first unwatched episode in catalog
+    for (const season of item.title.seasons) {
+      if (Array.isArray(season.episodes)) {
+        for (const ep of season.episodes) {
+          const isWatched = watched.some((wId) => {
+            if (wId === ep.id) return true;
+            if (wId === `ep_${ep.episode_number}`) return true;
+            return false;
+          });
+          if (!isWatched) {
+            return ep.id || `ep_${ep.episode_number}`;
+          }
+        }
+      }
+    }
+  }
+
+  return `ep_${targetNextNumber}`;
+}
+
+/**
+ * Ensures that the parent user_libraries row is guaranteed to exist in Supabase
+ * and returns its strictly authoritative primary key `id`.
+ *
+ * If a local/client UUID differs from the existing DB row, the DB row `id` is authoritative.
+ * If the parent row is not yet in Supabase, this upserts the row with `.select('id').single()`
+ * so that foreign keys in child tables (like `user_episode_progress.library_id`) never fail.
+ * Local cache/state is synced to that authoritative database id.
+ */
+export async function ensureAuthoritativeLibraryId(params: {
+  userId: string;
+  titleId: string;
+  libraryId?: string;
+  fallbackItem?: Partial<UserLibraryItem>;
+}): Promise<string> {
+  const sessionUserId = await getAuthenticatedUserId();
+  const isTest = typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || process.env?.VITEST === 'true');
+  const effectiveUserId = sessionUserId || params.userId;
+
+  if (!supabase || (!sessionUserId && isTest && !params.userId)) {
+    if (params.libraryId && isValidUUID(params.libraryId)) {
+      return params.libraryId;
+    }
+    if (params.fallbackItem?.id && isValidUUID(params.fallbackItem.id)) {
+      return params.fallbackItem.id;
+    }
+    return generateUUID();
+  }
+
+  if (!effectiveUserId) {
+    throw new Error('User session not found. Please log in to update episode progress.');
+  }
+
+  const now = new Date().toISOString();
+  let authoritativeId: string | null = null;
+
+  try {
+    // 1. Check if a row already exists in user_libraries for (user_id, title_id)
+    if (params.titleId) {
+      const { data: existingRow } = await (supabase.from('user_libraries') as any)
+        .select('id, user_id, title_id')
+        .eq('user_id', effectiveUserId)
+        .eq('title_id', params.titleId)
+        .maybeSingle();
+
+      if (existingRow?.id && isValidUUID(existingRow.id)) {
+        authoritativeId = existingRow.id;
+      }
+    }
+
+    // 2. If not found by title_id, check by libraryId if it's a valid UUID
+    if (!authoritativeId && params.libraryId && isValidUUID(params.libraryId)) {
+      const { data: rowById } = await (supabase.from('user_libraries') as any)
+        .select('id, user_id, title_id')
+        .eq('user_id', effectiveUserId)
+        .eq('id', params.libraryId)
+        .maybeSingle();
+
+      if (rowById?.id && isValidUUID(rowById.id)) {
+        authoritativeId = rowById.id;
+      }
+    }
+
+    // 3. If parent row does not exist in Supabase, guarantee its creation!
+    if (!authoritativeId) {
+      const candidateId =
+        params.libraryId && isValidUUID(params.libraryId)
+          ? params.libraryId
+          : params.fallbackItem?.id && isValidUUID(params.fallbackItem.id)
+          ? params.fallbackItem.id
+          : generateUUID();
+
+      const rawStatus = params.fallbackItem?.status || 'active';
+      const effectiveStatus = (rawStatus === ('watching' as any) ? 'active' : rawStatus) as TrackingStatus;
+
+      const insertPayload: Record<string, any> = {
+        id: candidateId,
+        user_id: effectiveUserId,
+        title_id: params.titleId,
+        status: effectiveStatus,
+        started_at: params.fallbackItem?.started_at || (effectiveStatus === 'active' ? now : null),
+        completed_at: params.fallbackItem?.completed_at || (effectiveStatus === 'completed' ? now : null),
+        last_progressed_at: now,
+        updated_at: now,
+      };
+
+      const { data: upsertData, error: upsertErr } = await (supabase.from('user_libraries') as any)
+        .upsert(insertPayload, { onConflict: 'user_id,title_id' })
+        .select('id')
+        .single()
+        .throwOnError();
+
+      if (upsertErr) {
+        console.error('[libraryService] ensureAuthoritativeLibraryId upsert failed:', upsertErr);
+        throw new Error(upsertErr.message || 'Failed to ensure parent user_libraries row in Supabase.');
+      }
+
+      if (upsertData?.id && isValidUUID(upsertData.id)) {
+        authoritativeId = upsertData.id;
+      } else {
+        throw new Error(`Supabase failed to return an authoritative primary key for user_libraries (title: ${params.titleId}).`);
+      }
+    }
+
+    // 4. Re-sync local storage cache with authoritative ID
+    if (authoritativeId) {
+      const all = getStoredLibraries();
+      let modified = false;
+      for (let i = 0; i < all.length; i++) {
+        const item = all[i];
+        if (
+          item.user_id === effectiveUserId &&
+          (item.title_id === params.titleId ||
+            (params.libraryId && (item.id === params.libraryId || (item as any).legacy_id === params.libraryId)))
+        ) {
+          if (item.id !== authoritativeId) {
+            all[i] = {
+              ...item,
+              legacy_id: (item as any).legacy_id || item.id,
+              id: authoritativeId,
+            };
+            modified = true;
+          }
+        }
+      }
+      if (modified) {
+        saveStoredLibraries(all);
+      }
+    }
+  } catch (err: any) {
+    console.error('[libraryService] Error in ensureAuthoritativeLibraryId:', err);
+    throw err;
+  }
+
+  if (!authoritativeId || !isValidUUID(authoritativeId)) {
+    throw new Error(`Failed to resolve verified, authoritative user_libraries ID for title ${params.titleId}.`);
+  }
+
+  return authoritativeId;
+}
+
 export async function logEpisodeProgress(params: {
   libraryId: string;
   userId: string;
   episodeId: string;
   watched: boolean;
+  titleId?: string;
+  titleData?: NormalizedCatalogItem;
 }): Promise<UserLibraryItem> {
   const sessionUserId = await getAuthenticatedUserId();
   const isTest = typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || process.env?.VITEST === 'true');
@@ -805,15 +1112,97 @@ export async function logEpisodeProgress(params: {
     throw new Error(errorMsg);
   }
 
-  const all = getStoredLibraries();
-  const index = all.findIndex(
+  let all = getStoredLibraries();
+  let index = all.findIndex(
     (item) =>
       item.user_id === effectiveUserId &&
       (item.id === params.libraryId ||
         (item as any).legacy_id === params.libraryId ||
         item.title_id === params.libraryId ||
-        (item.title && item.title.id === params.libraryId))
+        (params.titleId && item.title_id === params.titleId) ||
+        (item.title && (item.title.id === params.libraryId || (params.titleId && item.title.id === params.titleId))))
   );
+
+  // If entry not found in local storage, attempt to fetch from Supabase
+  if (index < 0 && supabase) {
+    try {
+      const targetTitle = params.titleId || (isValidUUID(params.libraryId) ? null : params.libraryId);
+      let query = (supabase.from('user_libraries') as any)
+        .select(`
+          id, user_id, title_id, status, rating, is_private, personal_notes,
+          started_at, completed_at, last_progressed_at,
+          catalog_titles (*)
+        `)
+        .eq('user_id', effectiveUserId);
+
+      if (targetTitle) {
+        query = query.eq('title_id', targetTitle);
+      } else if (isValidUUID(params.libraryId)) {
+        query = query.eq('id', params.libraryId);
+      }
+
+      const { data: dbEntry } = await query.maybeSingle();
+      if (dbEntry) {
+        const cat = dbEntry.catalog_titles || params.titleData || {
+          id: dbEntry.title_id,
+          media_type: 'tv',
+          title: 'Unknown Title',
+          genres: [],
+        };
+        const hydrated: UserLibraryItem = {
+          id: dbEntry.id,
+          user_id: dbEntry.user_id,
+          title_id: dbEntry.title_id,
+          status: dbEntry.status,
+          rating: dbEntry.rating,
+          is_private: Boolean(dbEntry.is_private),
+          personal_notes: dbEntry.personal_notes,
+          started_at: dbEntry.started_at,
+          completed_at: dbEntry.completed_at,
+          last_progressed_at: dbEntry.last_progressed_at,
+          episodes_watched: [],
+          last_chapter_read: 0,
+          last_volume_read: 0,
+          title: cat,
+        };
+        all.push(hydrated);
+        index = all.length - 1;
+        saveStoredLibraries(all);
+      }
+    } catch {
+      // ignore lookup error
+    }
+  }
+
+  if (index < 0 && (params.titleId || params.libraryId)) {
+    const fallbackTitleId = params.titleId || 'unknown_title';
+    const fallbackId = params.libraryId && isValidUUID(params.libraryId) ? params.libraryId : generateUUID();
+    const newItem: UserLibraryItem = {
+      id: fallbackId,
+      user_id: effectiveUserId,
+      title_id: fallbackTitleId,
+      status: 'active',
+      rating: null,
+      is_private: false,
+      personal_notes: null,
+      started_at: new Date().toISOString(),
+      completed_at: null,
+      last_progressed_at: new Date().toISOString(),
+      episodes_watched: [],
+      last_chapter_read: 0,
+      last_volume_read: 0,
+      title: params.titleData || {
+        id: fallbackTitleId,
+        media_type: 'tv',
+        title: 'Title',
+        genres: [],
+      },
+    };
+    all.push(newItem);
+    index = all.length - 1;
+    saveStoredLibraries(all);
+  }
+
   if (index < 0) {
     const errorMsg = 'Library entry not found';
     console.error('[libraryService] Library entry not found in logEpisodeProgress', { params, effectiveUserId });
@@ -821,7 +1210,7 @@ export async function logEpisodeProgress(params: {
   }
 
   const item = all[index];
-  const effectiveLibId = isValidUUID(item.id) ? item.id : (isTest ? item.id : generateUUID());
+  const targetTitleId = params.titleId || item.title_id || (item.title && item.title.id);
   const now = new Date().toISOString();
   let updatedEpisodes = Array.isArray(item.episodes_watched) ? [...item.episodes_watched] : [];
 
@@ -855,6 +1244,19 @@ export async function logEpisodeProgress(params: {
     last_progressed_at: now,
     updated_at: now,
   };
+
+  // Strictly resolve authoritative Supabase library ID before any write to user_episode_progress
+  const effectiveLibId = await ensureAuthoritativeLibraryId({
+    userId: effectiveUserId,
+    titleId: targetTitleId,
+    libraryId: params.libraryId || item.id,
+    fallbackItem: {
+      ...item,
+      status: nextStatus,
+      started_at: nextStartedAt,
+      completed_at: nextCompletedAt,
+    },
+  });
 
   // Strict Supabase Progress & Library Sync
   if (!isTest || sessionUserId) {
@@ -978,7 +1380,15 @@ export async function toggleEpisode(params: {
       ((params.libraryId && (item.id === params.libraryId || (item as any).legacy_id === params.libraryId)) ||
         (params.titleId && (item.title_id === params.titleId || item.title?.id === params.titleId)))
   );
-  if (index < 0) throw new Error('Library entry not found');
+  if (index < 0) {
+    return logEpisodeProgress({
+      libraryId: params.libraryId || generateUUID(),
+      userId: params.userId,
+      episodeId: params.episodeId,
+      watched: true,
+      titleId: params.titleId,
+    });
+  }
 
   const item = all[index];
   const currentEpisodes = Array.isArray(item.episodes_watched) ? item.episodes_watched : [];
@@ -993,6 +1403,8 @@ export async function toggleEpisode(params: {
     userId: params.userId,
     episodeId: params.episodeId,
     watched: !isWatched,
+    titleId: item.title_id || params.titleId,
+    titleData: item.title,
   });
 }
 
@@ -1001,6 +1413,8 @@ export async function logBatchEpisodeProgress(params: {
   userId: string;
   episodeIds: string[];
   watched: boolean;
+  titleId?: string;
+  titleData?: NormalizedCatalogItem;
 }): Promise<UserLibraryItem> {
   const sessionUserId = await getAuthenticatedUserId();
   const isTest = typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || process.env?.VITEST === 'true');
@@ -1015,15 +1429,97 @@ export async function logBatchEpisodeProgress(params: {
     throw new Error(errorMsg);
   }
 
-  const all = getStoredLibraries();
-  const index = all.findIndex(
+  let all = getStoredLibraries();
+  let index = all.findIndex(
     (item) =>
       item.user_id === effectiveUserId &&
       (item.id === params.libraryId ||
         (item as any).legacy_id === params.libraryId ||
         item.title_id === params.libraryId ||
-        (item.title && item.title.id === params.libraryId))
+        (params.titleId && item.title_id === params.titleId) ||
+        (item.title && (item.title.id === params.libraryId || (params.titleId && item.title.id === params.titleId))))
   );
+
+  // If not found in local storage, attempt to fetch from Supabase
+  if (index < 0 && supabase) {
+    try {
+      const targetTitle = params.titleId || (isValidUUID(params.libraryId) ? null : params.libraryId);
+      let query = (supabase.from('user_libraries') as any)
+        .select(`
+          id, user_id, title_id, status, rating, is_private, personal_notes,
+          started_at, completed_at, last_progressed_at,
+          catalog_titles (*)
+        `)
+        .eq('user_id', effectiveUserId);
+
+      if (targetTitle) {
+        query = query.eq('title_id', targetTitle);
+      } else if (isValidUUID(params.libraryId)) {
+        query = query.eq('id', params.libraryId);
+      }
+
+      const { data: dbEntry } = await query.maybeSingle();
+      if (dbEntry) {
+        const cat = dbEntry.catalog_titles || params.titleData || {
+          id: dbEntry.title_id,
+          media_type: 'tv',
+          title: 'Unknown Title',
+          genres: [],
+        };
+        const hydrated: UserLibraryItem = {
+          id: dbEntry.id,
+          user_id: dbEntry.user_id,
+          title_id: dbEntry.title_id,
+          status: dbEntry.status,
+          rating: dbEntry.rating,
+          is_private: Boolean(dbEntry.is_private),
+          personal_notes: dbEntry.personal_notes,
+          started_at: dbEntry.started_at,
+          completed_at: dbEntry.completed_at,
+          last_progressed_at: dbEntry.last_progressed_at,
+          episodes_watched: [],
+          last_chapter_read: 0,
+          last_volume_read: 0,
+          title: cat,
+        };
+        all.push(hydrated);
+        index = all.length - 1;
+        saveStoredLibraries(all);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (index < 0 && (params.titleId || params.libraryId)) {
+    const fallbackTitleId = params.titleId || 'unknown_title';
+    const fallbackId = params.libraryId && isValidUUID(params.libraryId) ? params.libraryId : generateUUID();
+    const newItem: UserLibraryItem = {
+      id: fallbackId,
+      user_id: effectiveUserId,
+      title_id: fallbackTitleId,
+      status: 'active',
+      rating: null,
+      is_private: false,
+      personal_notes: null,
+      started_at: new Date().toISOString(),
+      completed_at: null,
+      last_progressed_at: new Date().toISOString(),
+      episodes_watched: [],
+      last_chapter_read: 0,
+      last_volume_read: 0,
+      title: params.titleData || {
+        id: fallbackTitleId,
+        media_type: 'tv',
+        title: 'Title',
+        genres: [],
+      },
+    };
+    all.push(newItem);
+    index = all.length - 1;
+    saveStoredLibraries(all);
+  }
+
   if (index < 0) {
     const errorMsg = 'Library entry not found';
     console.error('[libraryService] Library entry not found in logBatchEpisodeProgress', { params, effectiveUserId });
@@ -1031,7 +1527,7 @@ export async function logBatchEpisodeProgress(params: {
   }
 
   const item = all[index];
-  const effectiveLibId = isValidUUID(item.id) ? item.id : (isTest ? item.id : generateUUID());
+  const targetTitleId = params.titleId || item.title_id || (item.title && item.title.id);
   const now = new Date().toISOString();
   let updatedEpisodes = Array.isArray(item.episodes_watched) ? [...item.episodes_watched] : [];
 
@@ -1064,6 +1560,19 @@ export async function logBatchEpisodeProgress(params: {
     last_progressed_at: now,
     updated_at: now,
   };
+
+  // Strictly resolve authoritative Supabase library ID before any write to user_episode_progress
+  const effectiveLibId = await ensureAuthoritativeLibraryId({
+    userId: effectiveUserId,
+    titleId: targetTitleId,
+    libraryId: params.libraryId || item.id,
+    fallbackItem: {
+      ...item,
+      status: nextStatus,
+      started_at: nextStartedAt,
+      completed_at: nextCompletedAt,
+    },
+  });
 
   // Strict Supabase Batch Sync
   if (!isTest || sessionUserId) {
@@ -1136,7 +1645,7 @@ export async function logBatchEpisodeProgress(params: {
   }
 
   // Update history record
-  if (params.watched) {
+  if (params.watched && params.episodeIds.length > 0) {
     try {
       const history = JSON.parse(localStorage.getItem(LOCAL_STORAGE_WATCH_HISTORY_KEY) || '[]');
       params.episodeIds.forEach((epId) => {

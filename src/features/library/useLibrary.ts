@@ -17,6 +17,7 @@ import {
 } from './libraryService';
 import { healLibraryBatch } from '../catalog/metadataHealer';
 import type { TrackingStatus } from '../../types/database.types';
+import type { NormalizedCatalogItem } from '../../lib/validators';
 
 export function useUserLibrary(userId: string | undefined) {
   const queryClient = useQueryClient();
@@ -166,6 +167,8 @@ export function useIncrementEpisode() {
       userId: string;
       episodeId: string;
       watched: boolean;
+      titleId?: string;
+      titleData?: NormalizedCatalogItem;
     }) => logEpisodeProgress(params),
     onMutate: async (variables) => {
       await queryClient.cancelQueries({ queryKey: ['library', variables.userId] });
@@ -173,7 +176,7 @@ export function useIncrementEpisode() {
 
       if (previous) {
         const optimistic = previous.map((item) => {
-          if (item.id === variables.libraryId) {
+          if (item.id === variables.libraryId || (variables.titleId && item.title_id === variables.titleId)) {
             const watched = variables.watched
               ? [...new Set([...item.episodes_watched, variables.episodeId])]
               : item.episodes_watched.filter(
@@ -210,6 +213,18 @@ export function useIncrementEpisode() {
         queryClient.setQueryData(['library', variables.userId], context.previous);
       }
     },
+    onSuccess: (savedItem, variables) => {
+      if (savedItem) {
+        queryClient.setQueryData<UserLibraryItem[]>(['library', variables.userId], (old) => {
+          if (!old) return [savedItem];
+          return old.map((item) =>
+            item.id === variables.libraryId || item.title_id === savedItem.title_id || item.id === savedItem.id
+              ? savedItem
+              : item
+          );
+        });
+      }
+    },
     onSettled: (_data, _error, variables) => {
       queryClient.invalidateQueries({ queryKey: ['library', variables.userId] });
     },
@@ -225,6 +240,8 @@ export function useBatchEpisodeProgress() {
       userId: string;
       episodeIds: string[];
       watched: boolean;
+      titleId?: string;
+      titleData?: NormalizedCatalogItem;
     }) => logBatchEpisodeProgress(params),
     onMutate: async (variables) => {
       await queryClient.cancelQueries({ queryKey: ['library', variables.userId] });
@@ -232,7 +249,7 @@ export function useBatchEpisodeProgress() {
 
       if (previous) {
         const optimistic = previous.map((item) => {
-          if (item.id === variables.libraryId) {
+          if (item.id === variables.libraryId || (variables.titleId && item.title_id === variables.titleId)) {
             const watched = variables.watched
               ? [...new Set([...item.episodes_watched, ...variables.episodeIds])]
               : item.episodes_watched.filter((id) => !variables.episodeIds.includes(id));
@@ -263,6 +280,18 @@ export function useBatchEpisodeProgress() {
     onError: (_err, variables, context) => {
       if (context?.previous) {
         queryClient.setQueryData(['library', variables.userId], context.previous);
+      }
+    },
+    onSuccess: (savedItem, variables) => {
+      if (savedItem) {
+        queryClient.setQueryData<UserLibraryItem[]>(['library', variables.userId], (old) => {
+          if (!old) return [savedItem];
+          return old.map((item) =>
+            item.id === variables.libraryId || item.title_id === savedItem.title_id || item.id === savedItem.id
+              ? savedItem
+              : item
+          );
+        });
       }
     },
     onSettled: (_data, _error, variables) => {

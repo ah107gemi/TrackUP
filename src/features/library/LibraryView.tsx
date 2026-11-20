@@ -22,7 +22,7 @@ import {
   useIncrementChapter,
   useUpsertLibrary,
 } from './useLibrary';
-import type { UserLibraryItem } from './libraryService';
+import { resolveNextEpisodeToWatch, type UserLibraryItem } from './libraryService';
 import { searchReadingCatalog } from '../catalog/catalogService';
 import type { NormalizedCatalogItem } from '../../lib/validators';
 import type { TrackingStatus, MediaType } from '../../types/database.types';
@@ -243,13 +243,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     if (!user) return;
 
     if (item.title.media_type === 'tv' || item.title.media_type === 'anime_series') {
-      const nextEpNum = item.episodes_watched.length + 1;
+      const nextEpId = resolveNextEpisodeToWatch(item);
       incrementEpisode.mutate(
         {
           libraryId: item.id,
           userId: user.id,
-          episodeId: `ep_${nextEpNum}`,
+          episodeId: nextEpId,
           watched: true,
+          titleId: item.title_id,
+          titleData: item.title,
         },
         {
           onError: (err: any) => {
